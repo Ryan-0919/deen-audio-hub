@@ -398,7 +398,7 @@ export const mockApi = {
     ),
 
   getAudioDetail: (audioId: string, courseId: string) =>
-    request<{ audio: Audio; tag: Tag; course: Course; prev?: Audio; next?: Audio }>(
+    request<{ audio: Audio; tag: Tag; course: Course; prev?: Audio; next?: Audio; first?: Audio; last?: Audio }>(
       `/api/user/courses/${courseId}/audios/${audioId}/detail`,
       { auth: "user" },
     ),

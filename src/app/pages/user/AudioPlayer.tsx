@@ -1,4 +1,4 @@
-import { ArrowLeft, Pause, Play, SkipBack, SkipForward } from "lucide-react";
+import { ArrowLeft, Pause, Play, Repeat, Repeat1, SkipBack, SkipForward } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 import { Button } from "../../components/ui/button";
@@ -7,6 +7,9 @@ import { cn } from "../../components/ui/utils";
 import { Audio, Course, Tag, mockApi } from "../../lib/mockData";
 
 const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 2];
+const LOOP_MODES = ["sequence", "single"] as const;
+
+type LoopMode = (typeof LOOP_MODES)[number];
 
 const formatTime = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
@@ -24,6 +27,8 @@ export function AudioPlayer() {
   const [tag, setTag] = useState<Tag | null>(null);
   const [prevAudio, setPrevAudio] = useState<Audio | undefined>();
   const [nextAudio, setNextAudio] = useState<Audio | undefined>();
+  const [firstAudio, setFirstAudio] = useState<Audio | undefined>();
+  const [lastAudio, setLastAudio] = useState<Audio | undefined>();
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -35,6 +40,11 @@ export function AudioPlayer() {
     if (typeof window === "undefined") return 1;
     const savedRate = Number(window.localStorage.getItem("userPlaybackRate") ?? "1");
     return PLAYBACK_RATES.includes(savedRate) ? savedRate : 1;
+  });
+  const [loopMode, setLoopMode] = useState<LoopMode>(() => {
+    if (typeof window === "undefined") return "sequence";
+    const savedMode = window.localStorage.getItem("userLoopMode");
+    return LOOP_MODES.includes(savedMode as LoopMode) ? (savedMode as LoopMode) : "sequence";
   });
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -76,6 +86,12 @@ export function AudioPlayer() {
   }, [playbackRate, audio]);
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("userLoopMode", loopMode);
+    }
+  }, [loopMode]);
+
+  useEffect(() => {
     const loadBranding = async () => {
       try {
         const data = await mockApi.getBrandingConfig();
@@ -101,16 +117,15 @@ export function AudioPlayer() {
       try {
         setLoading(true);
         autoplayRequestedRef.current = Boolean((location.state as { autoplay?: boolean } | null)?.autoplay);
-        const [detail, progress] = await Promise.all([
-          mockApi.getAudioDetail(audioId, courseId),
-          mockApi.getUserProgress(userId, courseId, audioId),
-        ]);
+        const [detail, progress] = await Promise.all([mockApi.getAudioDetail(audioId, courseId), mockApi.getUserProgress(userId, courseId, audioId)]);
 
         setAudio(detail.audio);
         setCourse(detail.course);
         setTag(detail.tag);
         setPrevAudio(detail.prev);
         setNextAudio(detail.next);
+        setFirstAudio(detail.first);
+        setLastAudio(detail.last);
         setDuration(detail.audio.duration ?? 0);
         setCurrentTime(progress?.progress ?? 0);
         setCompleted(progress?.completed ?? false);
@@ -132,12 +147,42 @@ export function AudioPlayer() {
     };
   }, [audioId, courseId, location.state, navigate]);
 
+  const replayCurrentAudio = async () => {
+    const node = audioRef.current;
+    if (!node) return;
+
+    node.currentTime = 0;
+    setCurrentTime(0);
+    progressRef.current = 0;
+
+    try {
+      await node.play();
+    } catch (error) {
+      setPlayerError("音频已切换，请点击播放继续收听");
+    }
+  };
+
   const handleAudioEnd = async () => {
     setIsPlaying(false);
     await markCompleted();
 
+    if (loopMode === "single") {
+      await replayCurrentAudio();
+      return;
+    }
+
     if (nextAudio && courseId) {
       navigate(`/user/player/${courseId}/${nextAudio.id}`, { state: { autoplay: true } });
+      return;
+    }
+
+    if (firstAudio && courseId && firstAudio.id !== audioId) {
+      navigate(`/user/player/${courseId}/${firstAudio.id}`, { state: { autoplay: true } });
+      return;
+    }
+
+    if (courseId) {
+      await replayCurrentAudio();
     }
   };
 
@@ -221,7 +266,7 @@ export function AudioPlayer() {
       node.removeEventListener("ended", onEnded);
       node.removeEventListener("error", onError);
     };
-  }, [audio, nextAudio]);
+  }, [audio, audioId, courseId, firstAudio, loopMode, nextAudio, playbackRate]);
 
   const togglePlay = async () => {
     const node = audioRef.current;
@@ -258,6 +303,12 @@ export function AudioPlayer() {
 
   const handleJump = async (target?: Audio) => {
     if (!target || !courseId) return;
+
+    if (target.id === audioId) {
+      await replayCurrentAudio();
+      return;
+    }
+
     const shouldAutoplay = Boolean(audioRef.current && !audioRef.current.paused);
     audioRef.current?.pause();
     await saveProgress();
@@ -278,14 +329,18 @@ export function AudioPlayer() {
     });
   };
 
+  const handleToggleLoopMode = () => {
+    setLoopMode((currentMode) => (currentMode === "sequence" ? "single" : "sequence"));
+  };
+
+  const currentPrevAudio = prevAudio ?? (loopMode === "sequence" ? lastAudio : undefined);
+  const currentNextAudio = nextAudio ?? (loopMode === "sequence" ? firstAudio : undefined);
   const playerStatus = completed ? "已学完" : isPlaying ? "播放中" : currentTime > 0 ? "暂停中" : "未播放";
 
   if (loading) {
     return (
       <div className="min-h-screen bg-[#f6f8fb] px-4 py-6">
-        <div className="mx-auto max-w-sm rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500">
-          音频加载中...
-        </div>
+        <div className="mx-auto max-w-sm rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500">音频加载中...</div>
       </div>
     );
   }
@@ -293,9 +348,7 @@ export function AudioPlayer() {
   if (!audio || !course || !tag) {
     return (
       <div className="min-h-screen bg-[#f6f8fb] px-4 py-6">
-        <div className="mx-auto max-w-sm rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500">
-          音频不存在
-        </div>
+        <div className="mx-auto max-w-sm rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500">音频不存在</div>
       </div>
     );
   }
@@ -328,7 +381,7 @@ export function AudioPlayer() {
               )}
             >
               {playerDiscImageUrl ? (
-                <img src={playerDiscImageUrl} alt="播放器圆圈图片" className="size-full object-cover" />
+                <img src={playerDiscImageUrl} alt="播放器图片" className="size-full object-cover" />
               ) : (
                 <div className="absolute inset-0 bg-blue-50" />
               )}
@@ -372,7 +425,12 @@ export function AudioPlayer() {
             <Slider value={[currentTime]} max={duration || 1} step={1} onValueChange={handleSeek} />
           </div>
 
-          <div className="mt-4 flex items-center justify-end">
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <Button variant="outline" size="sm" onClick={handleToggleLoopMode} className="rounded-full px-4">
+              {loopMode === "single" ? <Repeat1 className="mr-2 size-4" /> : <Repeat className="mr-2 size-4" />}
+              {loopMode === "single" ? "单曲循环" : "顺序循环"}
+            </Button>
+
             <Button variant="outline" size="sm" onClick={handleCyclePlaybackRate} className="rounded-full px-4">
               倍速 {playbackRate}x
             </Button>
@@ -380,7 +438,12 @@ export function AudioPlayer() {
 
           <div className="mt-5 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
             <div className="flex justify-start">
-              <Button variant="outline" onClick={() => void handleJump(prevAudio)} disabled={!prevAudio} className="h-12 rounded-full px-4">
+              <Button
+                variant="outline"
+                onClick={() => void handleJump(currentPrevAudio)}
+                disabled={!currentPrevAudio}
+                className="h-12 rounded-full px-4"
+              >
                 <SkipBack className="mr-2 size-5" />
                 上一条
               </Button>
@@ -391,7 +454,12 @@ export function AudioPlayer() {
             </Button>
 
             <div className="flex justify-end">
-              <Button variant="outline" onClick={() => void handleJump(nextAudio)} disabled={!nextAudio} className="h-12 rounded-full px-4">
+              <Button
+                variant="outline"
+                onClick={() => void handleJump(currentNextAudio)}
+                disabled={!currentNextAudio}
+                className="h-12 rounded-full px-4"
+              >
                 下一条
                 <SkipForward className="ml-2 size-5" />
               </Button>

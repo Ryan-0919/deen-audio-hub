@@ -260,6 +260,8 @@ userRouter.get("/courses/:courseId/audios/:audioId/detail", async (req, res) => 
     const currentIndex = ordered.findIndex((item) => item.audio.id === req.params.audioId);
     const prev = currentIndex > 0 ? ordered[currentIndex - 1].audio : undefined;
     const next = currentIndex >= 0 && currentIndex < ordered.length - 1 ? ordered[currentIndex + 1].audio : undefined;
+    const first = ordered.length > 0 ? ordered[0].audio : undefined;
+    const last = ordered.length > 0 ? ordered[ordered.length - 1].audio : undefined;
 
     return ok(res, {
       audio: serializeAudio(relation.audio),
@@ -267,6 +269,8 @@ userRouter.get("/courses/:courseId/audios/:audioId/detail", async (req, res) => 
       course: serializeCourse(course, course.courseAudios.length),
       prev: prev ? serializeAudio(prev) : undefined,
       next: next ? serializeAudio(next) : undefined,
+      first: first ? serializeAudio(first) : undefined,
+      last: last ? serializeAudio(last) : undefined,
     });
   } catch (error) {
     return fail(res, error.message || "音频不存在", 404);
