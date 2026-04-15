@@ -9,21 +9,13 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { ApiRequestError, mockApi } from "../../lib/mockData";
+import { ensureUserDeviceKey, getUserToken, saveUserSession } from "../../lib/user-session";
 
 const DEVICE_LIMIT = 5;
 
 const getDeviceInfo = () => {
   const userAgent = navigator.userAgent;
-  const savedKey = localStorage.getItem("userDeviceKey");
-  const randomId =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-  const deviceKey = savedKey ?? `device-${randomId}`;
-
-  if (!savedKey) {
-    localStorage.setItem("userDeviceKey", deviceKey);
-  }
+  const deviceKey = ensureUserDeviceKey();
 
   let type = "移动端";
   let model = "Web App";
@@ -57,31 +49,65 @@ export function UserLogin() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [loginError, setLoginError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [customerServiceUrl, setCustomerServiceUrl] = useState("");
 
   useEffect(() => {
-    const loadBranding = async () => {
+    let active = true;
+
+    ensureUserDeviceKey();
+
+    const bootstrap = async () => {
       try {
-        const data = await mockApi.getBrandingConfig();
-        setCustomerServiceUrl(data.customerServiceUrl ?? "");
+        try {
+          const branding = await mockApi.getBrandingConfig();
+          if (active) {
+            setCustomerServiceUrl(branding.customerServiceUrl ?? "");
+          }
+        } catch {
+          if (active) {
+            setCustomerServiceUrl("");
+          }
+        }
+
+        const token = getUserToken();
+        if (!token) return;
+
+        const currentUser = await mockApi.getCurrentUser();
+        if (!active) return;
+
+        saveUserSession({
+          token,
+          userId: currentUser.id,
+          phone: currentUser.phone,
+        });
+        navigate("/user/courses", { replace: true });
       } catch {
-        setCustomerServiceUrl("");
+        if (!active) return;
+      } finally {
+        if (active) {
+          setCheckingSession(false);
+        }
       }
     };
 
-    void loadBranding();
-  }, []);
+    void bootstrap();
+
+    return () => {
+      active = false;
+    };
+  }, [navigate]);
 
   const getErrorTitle = () => {
-    if (loginError.includes("设备已达上限")) return "设备数量已达上限";
+    if (loginError.includes("设备数量已达上限")) return "设备数量已达上限";
     if (loginError.includes("停用")) return "账号已停用";
     return "登录失败";
   };
 
   const normalizeErrorMessage = (message: string) => {
-    if (message.includes("台设备")) return "当前登录设备已达上限，请联系管理员处理";
+    if (message.includes("设备已达上限")) return `当前账号已达到 ${DEVICE_LIMIT} 台设备登录上限，请联系管理员处理`;
     if (message.includes("过于频繁")) return message;
     if (message.includes("停用")) return "该账号当前无法登录，请联系管理员";
     if (message.includes("设备已失效")) return "当前设备登录已失效，请重新登录";
@@ -104,17 +130,17 @@ export function UserLogin() {
 
     try {
       const result = await mockApi.login(phone.trim(), password.trim(), getDeviceInfo());
-      localStorage.setItem("userToken", result.token);
-      localStorage.setItem("userId", result.user.id);
-      localStorage.setItem("userPhone", result.user.phone);
+      saveUserSession({
+        token: result.token,
+        userId: result.user.id,
+        phone: result.user.phone,
+      });
       toast.success("登录成功");
-      navigate("/user/courses");
+      navigate("/user/courses", { replace: true });
     } catch (error) {
       const rawMessage =
-        error instanceof ApiRequestError && error.code === 10031
-          ? `当前账号已达到 ${DEVICE_LIMIT} 台设备登录上限，请联系管理员处理`
-          : error instanceof ApiRequestError && error.code === 10041
-            ? error.message
+        error instanceof ApiRequestError && error.code === 10041
+          ? error.message
           : error instanceof Error
             ? error.message
             : "登录失败，请稍后重试";
@@ -134,6 +160,18 @@ export function UserLogin() {
 
     window.open(customerServiceUrl, "_blank", "noopener,noreferrer");
   };
+
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen bg-[linear-gradient(180deg,#f7fafc_0%,#eef4fb_100%)] px-5 py-8">
+        <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-sm flex-col justify-center">
+          <div className="rounded-[32px] border border-white/70 bg-white/92 p-10 text-center text-slate-500 shadow-[0_28px_90px_rgba(15,23,42,0.08)] backdrop-blur">
+            登录状态校验中...
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f7fafc_0%,#eef4fb_100%)] px-5 py-8">

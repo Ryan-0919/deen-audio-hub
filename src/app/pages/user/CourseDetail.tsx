@@ -4,6 +4,7 @@ import { useLocation, useNavigate, useParams } from "react-router";
 import { Badge } from "../../components/ui/badge";
 import { cn } from "../../components/ui/utils";
 import { Audio, Course, Tag, UserProgress, mockApi } from "../../lib/mockData";
+import { getUserId } from "../../lib/user-session";
 
 type TagContent = {
   audios: Audio[];
@@ -39,7 +40,7 @@ export function CourseDetail() {
     let active = true;
 
     const load = async () => {
-      const userId = localStorage.getItem("userId");
+      const userId = getUserId();
       if (!userId) {
         navigate("/");
         return;

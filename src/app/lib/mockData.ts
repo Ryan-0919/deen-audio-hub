@@ -1,3 +1,5 @@
+import { clearUserSession as clearPersistedUserSession, getUserToken } from "./user-session";
+
 export type UserStatus = "active" | "disabled";
 export type CourseStatus = "open" | "closed" | "scheduled";
 
@@ -213,15 +215,13 @@ const buildQueryString = (params: Record<string, string | number | undefined>) =
 const isAdminContext = () => typeof window !== "undefined" && window.location.pathname.startsWith("/admin");
 
 const getToken = (mode: "user" | "admin" | "auto") => {
-  if (mode === "user") return localStorage.getItem("userToken") ?? "";
+  if (mode === "user") return getUserToken();
   if (mode === "admin") return localStorage.getItem("adminToken") ?? "";
-  return isAdminContext() ? localStorage.getItem("adminToken") ?? "" : localStorage.getItem("userToken") ?? "";
+  return isAdminContext() ? localStorage.getItem("adminToken") ?? "" : getUserToken();
 };
 
 const clearUserSession = () => {
-  localStorage.removeItem("userToken");
-  localStorage.removeItem("userId");
-  localStorage.removeItem("userPhone");
+  clearPersistedUserSession();
 };
 
 const clearAdminSession = () => {
@@ -373,6 +373,8 @@ const uploadSingleFileWithFields = async <T>(
 export const mockApi = {
   login: (phone: string, password: string, deviceInfo: Record<string, string>) =>
     postJson<{ success: boolean; token: string; user: User }>("/api/auth/user/login", { phone, password, ...deviceInfo }, "user"),
+
+  getCurrentUser: () => request<User>("/api/auth/user/me", { auth: "user" }),
 
   adminLogin: (account: string, password: string) =>
     postJson<{ success: boolean; token: string; admin: { id: string; account: string; name: string } }>(

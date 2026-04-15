@@ -5,6 +5,7 @@ import { Button } from "../../components/ui/button";
 import { Slider } from "../../components/ui/slider";
 import { cn } from "../../components/ui/utils";
 import { Audio, Course, Tag, mockApi } from "../../lib/mockData";
+import { getUserId } from "../../lib/user-session";
 
 const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 2];
 const LOOP_MODES = ["sequence", "single"] as const;
@@ -55,7 +56,7 @@ export function AudioPlayer() {
   const autoplayRequestedRef = useRef(false);
 
   const saveProgress = async (position = currentTime) => {
-    const userId = localStorage.getItem("userId");
+    const userId = getUserId();
     if (!userId || !courseId || !audioId) return;
     await mockApi.saveProgress(userId, courseId, audioId, position);
   };
@@ -63,7 +64,7 @@ export function AudioPlayer() {
   const markCompleted = async () => {
     if (hasCompletedRef.current) return;
 
-    const userId = localStorage.getItem("userId");
+    const userId = getUserId();
     if (!userId || !courseId || !audioId) return;
 
     hasCompletedRef.current = true;
@@ -106,7 +107,7 @@ export function AudioPlayer() {
 
   useEffect(() => {
     const load = async () => {
-      const userId = localStorage.getItem("userId");
+      const userId = getUserId();
       if (!userId) {
         navigate("/");
         return;

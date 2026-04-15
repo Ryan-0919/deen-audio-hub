@@ -5,6 +5,7 @@ import { AppLogo } from "../../components/branding/AppLogo";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Course, mockApi } from "../../lib/mockData";
+import { clearUserSession, getUserDeviceKey, getUserId } from "../../lib/user-session";
 
 export function MyCourses() {
   const navigate = useNavigate();
@@ -15,7 +16,7 @@ export function MyCourses() {
     void import("./CourseDetail");
 
     const load = async () => {
-      const userId = localStorage.getItem("userId");
+      const userId = getUserId();
       if (!userId) {
         navigate("/");
         return;
@@ -33,8 +34,8 @@ export function MyCourses() {
   }, [navigate]);
 
   const handleLogout = async () => {
-    const userId = localStorage.getItem("userId");
-    const deviceKey = localStorage.getItem("userDeviceKey") ?? undefined;
+    const userId = getUserId();
+    const deviceKey = getUserDeviceKey() || undefined;
 
     try {
       if (userId) {
@@ -44,9 +45,7 @@ export function MyCourses() {
       // Ignore logout request failures and always clear local session.
     }
 
-    localStorage.removeItem("userToken");
-    localStorage.removeItem("userId");
-    localStorage.removeItem("userPhone");
+    clearUserSession();
     navigate("/");
   };
 

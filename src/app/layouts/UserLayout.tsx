@@ -1,7 +1,8 @@
 import { Navigate, Outlet } from "react-router";
+import { getUserToken } from "../lib/user-session";
 
 export function UserLayout() {
-  const token = localStorage.getItem("userToken");
+  const token = getUserToken();
   if (!token) {
     return <Navigate to="/" replace />;
   }
