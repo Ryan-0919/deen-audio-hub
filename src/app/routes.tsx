@@ -1,6 +1,6 @@
 import { Suspense, lazy } from "react";
 import type { ComponentType, ReactNode } from "react";
-import { createBrowserRouter } from "react-router";
+import { Navigate, createBrowserRouter, useLocation } from "react-router";
 
 const lazyPage = <T extends Record<string, unknown>>(loader: () => Promise<T>, exportName: keyof T) =>
   lazy(async () => {
@@ -11,6 +11,12 @@ const lazyPage = <T extends Record<string, unknown>>(loader: () => Promise<T>, e
 const RouteLoading = () => <div className="p-8 text-slate-500">页面加载中...</div>;
 
 const withSuspense = (element: ReactNode) => <Suspense fallback={<RouteLoading />}>{element}</Suspense>;
+
+function LegacyUserLoginRedirect() {
+  const location = useLocation();
+
+  return <Navigate to={{ pathname: "/", search: location.search, hash: location.hash }} replace />;
+}
 
 const UserLayout = lazyPage(() => import("./layouts/UserLayout"), "UserLayout");
 const AdminLayout = lazyPage(() => import("./layouts/AdminLayout"), "AdminLayout");
@@ -33,6 +39,10 @@ export const router = createBrowserRouter([
   {
     path: "/",
     element: withSuspense(<UserLogin />),
+  },
+  {
+    path: "/login",
+    element: <LegacyUserLoginRedirect />,
   },
   {
     path: "/user",
@@ -62,5 +72,9 @@ export const router = createBrowserRouter([
       { path: "settings", element: withSuspense(<SystemConfig />) },
       { path: "image-settings", element: withSuspense(<SystemImageConfig />) },
     ],
+  },
+  {
+    path: "*",
+    element: <LegacyUserLoginRedirect />,
   },
 ]);
