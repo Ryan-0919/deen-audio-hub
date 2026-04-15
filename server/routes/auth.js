@@ -13,18 +13,11 @@ import {
 } from "../lib/security.js";
 import { requireUserAuth } from "../middleware/auth.js";
 import { getReadableObjectUrl } from "../lib/upload.js";
+import { getDevicesToEvictForNewLogin } from "../lib/device-limit.js";
 
 const DEVICE_LIMIT = 5;
-const DEVICE_LIMIT_ERROR_CODE = 10031;
 const USER_LOGIN_RATE_LIMIT_ERROR_CODE = 10041;
 const ADMIN_LOGIN_RATE_LIMIT_ERROR_CODE = 10042;
-
-const createRequestError = (message, statusCode, code = statusCode) => {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  error.code = code;
-  return error;
-};
 
 export const authRouter = Router();
 
@@ -117,16 +110,25 @@ authRouter.post("/user/login", async (req, res, next) => {
           },
         });
       } else {
-        const currentDeviceCount = await tx.userDevice.count({
+        const existingDevices = await tx.userDevice.findMany({
           where: { userId: user.id },
+          select: {
+            id: true,
+            loginAt: true,
+            updatedAt: true,
+          },
         });
 
-        if (currentDeviceCount >= DEVICE_LIMIT) {
-          throw createRequestError(
-            `\u5f53\u524d\u8d26\u53f7\u5df2\u8fbe\u5230 ${DEVICE_LIMIT} \u53f0\u8bbe\u5907\u767b\u5f55\u4e0a\u9650\uff0c\u8bf7\u5148\u8054\u7cfb\u7ba1\u7406\u5458\u5904\u7406\u65e7\u8bbe\u5907`,
-            409,
-            DEVICE_LIMIT_ERROR_CODE,
-          );
+        const deviceIdsToEvict = getDevicesToEvictForNewLogin(existingDevices, DEVICE_LIMIT);
+        if (deviceIdsToEvict.length > 0) {
+          await tx.userDevice.deleteMany({
+            where: {
+              userId: user.id,
+              id: {
+                in: deviceIdsToEvict,
+              },
+            },
+          });
         }
 
         await tx.userDevice.create({

@@ -6,7 +6,7 @@ import { spec } from "node:test/reporters";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const files = ["request.test.js", "security.test.js"].map((fileName) => path.join(__dirname, fileName));
+const files = ["request.test.js", "security.test.js", "device-limit.test.js"].map((fileName) => path.join(__dirname, fileName));
 
 const stream = run({
   files,
