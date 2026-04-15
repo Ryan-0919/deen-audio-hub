@@ -1,0 +1,125 @@
+import { BookMarked, LogOut, PlayCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
+import { AppLogo } from "../../components/branding/AppLogo";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Course, mockApi } from "../../lib/mockData";
+
+export function MyCourses() {
+  const navigate = useNavigate();
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      const userId = localStorage.getItem("userId");
+      if (!userId) {
+        navigate("/");
+        return;
+      }
+
+      try {
+        const list = await mockApi.getUserCourses(userId);
+        setCourses(list);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void load();
+  }, [navigate]);
+
+  const handleLogout = async () => {
+    const userId = localStorage.getItem("userId");
+    const deviceKey = localStorage.getItem("userDeviceKey") ?? undefined;
+
+    try {
+      if (userId) {
+        await mockApi.logout(userId, deviceKey);
+      }
+    } catch (error) {
+      // Ignore logout request failures and always clear local session.
+    }
+
+    localStorage.removeItem("userToken");
+    localStorage.removeItem("userId");
+    localStorage.removeItem("userPhone");
+    navigate("/");
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#f6f8fb] px-4 py-6">
+        <div className="mx-auto max-w-sm rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500">
+          课程加载中...
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#f6f8fb]">
+      <div className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-sm items-center px-4">
+          <div className="flex w-[72px] justify-start">
+            <AppLogo compact />
+          </div>
+          <h1 className="flex-1 text-center text-base font-semibold tracking-[0.02em] text-slate-900">我的课程</h1>
+          <div className="flex w-[72px] justify-end">
+            <Button variant="ghost" size="sm" onClick={handleLogout} className="rounded-full px-3 text-slate-600">
+              <LogOut className="size-4" />
+              退出
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-sm px-4 py-4">
+        {courses.length === 0 ? (
+          <div className="rounded-3xl border border-slate-200 bg-white px-8 py-14 text-center">
+            <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+              <BookMarked className="size-7" />
+            </div>
+            <h2 className="text-lg font-medium text-slate-900">暂无课程</h2>
+            <p className="mt-2 text-sm leading-7 text-slate-500">课程未开放或尚未分配权限时，这里会显示“暂无课程”。</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            {courses.map((course) => (
+              <button
+                key={course.id}
+                type="button"
+                onClick={() => navigate(`/user/course/${course.id}`)}
+                className="w-full overflow-hidden rounded-3xl border border-slate-200 bg-white text-left transition hover:border-blue-200"
+              >
+                <div className="aspect-[3/2] bg-slate-100">
+                  <img src={course.cover} alt={course.name} className="h-full w-full object-cover" />
+                </div>
+                <div className="space-y-3 p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary" className="bg-blue-50 text-[11px] text-blue-600">
+                      {course.audioCount} 条音频
+                    </Badge>
+                  </div>
+
+                  <div>
+                    <h2 className="line-clamp-2 text-base font-semibold text-slate-900">{course.name}</h2>
+                    <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-500">{course.description}</p>
+                  </div>
+
+                  <div className="flex justify-end text-xs">
+                    <span className="inline-flex items-center gap-1 text-blue-600">
+                      进入课程
+                      <PlayCircle className="size-3.5" />
+                    </span>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
