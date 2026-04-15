@@ -1,6 +1,6 @@
 import { ArrowLeft, CircleCheck, Clock3, PlayCircle } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useLocation, useNavigate, useParams } from "react-router";
 import { Badge } from "../../components/ui/badge";
 import { cn } from "../../components/ui/utils";
 import { Audio, Course, Tag, UserProgress, mockApi } from "../../lib/mockData";
@@ -21,18 +21,23 @@ const formatPercent = (progress = 0, duration = 0) => (duration ? Math.min(100, 
 
 export function CourseDetail() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { courseId } = useParams<{ courseId: string }>();
-  const [course, setCourse] = useState<Course | null>(null);
+  const stateCourse = (location.state as { course?: Course } | null)?.course;
+  const seededCourse = stateCourse && stateCourse.id === courseId ? stateCourse : null;
+  const [course, setCourse] = useState<Course | null>(seededCourse);
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagId, setSelectedTagId] = useState("");
   const [audios, setAudios] = useState<Audio[]>([]);
   const [progressList, setProgressList] = useState<UserProgress[]>([]);
   const [tagCache, setTagCache] = useState<Record<string, TagContent>>({});
-  const [loading, setLoading] = useState(true);
-  const [tagLoading, setTagLoading] = useState(false);
+  const [loading, setLoading] = useState(!seededCourse);
+  const [tagLoading, setTagLoading] = useState(Boolean(seededCourse));
   const cachedTagContent = selectedTagId ? tagCache[selectedTagId] : undefined;
 
   useEffect(() => {
+    let active = true;
+
     const load = async () => {
       const userId = localStorage.getItem("userId");
       if (!userId) {
@@ -40,41 +45,82 @@ export function CourseDetail() {
         return;
       }
 
-      if (!courseId) return;
+      if (!courseId) {
+        if (active) {
+          setLoading(false);
+          setTagLoading(false);
+        }
+        return;
+      }
 
       try {
-        setLoading(true);
+        if (active) {
+          setLoading(!seededCourse);
+          setTagLoading(Boolean(seededCourse));
+          setCourse(seededCourse);
+          setTags([]);
+          setSelectedTagId("");
+          setAudios([]);
+          setProgressList([]);
+          setTagCache({});
+        }
+
+        const detail = await mockApi.getCourseDetail(courseId);
+        if (!active) return;
+
+        const initialTagId = detail.selectedTagId ?? detail.tags[0]?.id ?? "";
+        const preloadedTagCache = Object.fromEntries(
+          (detail.tagContents ?? []).map((item) => [
+            item.tagId,
+            {
+              audios: item.audios,
+              progress: item.progress,
+            },
+          ]),
+        );
+        const initialTagContent = preloadedTagCache[initialTagId] ?? {
+          audios: detail.initialAudios ?? [],
+          progress: detail.initialProgress ?? [],
+        };
+        const nextTagCache =
+          initialTagId && !preloadedTagCache[initialTagId]
+            ? {
+                ...preloadedTagCache,
+                [initialTagId]: initialTagContent,
+              }
+            : preloadedTagCache;
+
+        setCourse(detail.course);
+        setTags(detail.tags);
+        setTagCache(nextTagCache);
+
+        if (initialTagId) {
+          setSelectedTagId(initialTagId);
+          setAudios(initialTagContent.audios);
+          setProgressList(initialTagContent.progress);
+        }
+      } catch (error) {
+        if (!active) return;
         setCourse(null);
         setTags([]);
         setSelectedTagId("");
         setAudios([]);
         setProgressList([]);
         setTagCache({});
-        setTagLoading(false);
-
-        const detail = await mockApi.getCourseDetail(courseId);
-        const initialTagId = detail.selectedTagId ?? detail.tags[0]?.id ?? "";
-        const initialTagContent = {
-          audios: detail.initialAudios ?? [],
-          progress: detail.initialProgress ?? [],
-        };
-
-        setCourse(detail.course);
-        setTags(detail.tags);
-
-        if (initialTagId) {
-          setSelectedTagId(initialTagId);
-          setAudios(initialTagContent.audios);
-          setProgressList(initialTagContent.progress);
-          setTagCache({ [initialTagId]: initialTagContent });
-        }
       } finally {
-        setLoading(false);
+        if (active) {
+          setLoading(false);
+          setTagLoading(false);
+        }
       }
     };
 
     void load();
-  }, [courseId, navigate]);
+
+    return () => {
+      active = false;
+    };
+  }, [courseId, navigate, seededCourse]);
 
   useEffect(() => {
     let active = true;

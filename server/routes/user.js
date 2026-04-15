@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { ok, fail } from "../lib/response.js";
-import { serializeAudio, serializeCourse, serializeTag } from "../lib/serializers.js";
+import { serializeAudio, serializeAudioListItem, serializeCourse, serializeTag } from "../lib/serializers.js";
 import { formatDateTime } from "../lib/time.js";
 import { requireUserAuth } from "../middleware/auth.js";
 import { syncScheduledCourses } from "../lib/scheduler.js";
@@ -21,6 +21,15 @@ const serializeProgress = (progress) =>
         lastUpdated: formatDateTime(progress.lastUpdated),
       }
     : undefined;
+
+const buildProgressMap = (progressList) => new Map(progressList.map((item) => [item.audioId, serializeProgress(item)]));
+
+const buildTagContent = (courseAudios, progressMap) => {
+  return {
+    audios: courseAudios.map((item) => serializeAudioListItem(item.audio)),
+    progress: courseAudios.map((item) => progressMap.get(item.audioId)).filter(Boolean),
+  };
+};
 
 const getTagAudiosWithProgress = async ({ tagId, userId, courseId, courseAudios }) => {
   const resolvedCourseAudios =
@@ -47,18 +56,15 @@ const getTagAudiosWithProgress = async ({ tagId, userId, courseId, courseAudios 
   const progressList =
     audioIds.length === 0
       ? []
-      : await prisma.userProgress.findMany({
-          where: {
-            userId,
-            courseId,
-            audioId: { in: audioIds },
-          },
-        });
+        : await prisma.userProgress.findMany({
+            where: {
+              userId,
+              courseId,
+              audioId: { in: audioIds },
+            },
+          });
 
-  return {
-    audios: resolvedCourseAudios.map((item) => serializeAudio(item.audio)),
-    progress: progressList.map(serializeProgress),
-  };
+  return buildTagContent(resolvedCourseAudios, buildProgressMap(progressList));
 };
 
 const assertCoursePermission = async (userId, courseId) => {
@@ -146,18 +152,46 @@ userRouter.get("/courses/:courseId/detail", async (req, res) => {
     const course = await assertCoursePermission(req.auth.userId, req.params.courseId);
     const tags = course.tags ?? [];
     const selectedTagId = tags[0]?.id ?? "";
-    const initialTagContent = selectedTagId
-      ? await getTagAudiosWithProgress({
-          tagId: selectedTagId,
-          userId: req.auth.userId,
-          courseId: course.id,
-        })
-      : null;
+    const tagDetails =
+      tags.length === 0
+        ? []
+        : await prisma.tag.findMany({
+            where: { courseId: course.id },
+            orderBy: { order: "asc" },
+            include: {
+              courseAudios: {
+                orderBy: { order: "asc" },
+                include: {
+                  audio: true,
+                },
+              },
+            },
+          });
+
+    const audioIds = tagDetails.flatMap((tag) => tag.courseAudios.map((item) => item.audioId));
+    const progressList =
+      audioIds.length === 0
+        ? []
+        : await prisma.userProgress.findMany({
+            where: {
+              userId: req.auth.userId,
+              courseId: course.id,
+              audioId: { in: audioIds },
+            },
+          });
+    const progressMap = buildProgressMap(progressList);
+
+    const tagContents = tagDetails.map((tag) => ({
+      tagId: tag.id,
+      ...buildTagContent(tag.courseAudios, progressMap),
+    }));
+    const initialTagContent = tagContents.find((item) => item.tagId === selectedTagId) ?? null;
 
     return ok(res, {
       course: serializeCourse(course, course.courseAudios.length),
       tags: tags.map(serializeTag),
       selectedTagId,
+      tagContents,
       initialAudios: initialTagContent?.audios ?? [],
       initialProgress: initialTagContent?.progress ?? [],
     });

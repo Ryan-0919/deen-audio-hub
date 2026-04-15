@@ -267,7 +267,7 @@ export function AudioPlayer() {
   const handleBack = async () => {
     audioRef.current?.pause();
     await saveProgress();
-    navigate(`/user/course/${courseId}`);
+    navigate(`/user/course/${courseId}`, { state: { course } });
   };
 
   const handleCyclePlaybackRate = () => {

@@ -12,6 +12,8 @@ export function MyCourses() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    void import("./CourseDetail");
+
     const load = async () => {
       const userId = localStorage.getItem("userId");
       if (!userId) {
@@ -90,7 +92,7 @@ export function MyCourses() {
               <button
                 key={course.id}
                 type="button"
-                onClick={() => navigate(`/user/course/${course.id}`)}
+                onClick={() => navigate(`/user/course/${course.id}`, { state: { course } })}
                 className="w-full overflow-hidden rounded-3xl border border-slate-200 bg-white text-left transition hover:border-blue-200"
               >
                 <div className="aspect-[3/2] bg-slate-100">

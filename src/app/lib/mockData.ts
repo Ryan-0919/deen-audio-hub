@@ -38,8 +38,8 @@ export interface Audio {
   duration: number;
   hasScript: boolean;
   script?: string;
-  uploadedAt: string;
-  audioUrl: string;
+  uploadedAt?: string;
+  audioUrl?: string;
 }
 
 export interface UserProgress {
@@ -138,6 +138,7 @@ export interface CourseDetailPayload {
   course: Course;
   tags: Tag[];
   selectedTagId?: string;
+  tagContents?: TagContentPayload[];
   initialAudios?: Audio[];
   initialProgress?: UserProgress[];
 }
@@ -145,6 +146,10 @@ export interface CourseDetailPayload {
 export interface TagAudiosPayload {
   audios: Audio[];
   progress: UserProgress[];
+}
+
+export interface TagContentPayload extends TagAudiosPayload {
+  tagId: string;
 }
 
 export interface UserSummary {

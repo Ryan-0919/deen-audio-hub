@@ -38,6 +38,14 @@ export const serializeAudio = (audio) => ({
   }),
 });
 
+export const serializeAudioListItem = (audio) => ({
+  id: audio.id,
+  name: normalizeDisplayText(audio.name),
+  folderId: audio.folderId,
+  duration: audio.duration,
+  hasScript: Boolean(audio.scriptText?.trim()),
+});
+
 export const serializeUser = (user) => ({
   id: user.id,
   phone: user.phone,
