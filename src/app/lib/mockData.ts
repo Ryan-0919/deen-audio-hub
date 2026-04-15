@@ -134,6 +134,19 @@ export interface PagedResult<T> {
   totalPages: number;
 }
 
+export interface CourseDetailPayload {
+  course: Course;
+  tags: Tag[];
+  selectedTagId?: string;
+  initialAudios?: Audio[];
+  initialProgress?: UserProgress[];
+}
+
+export interface TagAudiosPayload {
+  audios: Audio[];
+  progress: UserProgress[];
+}
+
 export interface UserSummary {
   total: number;
   active: number;
@@ -368,13 +381,13 @@ export const mockApi = {
   getUserCourses: (_userId: string) => request<Course[]>("/api/user/courses", { auth: "user" }),
 
   getCourseDetail: (courseId: string) =>
-    request<{ course: Course; tags: Tag[] }>(
+    request<CourseDetailPayload>(
       isAdminContext() ? `/api/admin/courses/${courseId}/detail` : `/api/user/courses/${courseId}/detail`,
       { auth: isAdminContext() ? "admin" : "user" },
     ),
 
   getTagAudios: (tagId: string, scope: string) =>
-    request<{ audios: Audio[]; progress: UserProgress[] }>(
+    request<TagAudiosPayload>(
       scope === "admin-preview" ? `/api/admin/tags/${tagId}/audios` : `/api/user/tags/${tagId}/audios`,
       { auth: scope === "admin-preview" ? "admin" : "user" },
     ),

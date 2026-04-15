@@ -5,6 +5,11 @@ import { Badge } from "../../components/ui/badge";
 import { cn } from "../../components/ui/utils";
 import { Audio, Course, Tag, UserProgress, mockApi } from "../../lib/mockData";
 
+type TagContent = {
+  audios: Audio[];
+  progress: UserProgress[];
+};
+
 const formatDuration = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
@@ -22,7 +27,10 @@ export function CourseDetail() {
   const [selectedTagId, setSelectedTagId] = useState("");
   const [audios, setAudios] = useState<Audio[]>([]);
   const [progressList, setProgressList] = useState<UserProgress[]>([]);
+  const [tagCache, setTagCache] = useState<Record<string, TagContent>>({});
   const [loading, setLoading] = useState(true);
+  const [tagLoading, setTagLoading] = useState(false);
+  const cachedTagContent = selectedTagId ? tagCache[selectedTagId] : undefined;
 
   useEffect(() => {
     const load = async () => {
@@ -35,11 +43,30 @@ export function CourseDetail() {
       if (!courseId) return;
 
       try {
+        setLoading(true);
+        setCourse(null);
+        setTags([]);
+        setSelectedTagId("");
+        setAudios([]);
+        setProgressList([]);
+        setTagCache({});
+        setTagLoading(false);
+
         const detail = await mockApi.getCourseDetail(courseId);
+        const initialTagId = detail.selectedTagId ?? detail.tags[0]?.id ?? "";
+        const initialTagContent = {
+          audios: detail.initialAudios ?? [],
+          progress: detail.initialProgress ?? [],
+        };
+
         setCourse(detail.course);
         setTags(detail.tags);
-        if (detail.tags[0]) {
-          setSelectedTagId(detail.tags[0].id);
+
+        if (initialTagId) {
+          setSelectedTagId(initialTagId);
+          setAudios(initialTagContent.audios);
+          setProgressList(initialTagContent.progress);
+          setTagCache({ [initialTagId]: initialTagContent });
         }
       } finally {
         setLoading(false);
@@ -50,17 +77,48 @@ export function CourseDetail() {
   }, [courseId, navigate]);
 
   useEffect(() => {
-    const loadTagAudios = async () => {
-      const userId = localStorage.getItem("userId");
-      if (!selectedTagId || !userId) return;
+    let active = true;
 
-      const data = await mockApi.getTagAudios(selectedTagId, userId);
-      setAudios(data.audios);
-      setProgressList(data.progress);
+    const loadTagAudios = async () => {
+      if (!selectedTagId) {
+        setTagLoading(false);
+        return;
+      }
+
+      if (cachedTagContent) {
+        if (!active) return;
+        setTagLoading(false);
+        setAudios(cachedTagContent.audios);
+        setProgressList(cachedTagContent.progress);
+        return;
+      }
+
+      setTagLoading(true);
+      setAudios([]);
+      setProgressList([]);
+
+      try {
+        const data = await mockApi.getTagAudios(selectedTagId, "user");
+        if (!active) return;
+        setAudios(data.audios);
+        setProgressList(data.progress);
+        setTagCache((current) => ({
+          ...current,
+          [selectedTagId]: data,
+        }));
+      } finally {
+        if (active) {
+          setTagLoading(false);
+        }
+      }
     };
 
     void loadTagAudios();
-  }, [selectedTagId]);
+
+    return () => {
+      active = false;
+    };
+  }, [cachedTagContent, selectedTagId]);
 
   const getProgress = (audioId: string) => progressList.find((item) => item.audioId === audioId);
 
@@ -141,7 +199,11 @@ export function CourseDetail() {
         </div>
 
         <div className="mt-4 space-y-3">
-          {audios.length === 0 ? (
+          {tagLoading ? (
+            <div className="rounded-3xl border border-slate-200 bg-white px-6 py-14 text-center text-sm text-slate-500">
+              内容加载中...
+            </div>
+          ) : audios.length === 0 ? (
             <div className="rounded-3xl border border-slate-200 bg-white px-6 py-14 text-center text-sm text-slate-500">
               暂无课程
             </div>
