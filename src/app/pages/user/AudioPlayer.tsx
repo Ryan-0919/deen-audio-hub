@@ -425,14 +425,31 @@ export function AudioPlayer() {
             <Slider value={[currentTime]} max={duration || 1} step={1} onValueChange={handleSeek} />
           </div>
 
-          <div className="mt-4 flex items-center justify-between gap-3">
-            <Button variant="outline" size="sm" onClick={handleToggleLoopMode} className="rounded-full px-4">
-              {loopMode === "single" ? <Repeat1 className="mr-2 size-4" /> : <Repeat className="mr-2 size-4" />}
-              {loopMode === "single" ? "单曲循环" : "顺序循环"}
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleToggleLoopMode}
+              className={cn(
+                "h-auto flex-col items-start rounded-2xl border-slate-200 px-4 py-3 text-left shadow-none",
+                loopMode === "single" && "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100",
+              )}
+            >
+              <span className="text-xs font-medium text-slate-400">循环模式</span>
+              <span className="mt-1 flex items-center text-sm font-semibold">
+                {loopMode === "single" ? <Repeat1 className="mr-2 size-4" /> : <Repeat className="mr-2 size-4" />}
+                {loopMode === "single" ? "单曲循环" : "顺序循环"}
+              </span>
             </Button>
 
-            <Button variant="outline" size="sm" onClick={handleCyclePlaybackRate} className="rounded-full px-4">
-              倍速 {playbackRate}x
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCyclePlaybackRate}
+              className="h-auto flex-col items-start rounded-2xl border-slate-200 px-4 py-3 text-left shadow-none"
+            >
+              <span className="text-xs font-medium text-slate-400">播放速度</span>
+              <span className="mt-1 text-sm font-semibold text-slate-900">倍速 {playbackRate}x</span>
             </Button>
           </div>
 

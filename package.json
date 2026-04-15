@@ -8,6 +8,7 @@
     "dev": "vite",
     "dev:client": "vite",
     "dev:server": "node --watch server/index.js",
+    "postinstall": "npx prisma generate",
     "server": "node server/index.js",
     "test:server": "node server/tests/run-tests.js",
     "prisma:generate": "npx prisma generate",
