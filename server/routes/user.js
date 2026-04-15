@@ -10,6 +10,45 @@ export const userRouter = Router();
 
 userRouter.use(requireUserAuth);
 
+const isUniqueConstraintError = (error) => error && typeof error === "object" && error.code === "P2002";
+
+const saveUserProgressRecord = async ({ userId, courseId, audioId, updateData, createData }) => {
+  const where = { userId, courseId, audioId };
+
+  const updated = await prisma.userProgress.updateMany({
+    where,
+    data: updateData,
+  });
+
+  if (updated.count === 0) {
+    try {
+      return await prisma.userProgress.create({
+        data: {
+          userId,
+          courseId,
+          audioId,
+          ...createData,
+        },
+      });
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) {
+        throw error;
+      }
+
+      await prisma.userProgress.updateMany({
+        where,
+        data: updateData,
+      });
+    }
+  }
+
+  return prisma.userProgress.findUnique({
+    where: {
+      userId_courseId_audioId: where,
+    },
+  });
+};
+
 const serializeProgress = (progress) =>
   progress
     ? {
@@ -320,24 +359,19 @@ userRouter.post("/progress", async (req, res) => {
 
   if (!relation) return fail(res, "课程音频不存在", 404);
 
-  const record = await prisma.userProgress.upsert({
-    where: {
-      userId_courseId_audioId: {
-        userId: req.auth.userId,
-        courseId,
-        audioId,
-      },
+  const normalizedProgress = Math.max(0, Math.floor(progress));
+  const timestamp = new Date();
+  const record = await saveUserProgressRecord({
+    userId: req.auth.userId,
+    courseId,
+    audioId,
+    updateData: {
+      progress: normalizedProgress,
+      lastUpdated: timestamp,
     },
-    update: {
-      progress: Math.max(0, Math.floor(progress)),
-      lastUpdated: new Date(),
-    },
-    create: {
-      userId: req.auth.userId,
-      courseId,
-      audioId,
-      progress: Math.max(0, Math.floor(progress)),
-      lastUpdated: new Date(),
+    createData: {
+      progress: normalizedProgress,
+      lastUpdated: timestamp,
     },
   });
 
@@ -363,26 +397,21 @@ userRouter.post("/progress/complete", async (req, res) => {
 
   if (!relation) return fail(res, "课程音频不存在", 404);
 
-  const record = await prisma.userProgress.upsert({
-    where: {
-      userId_courseId_audioId: {
-        userId: req.auth.userId,
-        courseId,
-        audioId,
-      },
-    },
-    update: {
+  const normalizedProgress = typeof progress === "number" ? Math.max(0, Math.floor(progress)) : undefined;
+  const timestamp = new Date();
+  const record = await saveUserProgressRecord({
+    userId: req.auth.userId,
+    courseId,
+    audioId,
+    updateData: {
       completed: true,
-      progress: typeof progress === "number" ? Math.max(0, Math.floor(progress)) : undefined,
-      lastUpdated: new Date(),
+      ...(normalizedProgress !== undefined ? { progress: normalizedProgress } : {}),
+      lastUpdated: timestamp,
     },
-    create: {
-      userId: req.auth.userId,
-      courseId,
-      audioId,
-      progress: typeof progress === "number" ? Math.max(0, Math.floor(progress)) : 0,
+    createData: {
+      progress: normalizedProgress ?? 0,
       completed: true,
-      lastUpdated: new Date(),
+      lastUpdated: timestamp,
     },
   });
 
