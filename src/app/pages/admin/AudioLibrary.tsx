@@ -27,6 +27,48 @@ const formatDuration = (seconds: number) => {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 };
 
+const getProcessBadge = (status?: string, message?: string) => {
+  if (status === "pending") {
+    return (
+      <div className="space-y-1">
+        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700">
+          <Loader2 className="size-3.5 animate-spin" />
+          等待处理
+        </span>
+        {message ? <p className="text-xs text-slate-500">{message}</p> : null}
+      </div>
+    );
+  }
+
+  if (status === "processing") {
+    return (
+      <div className="space-y-1">
+        <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700">
+          <Loader2 className="size-3.5 animate-spin" />
+          处理中
+        </span>
+        {message ? <p className="text-xs text-slate-500">{message}</p> : null}
+      </div>
+    );
+  }
+
+  if (status === "failed") {
+    return (
+      <div className="space-y-1">
+        <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-700">处理失败</span>
+        {message ? <p className="text-xs text-red-500">{message}</p> : null}
+      </div>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
+      <CheckCircle2 className="size-3.5" />
+      可用
+    </span>
+  );
+};
+
 function UploadingNotice({ title, description }: { title: string; description: string }) {
   return (
     <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4">
@@ -98,6 +140,8 @@ export function AudioLibrary() {
   const selectedFolder = useMemo(() => folders.find((folder) => folder.id === selectedFolderId) ?? null, [folders, selectedFolderId]);
   const selectedItems = useMemo(() => items.filter((item) => selectedAudioIds.includes(item.id)), [items, selectedAudioIds]);
   const selectedContainsUnscripted = selectedItems.some((item) => !item.hasScript);
+  const selectedContainsUnready = selectedItems.some((item) => item.processStatus && item.processStatus !== "ready");
+  const hasProcessingItems = items.some((item) => item.processStatus === "pending" || item.processStatus === "processing");
   const allSelected = items.length > 0 && items.every((item) => selectedAudioIds.includes(item.id));
   const summary = useMemo(
     () => ({ folderCount: folders.length, totalAudioCount: meta.totalAudioCount, referencedCount: meta.referencedCount, pendingScriptCount: meta.pendingScriptCount }),
@@ -180,6 +224,18 @@ export function AudioLibrary() {
     setSelectedAudioIds((prev) => prev.filter((id) => items.some((item) => item.id === id)));
   }, [items]);
 
+  useEffect(() => {
+    if (loading || !hasProcessingItems) return;
+
+    const timer = window.setInterval(() => {
+      void loadLibraryList({ page, silent: true });
+      void loadMeta();
+      void loadFolders();
+    }, 4000);
+
+    return () => window.clearInterval(timer);
+  }, [hasProcessingItems, loading, page, selectedFolderId, deferredKeyword, courseFilter, tagFilter, refFilter, scriptFilter, searchScope, sortMode]);
+
   const resetFilters = () => {
     setKeyword("");
     setCourseFilter("all");
@@ -258,7 +314,7 @@ export function AudioLibrary() {
       setPage(1);
       setSelectedAudioIds([]);
       await refreshLibrary({ includeFolders: true, includeMeta: true, page: 1 });
-      toast.success("音频上传成功");
+      toast.success("音频已加入后台处理队列");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "上传音频失败");
     } finally {
@@ -277,7 +333,7 @@ export function AudioLibrary() {
       setPage(1);
       setSelectedAudioIds([]);
       await refreshLibrary({ includeFolders: true, includeMeta: true, page: 1 });
-      toast.success("批量上传成功");
+      toast.success("音频已加入后台处理队列");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "批量上传失败");
     } finally {
@@ -428,6 +484,7 @@ export function AudioLibrary() {
 
   const handleAddToCourse = async () => {
     if (!targetCourseId || !targetTagId || selectedAudioIds.length === 0) return toast.error("请选择课程、标签和音频");
+    if (selectedContainsUnready) return toast.error("处理中或失败的音频不能引用到课程");
     if (selectedContainsUnscripted) return toast.error("没有文案的音频不能被引用");
 
     try {
@@ -502,7 +559,7 @@ export function AudioLibrary() {
               <div className="flex h-[calc(100vh-14rem)] min-h-[820px] max-h-[980px] flex-col gap-4 overflow-hidden rounded-3xl border border-slate-200 bg-white p-6">
                 <div className="shrink-0 flex flex-col gap-4 rounded-2xl bg-slate-50 px-5 py-5 xl:flex-row xl:items-center xl:justify-between">
                   <div><p className="text-sm font-medium text-blue-600">音频工作区</p><h2 className="mt-1 text-xl font-semibold text-slate-900">{selectedFolder?.name ?? "请选择文件夹"}</h2><p className="mt-2 text-sm text-slate-500">{searchScope === "current" ? "当前为当前文件夹搜索模式。" : "当前为全库搜索模式。"}</p></div>
-                  <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => setShowSingleUploadDialog(true)} disabled={!selectedFolderId}><Upload className="mr-2 size-4" />单个上传</Button><Button variant="outline" onClick={() => setShowBatchUploadDialog(true)} disabled={!selectedFolderId}><Upload className="mr-2 size-4" />批量上传</Button><Button variant="outline" onClick={() => setShowMoveFolderDialog(true)} disabled={!selectedAudioIds.length}><MoveRight className="mr-2 size-4" />移动文件夹</Button><Button onClick={() => { setTargetCourseId(""); setTargetTagId(""); setTargetTags([]); setShowAddCourseDialog(true); }} disabled={!selectedAudioIds.length}><Plus className="mr-2 size-4" />添加到课程</Button></div>
+                  <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => setShowSingleUploadDialog(true)} disabled={!selectedFolderId}><Upload className="mr-2 size-4" />单个上传</Button><Button variant="outline" onClick={() => setShowBatchUploadDialog(true)} disabled={!selectedFolderId}><Upload className="mr-2 size-4" />批量上传</Button><Button variant="outline" onClick={() => setShowMoveFolderDialog(true)} disabled={!selectedAudioIds.length}><MoveRight className="mr-2 size-4" />移动文件夹</Button><Button onClick={() => { setTargetCourseId(""); setTargetTagId(""); setTargetTags([]); setShowAddCourseDialog(true); }} disabled={!selectedAudioIds.length || selectedContainsUnready}><Plus className="mr-2 size-4" />添加到课程</Button></div>
                 </div>
 
                 <div className="shrink-0 grid gap-3 xl:grid-cols-6">
@@ -519,7 +576,7 @@ export function AudioLibrary() {
                   <div className="xl:col-span-2 flex items-end"><Button variant="outline" onClick={resetFilters}>重置筛选</Button></div>
                 </div>
 
-                <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">勾选后可批量添加到课程或移动文件夹。没有文案的音频不能被课程引用。</div>
+                <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">勾选后可批量添加到课程或移动文件夹。没有文案、仍在处理或处理失败的音频不能被课程引用。</div>
 
                 <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-slate-200">
                   <div className="h-full overflow-auto">
@@ -532,6 +589,7 @@ export function AudioLibrary() {
                           <TableHead>标签</TableHead>
                           <TableHead>上传时间</TableHead>
                           <TableHead>时长</TableHead>
+                          <TableHead>处理状态</TableHead>
                           <TableHead>文案状态</TableHead>
                           <TableHead>讲义</TableHead>
                           <TableHead className="text-right">操作</TableHead>
@@ -546,12 +604,13 @@ export function AudioLibrary() {
                             <TableCell><div className="flex max-w-[220px] flex-wrap gap-2 whitespace-normal">{item.courseRefs.length === 0 ? <span className="text-sm text-slate-400">无标签</span> : Array.from(new Set(item.courseRefs.map((ref) => ref.tagName))).map((name) => <Badge key={name} variant="outline" className="border-slate-200 text-slate-600">{name}</Badge>)}</div></TableCell>
                             <TableCell>{item.uploadedAt}</TableCell>
                             <TableCell>{formatDuration(item.duration)}</TableCell>
+                            <TableCell>{getProcessBadge(item.processStatus, item.processMessage)}</TableCell>
                             <TableCell>{item.hasScript ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700"><CheckCircle2 className="size-3.5" />已上传文案</span> : <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-700"><FileText className="size-3.5" />未上传文案</span>}</TableCell>
                             <TableCell>{item.hasHandout ? <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700"><FileText className="size-3.5" />已上传</span> : <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500">未上传</span>}</TableCell>
                             <TableCell className="text-right"><div className="flex justify-end gap-2"><Button variant="outline" size="sm" onClick={() => { setEditingAudio(item); setAudioName(item.name); setShowEditNameDialog(true); }}><Pencil className="mr-2 size-4" />改名</Button><Button variant="outline" size="sm" onClick={() => { setEditingAudio(item); setScriptText(item.script ?? ""); setShowScriptDialog(true); }}><FileText className="mr-2 size-4" />文案</Button><Button variant="outline" size="sm" onClick={() => openHandoutDialog(item)}><FileText className="mr-2 size-4" />讲义</Button><Button variant="destructive" size="sm" onClick={() => void handleDeleteAudio(item.id)}><Trash2 className="mr-2 size-4" />删除</Button></div></TableCell>
                           </TableRow>
                         ))}
-                        {items.length === 0 ? <TableRow><TableCell colSpan={9} className="py-16 text-center text-slate-500">{searchScope === "current" && !selectedFolderId ? "请先选择文件夹" : "暂无音频数据"}</TableCell></TableRow> : null}
+                        {items.length === 0 ? <TableRow><TableCell colSpan={10} className="py-16 text-center text-slate-500">{searchScope === "current" && !selectedFolderId ? "请先选择文件夹" : "暂无音频数据"}</TableCell></TableRow> : null}
                       </TableBody>
                     </Table>
                   </div>

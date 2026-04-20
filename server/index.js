@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import multer from "multer";
+import { resumePendingAudioProcessingJobs } from "./lib/audio-processing.js";
 import { config } from "./lib/config.js";
 import { ok, fail } from "./lib/response.js";
 import { prisma } from "./lib/prisma.js";
@@ -94,6 +95,7 @@ const start = async () => {
   try {
     await prisma.$connect();
     await bootstrap();
+    await resumePendingAudioProcessingJobs();
     startScheduledCourseSync(config.schedulerIntervalMs);
     app.listen(config.port, () => {
       console.log(`API server listening on http://localhost:${config.port}`);

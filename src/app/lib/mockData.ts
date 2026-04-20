@@ -2,6 +2,7 @@ import { clearUserSession as clearPersistedUserSession, getUserToken } from "./u
 
 export type UserStatus = "active" | "disabled";
 export type CourseStatus = "open" | "closed" | "scheduled";
+export type AudioProcessStatus = "pending" | "processing" | "ready" | "failed";
 
 export interface User {
   id: string;
@@ -38,6 +39,9 @@ export interface Audio {
   name: string;
   folderId: string;
   duration: number;
+  processStatus?: AudioProcessStatus;
+  processMessage?: string;
+  isReady?: boolean;
   hasScript: boolean;
   script?: string;
   handoutUrl?: string;
@@ -1284,6 +1288,7 @@ export const mockApi = {
     tagId?: string;
     refFilter?: "all" | "referenced" | "unreferenced";
     scriptFilter?: "all" | "scripted" | "unscripted";
+    processFilter?: AudioProcessStatus | "all";
     searchScope?: "current" | "all";
     sortMode?: "uploaded-desc" | "name-asc";
     page?: number;
@@ -1298,6 +1303,7 @@ export const mockApi = {
         tagId: params?.tagId && params.tagId !== "all" ? params.tagId : undefined,
         refFilter: params?.refFilter && params.refFilter !== "all" ? params.refFilter : undefined,
         scriptFilter: params?.scriptFilter && params.scriptFilter !== "all" ? params.scriptFilter : undefined,
+        processFilter: params?.processFilter && params.processFilter !== "all" ? params.processFilter : undefined,
         searchScope: params?.searchScope,
         sortMode: params?.sortMode,
         page: params?.page,

@@ -53,6 +53,10 @@ const parseOrigins = (value) =>
 export const config = {
   port: Number(optional("PORT") || "3001"),
   schedulerIntervalMs: Number(optional("SCHEDULER_INTERVAL_MS") || "30000"),
+  audioProcessConcurrency: optionalPositiveInt("AUDIO_PROCESS_CONCURRENCY", 1),
+  audioProcessingDir: optional("AUDIO_PROCESSING_DIR"),
+  audioTranscodeEnabled: optionalBoolean("AUDIO_TRANSCODE_ENABLED", true),
+  ffmpegPath: optional("FFMPEG_PATH"),
   shopPaymentMode: optional("SHOP_PAYMENT_MODE") || "mock",
   shopOrderAutoCloseMinutes: Math.max(Number(optional("SHOP_ORDER_AUTO_CLOSE_MINUTES") || "30"), 1),
   paySiteBaseUrl: normalizeBaseUrl(optional("PAY_SITE_BASE_URL")),

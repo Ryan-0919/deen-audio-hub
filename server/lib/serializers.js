@@ -29,6 +29,9 @@ export const serializeAudio = (audio) => ({
   name: normalizeDisplayText(audio.name),
   folderId: audio.folderId,
   duration: audio.duration,
+  processStatus: audio.processStatus ?? "ready",
+  processMessage: audio.processMessage ? normalizeDisplayText(audio.processMessage) : "",
+  isReady: (audio.processStatus ?? "ready") === "ready",
   hasScript: Boolean(audio.scriptText?.trim()),
   script: audio.scriptText ? normalizeDisplayText(audio.scriptText) : undefined,
   handoutUrl: getReadableObjectUrl({
@@ -39,10 +42,13 @@ export const serializeAudio = (audio) => ({
   handoutName: audio.handoutName ? normalizeDisplayText(audio.handoutName) : "",
   hasHandout: Boolean(audio.handoutObjectKey || audio.handoutUrl),
   uploadedAt: formatDateTime(audio.uploadedAt),
-  audioUrl: getReadableObjectUrl({
-    objectKey: audio.objectKey ?? "",
-    fallbackUrl: audio.objectUrl,
-  }),
+  audioUrl:
+    (audio.processStatus ?? "ready") === "ready"
+      ? getReadableObjectUrl({
+          objectKey: audio.objectKey ?? "",
+          fallbackUrl: audio.objectUrl ?? "",
+        })
+      : "",
 });
 
 export const serializeAudioListItem = (audio) => ({
@@ -50,6 +56,9 @@ export const serializeAudioListItem = (audio) => ({
   name: normalizeDisplayText(audio.name),
   folderId: audio.folderId,
   duration: audio.duration,
+  processStatus: audio.processStatus ?? "ready",
+  processMessage: audio.processMessage ? normalizeDisplayText(audio.processMessage) : "",
+  isReady: (audio.processStatus ?? "ready") === "ready",
   hasScript: Boolean(audio.scriptText?.trim()),
   handoutUrl: getReadableObjectUrl({
     objectKey: audio.handoutObjectKey ?? "",

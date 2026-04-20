@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { ArrowDown, ArrowLeft, ArrowUp, AudioLines, GripVertical, Pencil, Plus, Tags, Trash2, Upload } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, AudioLines, CheckCircle2, GripVertical, Loader2, Pencil, Plus, Tags, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -16,6 +16,50 @@ const formatDuration = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return `${mins}:${secs.toString().padStart(2, "0")}`;
+};
+
+const getProcessBadge = (status?: string, message?: string) => {
+  if (status === "pending") {
+    return (
+      <div className="space-y-1">
+        <Badge variant="secondary" className="bg-amber-100 text-amber-700">
+          <Loader2 className="mr-1 size-3.5 animate-spin" />
+          等待处理
+        </Badge>
+        {message ? <p className="text-xs text-slate-500">{message}</p> : null}
+      </div>
+    );
+  }
+
+  if (status === "processing") {
+    return (
+      <div className="space-y-1">
+        <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+          <Loader2 className="mr-1 size-3.5 animate-spin" />
+          处理中
+        </Badge>
+        {message ? <p className="text-xs text-slate-500">{message}</p> : null}
+      </div>
+    );
+  }
+
+  if (status === "failed") {
+    return (
+      <div className="space-y-1">
+        <Badge variant="secondary" className="bg-red-100 text-red-700">
+          处理失败
+        </Badge>
+        {message ? <p className="text-xs text-red-500">{message}</p> : null}
+      </div>
+    );
+  }
+
+  return (
+    <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">
+      <CheckCircle2 className="mr-1 size-3.5" />
+      可用
+    </Badge>
+  );
 };
 
 export function CourseContent() {
@@ -80,6 +124,7 @@ export function CourseContent() {
         keyword: deferredLibraryKeyword,
         excludeCourseId: courseId,
         scriptFilter: "scripted",
+        processFilter: "ready",
         searchScope: "all",
         sortMode: "uploaded-desc",
         page: libraryPage,
@@ -115,8 +160,22 @@ export function CourseContent() {
 
   const selectedTag = useMemo(() => tags.find((tag) => tag.id === selectedTagId) ?? null, [selectedTagId, tags]);
   const currentTagScriptedCount = useMemo(() => audios.filter((audio) => audio.hasScript).length, [audios]);
+  const hasProcessingAudios = useMemo(
+    () => audios.some((audio) => audio.processStatus === "pending" || audio.processStatus === "processing"),
+    [audios],
+  );
 
   const availableAudioLibrary = useMemo(() => audioLibraryItems, [audioLibraryItems]);
+
+  useEffect(() => {
+    if (!selectedTagId || !hasProcessingAudios) return;
+
+    const timer = window.setInterval(() => {
+      void loadAudios(selectedTagId);
+    }, 4000);
+
+    return () => window.clearInterval(timer);
+  }, [hasProcessingAudios, selectedTagId]);
 
   const adjustCourseAudioCount = (delta: number) => {
     setCourse((prev) => (prev ? { ...prev, audioCount: Math.max(0, prev.audioCount + delta) } : prev));
@@ -301,7 +360,7 @@ export function CourseContent() {
 
     try {
       await mockApi.uploadAudioDirectlyToCourse(courseId, selectedTagId, [uploadFile], uploadScript);
-      toast.success("音频已上传到当前课程");
+      toast.success("音频已加入后台处理队列");
       setUploadFile(null);
       setUploadScript("");
       setShowUploadDialog(false);
@@ -557,6 +616,7 @@ export function CourseContent() {
                                 时长 {formatDuration(audio.duration)}
                               </span>
                               <span>上传时间 {audio.uploadedAt}</span>
+                              {getProcessBadge(audio.processStatus, audio.processMessage)}
                               <Badge variant="secondary" className={audio.hasScript ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}>
                                 {audio.hasScript ? "已上传文案" : "未上传文案"}
                               </Badge>

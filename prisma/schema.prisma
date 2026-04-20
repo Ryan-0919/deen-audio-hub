@@ -17,6 +17,13 @@ enum CourseStatus {
   scheduled
 }
 
+enum AudioProcessStatus {
+  pending
+  processing
+  ready
+  failed
+}
+
 enum ShopProductType {
   virtual
   physical
@@ -164,25 +171,28 @@ model AudioFolder {
 }
 
 model Audio {
-  id          String         @id @default(cuid())
-  name        String         @db.VarChar(191)
-  folderId    String
-  duration    Int            @default(0)
-  scriptText  String?        @db.LongText
-  handoutUrl  String?        @db.VarChar(500)
-  handoutObjectKey String?   @db.VarChar(255)
-  handoutName String?        @db.VarChar(255)
-  objectKey   String         @unique @db.VarChar(255)
-  objectUrl   String         @db.VarChar(500)
-  mimeType    String?        @db.VarChar(100)
-  uploadedAt  DateTime       @default(now())
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  folder      AudioFolder    @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  id             String             @id @default(cuid())
+  name           String             @db.VarChar(191)
+  folderId       String
+  duration       Int                @default(0)
+  scriptText     String?            @db.LongText
+  handoutUrl     String?            @db.VarChar(500)
+  handoutObjectKey String?          @db.VarChar(255)
+  handoutName    String?            @db.VarChar(255)
+  objectKey      String?            @unique @db.VarChar(255)
+  objectUrl      String?            @db.VarChar(500)
+  mimeType       String?            @db.VarChar(100)
+  processStatus  AudioProcessStatus @default(pending)
+  processMessage String?            @db.VarChar(500)
+  uploadedAt     DateTime           @default(now())
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  folder         AudioFolder        @relation(fields: [folderId], references: [id], onDelete: Restrict)
   courseAudios CourseAudio[]
   progresses  UserProgress[]
 
   @@index([folderId, uploadedAt])
+  @@index([processStatus, uploadedAt])
 }
 
 model CourseAudio {

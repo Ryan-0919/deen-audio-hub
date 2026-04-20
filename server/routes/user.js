@@ -13,6 +13,13 @@ export const userRouter = Router();
 userRouter.use(requireUserAuth);
 
 const isUniqueConstraintError = (error) => error && typeof error === "object" && error.code === "P2002";
+const readyAudioRelationWhere = {
+  audio: {
+    is: {
+      processStatus: "ready",
+    },
+  },
+};
 
 const saveUserProgressRecord = async ({ userId, courseId, audioId, updateData, createData }) => {
   const where = { userId, courseId, audioId };
@@ -94,6 +101,7 @@ const getTagAudiosWithProgress = async ({ tagId, userId, courseId, courseAudios 
         where: { id: tagId },
         include: {
           courseAudios: {
+            where: readyAudioRelationWhere,
             orderBy: { order: "asc" },
             include: {
               audio: true,
@@ -136,7 +144,9 @@ const assertCoursePermission = async (userId, courseId) => {
           tags: {
             orderBy: { order: "asc" },
           },
-          courseAudios: true,
+          courseAudios: {
+            where: readyAudioRelationWhere,
+          },
         },
       },
     },
@@ -159,6 +169,7 @@ const getOrderedCourseAudios = async (courseId) => {
     orderBy: { order: "asc" },
     include: {
       courseAudios: {
+        where: readyAudioRelationWhere,
         orderBy: { order: "asc" },
         include: { audio: true },
       },
@@ -182,7 +193,9 @@ userRouter.get("/courses", async (req, res) => {
     include: {
       course: {
         include: {
-          courseAudios: true,
+          courseAudios: {
+            where: readyAudioRelationWhere,
+          },
         },
       },
     },
@@ -215,6 +228,7 @@ userRouter.get("/courses/:courseId/detail", async (req, res) => {
             orderBy: { order: "asc" },
             include: {
               courseAudios: {
+                where: readyAudioRelationWhere,
                 orderBy: { order: "asc" },
                 include: {
                   audio: true,
@@ -262,6 +276,7 @@ userRouter.get("/courses/:courseId/audios/:audioId/handout/download", async (req
       where: {
         courseId: course.id,
         audioId: req.params.audioId,
+        ...readyAudioRelationWhere,
       },
       include: {
         audio: true,
@@ -324,6 +339,7 @@ userRouter.get("/tags/:tagId/audios", async (req, res) => {
         },
       },
       courseAudios: {
+        where: readyAudioRelationWhere,
         orderBy: { order: "asc" },
         include: {
           audio: true,
@@ -359,6 +375,7 @@ userRouter.get("/courses/:courseId/audios/:audioId/detail", async (req, res) => 
       where: {
         courseId: course.id,
         audioId: req.params.audioId,
+        ...readyAudioRelationWhere,
       },
       include: {
         audio: true,
@@ -427,6 +444,7 @@ userRouter.post("/progress", async (req, res) => {
     where: {
       courseId,
       audioId,
+      ...readyAudioRelationWhere,
     },
   });
 
@@ -465,6 +483,7 @@ userRouter.post("/progress/complete", async (req, res) => {
     where: {
       courseId,
       audioId,
+      ...readyAudioRelationWhere,
     },
   });
 

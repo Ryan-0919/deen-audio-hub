@@ -1,5 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
+import { randomUUID } from "node:crypto";
 import { extname } from "node:path";
 import { prisma } from "../lib/prisma.js";
 import { ok, fail } from "../lib/response.js";
@@ -7,8 +8,14 @@ import { requireAdminAuth } from "../middleware/auth.js";
 import { serializeAudio, serializeCourse, serializeDevice, serializeFolder, serializeTag, serializeUser } from "../lib/serializers.js";
 import { formatDateTime } from "../lib/time.js";
 import { hashPassword } from "../lib/auth.js";
-import { getAudioDuration } from "../lib/audio.js";
 import { cleanupObjectIfReplaced, cleanupObjectIfUnused } from "../lib/assets.js";
+import {
+  cleanupAudioProcessingSource,
+  cleanupStagedAudioUploadFile,
+  enqueueAudioProcessing,
+  getAudioUploadTempRoot,
+  promoteAudioUploadSource,
+} from "../lib/audio-processing.js";
 import { writeAdminAuditLog } from "../lib/audit.js";
 import { extractPhonesFromExcel } from "../lib/excel.js";
 import {
@@ -101,6 +108,35 @@ const createUploadMiddleware = ({ maxFileSize, maxFileCount, allowedExtensions, 
     },
   });
 
+const createAudioUploadMiddleware = ({ maxFileSize, maxFileCount, allowedExtensions, allowedMimeTypes, fileLabel }) =>
+  multer({
+    storage: multer.diskStorage({
+      destination(_req, _file, callback) {
+        callback(null, getAudioUploadTempRoot());
+      },
+      filename(_req, file, callback) {
+        callback(null, `${Date.now()}-${randomUUID()}${extname(file.originalname).toLowerCase()}`);
+      },
+    }),
+    limits: {
+      fileSize: maxFileSize,
+      files: maxFileCount,
+    },
+    fileFilter(_req, file, callback) {
+      const extension = extname(file.originalname).toLowerCase();
+      const mimeType = `${file.mimetype ?? ""}`.toLowerCase();
+      const extensionAllowed = allowedExtensions.has(extension);
+      const mimeAllowed = allowedMimeTypes.has(mimeType) || (!mimeType || mimeType === "application/octet-stream");
+
+      if (extensionAllowed && mimeAllowed) {
+        callback(null, true);
+        return;
+      }
+
+      callback(buildUploadValidationError(`${fileLabel} 格式不支持，请重新选择后上传`));
+    },
+  });
+
 const uploadImage = createUploadMiddleware({
   maxFileSize: 5 * MB,
   maxFileCount: 1,
@@ -133,7 +169,7 @@ const uploadExcel = createUploadMiddleware({
   fileLabel: "Excel 文件",
 });
 
-const uploadLibraryAudio = createUploadMiddleware({
+const uploadLibraryAudio = createAudioUploadMiddleware({
   maxFileSize: 200 * MB,
   maxFileCount: 50,
   allowedExtensions: AUDIO_EXTENSIONS,
@@ -141,13 +177,26 @@ const uploadLibraryAudio = createUploadMiddleware({
   fileLabel: "音频文件",
 });
 
-const uploadCourseAudio = createUploadMiddleware({
+const uploadCourseAudio = createAudioUploadMiddleware({
   maxFileSize: 200 * MB,
   maxFileCount: 1,
   allowedExtensions: AUDIO_EXTENSIONS,
   allowedMimeTypes: AUDIO_MIME_TYPES,
   fileLabel: "音频文件",
 });
+
+const createPendingAudioRecord = async ({ fileName, folderId, scriptText, mimeType }) =>
+  prisma.audio.create({
+    data: {
+      name: getDisplayNameFromUpload(fileName, "未命名音频"),
+      folderId,
+      duration: 0,
+      scriptText: scriptText?.trim() ? scriptText : null,
+      mimeType: mimeType || null,
+      processStatus: "pending",
+      processMessage: "文件已上传，等待后台处理",
+    },
+  });
 
 export const adminRouter = Router();
 
@@ -351,6 +400,7 @@ const getAudioLibraryItems = async (query = {}) => {
   const searchScope = `${query.searchScope ?? "current"}`.trim() === "all" ? "all" : "current";
   const refFilter = `${query.refFilter ?? "all"}`.trim();
   const scriptFilter = `${query.scriptFilter ?? "all"}`.trim();
+  const processFilter = `${query.processFilter ?? "all"}`.trim();
   const sortMode = `${query.sortMode ?? "uploaded-desc"}`.trim();
   const page = toPositiveInt(query.page, 1);
   const pageSize = Math.min(toPositiveInt(query.pageSize, 15), 50);
@@ -409,6 +459,26 @@ const getAudioLibraryItems = async (query = {}) => {
               scriptText: null,
             }
           : {}),
+        ...(processFilter === "pending"
+          ? {
+              processStatus: "pending",
+            }
+          : {}),
+        ...(processFilter === "processing"
+          ? {
+              processStatus: "processing",
+            }
+          : {}),
+        ...(processFilter === "ready"
+          ? {
+              processStatus: "ready",
+            }
+          : {}),
+        ...(processFilter === "failed"
+          ? {
+              processStatus: "failed",
+            }
+          : {}),
         ...(courseAudioConditions.length === 1
           ? courseAudioConditions[0]
           : courseAudioConditions.length > 1
@@ -437,6 +507,8 @@ const getAudioLibraryItems = async (query = {}) => {
             handoutName: true,
             objectKey: true,
             objectUrl: true,
+            processStatus: true,
+            processMessage: true,
             uploadedAt: true,
             folder: {
               select: {
@@ -1067,7 +1139,7 @@ adminRouter.post("/users/batch-import-excel", uploadExcel.single("file"), async 
   try {
     normalizedPhones = await extractPhonesFromExcel({
       fileName: file.originalname,
-      buffer: file.buffer,
+      folderId: folder.id,
     });
   } catch (error) {
     return fail(res, error.message || "Excel 解析失败", 400);
@@ -1733,6 +1805,7 @@ adminRouter.post("/courses/:courseId/tags/:tagId/audios/reference", async (req, 
       select: {
         id: true,
         scriptText: true,
+        processStatus: true,
       },
     }),
     prisma.courseAudio.findMany({
@@ -1755,6 +1828,7 @@ adminRouter.post("/courses/:courseId/tags/:tagId/audios/reference", async (req, 
   for (const audioId of normalizedAudioIds) {
     const audio = audioMap.get(audioId);
     if (!audio) continue;
+    if (audio.processStatus !== "ready") return fail(res, "音频仍在处理中，完成后才能引用到课程", 400);
     if (!audio.scriptText?.trim()) return fail(res, "无文案音频不能被课程引用", 400);
 
     if (existingAudioIds.has(audioId)) continue;
@@ -1987,6 +2061,7 @@ adminRouter.delete("/library/audios/:audioId", async (req, res) => {
   });
   cleanupRemovedObject(targetAudio?.objectKey ?? "");
   cleanupRemovedObject(targetAudio?.handoutObjectKey ?? "");
+  void cleanupAudioProcessingSource(targetAudio?.id ?? req.params.audioId);
   recordAdminAction(req, {
     action: "audio.delete",
     entityType: "audio",
@@ -2088,7 +2163,7 @@ adminRouter.post("/uploads/script-file", uploadScript.single("file"), async (req
   try {
     const text = await extractScriptFromFile({
       fileName: file.originalname,
-      buffer: file.buffer,
+      folderId: folder.id,
     });
 
     return ok(
@@ -2179,32 +2254,32 @@ adminRouter.post("/library/audios/upload", uploadLibraryAudio.array("files"), as
 
   try {
     for (const [index, file] of files.entries()) {
-      const [uploaded, duration] = await Promise.all([
-        uploadBuffer({
-          fileName: file.originalname,
-          buffer: file.buffer,
-          mimeType: file.mimetype,
-          folder: "audios/library",
-        }),
-        getAudioDuration(file),
-      ]);
+      let audio = null;
 
       try {
-        const audio = await prisma.audio.create({
-          data: {
-            name: getDisplayNameFromUpload(file.originalname, "未命名音频"),
+        audio = await createPendingAudioRecord({
+          fileName: file.originalname,
             folderId,
-            duration,
             scriptText: files.length === 1 ? script || null : index === 0 && script ? script : null,
-            objectKey: uploaded.objectKey,
-            objectUrl: uploaded.url,
             mimeType: file.mimetype,
-          },
         });
 
+        await promoteAudioUploadSource({
+          audioId: audio.id,
+          tempPath: file.path,
+          originalName: file.originalname,
+        });
+
+        enqueueAudioProcessing(audio.id);
         created.push(serializeAudio(audio));
       } catch (error) {
-        cleanupRemovedObject(uploaded.objectKey);
+        await cleanupStagedAudioUploadFile(file.path);
+        if (audio?.id) {
+          await cleanupAudioProcessingSource(audio.id);
+          await prisma.audio.deleteMany({
+            where: { id: audio.id },
+          });
+        }
         throw error;
       }
     }
@@ -2232,7 +2307,7 @@ adminRouter.post("/library/audios/upload", uploadLibraryAudio.array("files"), as
       },
     });
 
-    return ok(res, created, "音频上传成功");
+    return ok(res, created, "音频已加入后台处理队列");
   } catch (error) {
     console.error("Library audio upload failed:", {
       folderId,
@@ -2282,32 +2357,20 @@ adminRouter.post("/courses/:courseId/tags/:tagId/audios/upload", uploadCourseAud
   });
 
   const file = files[0];
+  let audio = null;
   try {
-    const uploaded = await uploadBuffer({
+    audio = await createPendingAudioRecord({
       fileName: file.originalname,
-      buffer: file.buffer,
+      folderId: folder.id,
       mimeType: file.mimetype,
-      folder: "audios/course-direct",
+      scriptText: script,
     });
 
-    let audio;
-    try {
-      audio = await prisma.audio.create({
-        data: {
-          name: getDisplayNameFromUpload(file.originalname, "未命名音频"),
-          folderId: folder.id,
-          duration: await getAudioDuration(file),
-          scriptText: script,
-          objectKey: uploaded.objectKey,
-          objectUrl: uploaded.url,
-          mimeType: file.mimetype,
-        },
-      });
-    } catch (error) {
-      cleanupRemovedObject(uploaded.objectKey);
-      throw error;
-    }
-
+    await promoteAudioUploadSource({
+      audioId: audio.id,
+      tempPath: file.path,
+      originalName: file.originalname,
+    });
     await prisma.courseAudio.create({
       data: {
         courseId,
@@ -2316,6 +2379,8 @@ adminRouter.post("/courses/:courseId/tags/:tagId/audios/upload", uploadCourseAud
         order: (lastRelation?.order ?? -1) + 1,
       },
     });
+
+    enqueueAudioProcessing(audio.id);
 
     recordAdminAction(req, {
       action: "audio.upload.course_direct",
@@ -2328,8 +2393,15 @@ adminRouter.post("/courses/:courseId/tags/:tagId/audios/upload", uploadCourseAud
       },
     });
 
-    return ok(res, serializeAudio(audio), "课程直传音频成功");
+    return ok(res, serializeAudio(audio), "音频已加入后台处理队列");
   } catch (error) {
+    await cleanupStagedAudioUploadFile(file.path);
+    if (audio?.id) {
+      await cleanupAudioProcessingSource(audio.id);
+      await prisma.audio.deleteMany({
+        where: { id: audio.id },
+      });
+    }
     return fail(res, error.message || "课程直传音频失败", 500);
   }
 });

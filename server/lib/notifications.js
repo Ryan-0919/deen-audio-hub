@@ -276,14 +276,14 @@ export const buildAudioUploadCompletedMarkdown = ({
   const failedCount = normalizeList(failedNames).length;
 
   return [
-    "# 音频上传结果",
+    "# 音频上传受理",
     "",
-    "> 状态：<font color=\"info\">上传完成</font>",
+    "> 状态：<font color=\"info\">已加入后台处理队列</font>",
     `> 上传位置：${normalizeText(folderName, "未分类")}`,
     `> 关联课程：${normalizeText(courseName, "音频库")}`,
     `> 默认标签：${normalizeText(tagName, "-")}`,
     `> 上传总数：${Number(totalCount) || 0}`,
-    `> 成功数量：${Number(successCount) || 0}`,
+    `> 受理数量：${Number(successCount) || 0}`,
     `> 失败数量：<font color=\"warning\">${failedCount}</font>`,
     `> 操作人：${normalizeText(operatorName)}`,
     `> 操作时间：${formatMoment(eventTime)}`,
