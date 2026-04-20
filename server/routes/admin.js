@@ -2165,7 +2165,7 @@ adminRouter.post("/uploads/script-file", uploadScript.single("file"), async (req
   try {
     const text = await extractScriptFromFile({
       fileName: file.originalname,
-      folderId: folder.id,
+      buffer: file.buffer,
     });
 
     return ok(
