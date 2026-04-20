@@ -27,17 +27,24 @@ const ossClient = ossConfigured
 const MAX_OBJECT_KEY_LENGTH = 255;
 const MAX_SLUG_LENGTH = 120;
 
+const toHttpsUrl = (value = "") => `${value ?? ""}`.trim().replace(/^http:\/\//i, "https://");
+const stripTrailingSlash = (value = "") => `${value ?? ""}`.trim().replace(/\/$/, "");
+const getConfiguredPublicBaseCandidates = () => {
+  const configured = stripTrailingSlash(config.ossPublicBaseUrl);
+  if (!configured) return [];
+  return [...new Set([configured, toHttpsUrl(configured)])];
+};
+
 const buildPublicUrl = (objectKey, fallbackUrl = "") => {
   if (config.ossPublicBaseUrl) {
-    return `${config.ossPublicBaseUrl.replace(/\/$/, "")}/${objectKey}`;
+    return `${toHttpsUrl(stripTrailingSlash(config.ossPublicBaseUrl))}/${objectKey}`;
   }
-  return fallbackUrl;
+  return toHttpsUrl(fallbackUrl);
 };
 
 const buildOriginObjectUrl = (objectKey = "") => {
   if (!objectKey) return "";
-  const protocol = config.ossSecure ? "https" : "http";
-  return `${protocol}://${config.ossBucket}.${config.ossRegion}.aliyuncs.com/${objectKey}`;
+  return `https://${config.ossBucket}.${config.ossRegion}.aliyuncs.com/${objectKey}`;
 };
 
 const getDefaultBucketHosts = () => [
@@ -50,8 +57,8 @@ const stripUrlQueryAndHash = (value = "") => value.split("#", 1)[0].split("?", 1
 export const extractObjectKeyFromUrl = (url = "") => {
   if (!url) return "";
 
-  if (config.ossPublicBaseUrl) {
-    const base = `${config.ossPublicBaseUrl.replace(/\/$/, "")}/`;
+  for (const candidate of getConfiguredPublicBaseCandidates()) {
+    const base = `${candidate}/`;
     if (url.startsWith(base)) {
       return decodeURIComponent(stripUrlQueryAndHash(url.slice(base.length)));
     }
@@ -70,7 +77,7 @@ export const getReadableObjectUrl = ({ objectKey = "", fallbackUrl = "" }) => {
   const resolvedKey = objectKey || extractObjectKeyFromUrl(fallbackUrl);
 
   if (!resolvedKey) {
-    return fallbackUrl;
+    return toHttpsUrl(fallbackUrl);
   }
 
   if (config.ossPublicBaseUrl) {
@@ -78,12 +85,14 @@ export const getReadableObjectUrl = ({ objectKey = "", fallbackUrl = "" }) => {
   }
 
   if (ossClient) {
-    return ossClient.signatureUrl(resolvedKey, {
-      expires: 24 * 60 * 60,
-    });
+    return toHttpsUrl(
+      ossClient.signatureUrl(resolvedKey, {
+        expires: 24 * 60 * 60,
+      }),
+    );
   }
 
-  return fallbackUrl;
+  return toHttpsUrl(fallbackUrl);
 };
 
 export const ensureOssConfigured = () => {
