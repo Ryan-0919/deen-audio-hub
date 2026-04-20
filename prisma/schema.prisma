@@ -295,6 +295,30 @@ model WebhookLog {
   @@index([status, createdAt])
 }
 
+model LawEntry {
+  id               String   @id @default(cuid())
+  sourceLawId      Int      @unique
+  topCategoryId    Int
+  topCategoryTitle String   @db.VarChar(191)
+  bookTitle        String?  @db.VarChar(255)
+  title            String   @db.VarChar(255)
+  pathString       String   @db.VarChar(1000)
+  pathTitlesJson   String   @db.LongText
+  content          String   @db.LongText
+  type             Int      @default(0)
+  sourceParentId   Int?
+  sourceTopId      Int?
+  position         Int      @default(0)
+  sourceCreatedAt  DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([topCategoryId, position])
+  @@index([topCategoryTitle])
+  @@index([bookTitle])
+  @@index([updatedAt])
+}
+
 model ShopConfig {
   id                  Int         @id @default(1)
   shopNotice          String?     @db.LongText

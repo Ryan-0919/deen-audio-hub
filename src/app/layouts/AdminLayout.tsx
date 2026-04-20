@@ -1,4 +1,4 @@
-import { BookOpen, History, ImageIcon, LogOut, Music2, Settings, ShieldCheck, Users } from "lucide-react";
+import { BookOpen, History, ImageIcon, LogOut, Music2, Scale, Settings, ShieldCheck, Users } from "lucide-react";
 import { Link, Navigate, Outlet, useLocation } from "react-router";
 import { AppLogo } from "../components/branding/AppLogo";
 import { Button } from "../components/ui/button";
@@ -9,6 +9,7 @@ const navigation = [
   { name: "用户管理", href: "/admin/users", icon: Users },
   { name: "课程管理", href: "/admin/courses", icon: BookOpen },
   { name: "音频库", href: "/admin/library", icon: Music2 },
+  { name: "法条检索", href: "/admin/laws", icon: Scale },
   { name: "系统日志", href: "/admin/logs", icon: History },
   { name: "系统配置", href: "/admin/settings", icon: Settings },
   { name: "系统图片配置", href: "/admin/image-settings", icon: ImageIcon },
@@ -38,7 +39,7 @@ export function AdminLayout() {
         <div className="border-b border-slate-200 px-6 py-6">
           <AppLogo />
           <h1 className="mt-4 text-xl font-semibold text-slate-900">后台管理</h1>
-          <p className="mt-2 text-sm text-slate-500">课程、音频与系统配置工作台</p>
+          <p className="mt-2 text-sm text-slate-500">课程、音频、法条与系统配置工作台</p>
         </div>
 
         <nav className="flex-1 space-y-1 px-4 py-4">

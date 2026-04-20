@@ -1,0 +1,396 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: #f5f5f5;
+  color: #404040;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.law-page {
+  width: 100%;
+  min-height: 100vh;
+  padding: 0 16px 40px;
+}
+
+.law-page__content {
+  display: flex;
+  justify-content: center;
+}
+
+.law-inline-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  color: #666f83;
+  fill: currentColor;
+}
+
+.iet2TRwpa65B6Itl3s8WBw\=\= {
+  display: flex;
+  flex-direction: column;
+  color: #404040;
+  background-color: #fff;
+  box-shadow: 0px 0px 10px 0px rgba(0, 0, 0, 0.1);
+  border-radius: 5px;
+  overflow: hidden;
+  user-select: none;
+}
+
+.JMUQshLeyhZseCzWPftVKg\=\= {
+  position: fixed !important;
+  margin: 0px !important;
+  top: 0px !important;
+  left: 0px !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  border-radius: 0px !important;
+  z-index: 1;
+}
+
+._8zfN1HV82hfuRysgQXyEPQ\=\= {
+  display: none;
+}
+
+.foDQP3KaJV2f0zebGlTqLg\=\= {
+  box-sizing: border-box;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0px 15px;
+  height: 40px;
+  width: 100%;
+  font-size: 14px;
+  line-height: 40px;
+  color: #41485d;
+  overflow: hidden;
+}
+
+.foDQP3KaJV2f0zebGlTqLg\=\= .Rs2XqNq8ASVPw9gtdwADUw\=\= {
+  float: left;
+  color: #333;
+  font-family: "Songti SC", "STSong", serif;
+}
+
+.foDQP3KaJV2f0zebGlTqLg\=\= > img {
+  padding: 14px 10px;
+  width: 12px;
+  cursor: default;
+  float: right;
+  box-sizing: content-box;
+}
+
+.W6XcCrT2dd-qXREMlc\+POg\=\= {
+  display: flex;
+  height: calc(100% - 40px);
+  border-top: 1px solid #dfdfdf;
+}
+
+.X78sh31iqReN49kQLUunbw\=\=,
+.KzrW119NxvD6FZu5TR9hvg\=\= {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  height: 100%;
+  border-right: 1px solid #dfdfdf;
+  overflow: hidden;
+}
+
+.X78sh31iqReN49kQLUunbw\=\= > .N-CLd1SlwL3\+HA9kUp-8lw\=\=,
+.KzrW119NxvD6FZu5TR9hvg\=\= > .N-CLd1SlwL3\+HA9kUp-8lw\=\= {
+  box-sizing: border-box;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0px 13px;
+  width: 100%;
+  height: 33px;
+  font-size: 14px;
+  line-height: 33px;
+  background-color: #fafafa;
+  border-bottom: 1px solid #dfdfdf;
+}
+
+.X78sh31iqReN49kQLUunbw\=\= > .N-CLd1SlwL3\+HA9kUp-8lw\=\= > .R7N\+jVTL\+KtQY5MjXcuLOQ\=\=,
+.KzrW119NxvD6FZu5TR9hvg\=\= > .N-CLd1SlwL3\+HA9kUp-8lw\=\= > .R7N\+jVTL\+KtQY5MjXcuLOQ\=\= {
+  flex-shrink: 0;
+  padding: 11px;
+  margin: -11px;
+}
+
+.X78sh31iqReN49kQLUunbw\=\= > .N-CLd1SlwL3\+HA9kUp-8lw\=\= div,
+.KzrW119NxvD6FZu5TR9hvg\=\= > .N-CLd1SlwL3\+HA9kUp-8lw\=\= div {
+  color: #333;
+  font-family: "Songti SC", "STSong", serif;
+}
+
+.KzrW119NxvD6FZu5TR9hvg\=\= {
+  width: 38px;
+}
+
+.fCX6MGsD3PopmhyLo58bMA\=\= {
+  flex-shrink: 0;
+  margin: 0px -2.5px;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+._8\+rB95TY7bGxKVaAKQFIcw\=\= {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  height: 44px;
+}
+
+._8\+rB95TY7bGxKVaAKQFIcw\=\= > .-F6jE0\+QZM5GooWVuWNexw\=\= {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  margin: 0px 13px;
+  height: 32px;
+}
+
+._8\+rB95TY7bGxKVaAKQFIcw\=\= > .-F6jE0\+QZM5GooWVuWNexw\=\= > input {
+  font-family: "Songti SC", "STSong", serif;
+  width: 177px;
+  height: 30px;
+  background: #fafafa;
+  border: 1px solid #dfdfdf;
+  border-radius: 4px;
+  padding: 0px 10px;
+  outline: none;
+}
+
+._8\+rB95TY7bGxKVaAKQFIcw\=\= > .-F6jE0\+QZM5GooWVuWNexw\=\= input::-webkit-input-placeholder {
+  color: #aaa;
+}
+
+._8\+rB95TY7bGxKVaAKQFIcw\=\= > .-F6jE0\+QZM5GooWVuWNexw\=\= > img {
+  margin-left: 16px;
+  flex-shrink: 0;
+  width: 16px;
+  cursor: pointer;
+}
+
+.jCwmR755zXuyzoQNLVpNlw\=\= {
+  margin-left: 3px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 10px;
+  width: 60px;
+  height: 100%;
+}
+
+.jCwmR755zXuyzoQNLVpNlw\=\= > .o5GNFP9ruUfolqcieT7lTA\=\=,
+.jCwmR755zXuyzoQNLVpNlw\=\= > .jVpQNl2s2ZfET6ap3j490w\=\= {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 30px;
+  border: 1px solid #dfdfdf;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.XueZp0yJftFREc4F6L4jtA\=\= {
+  overflow: hidden !important;
+}
+
+.RmTjFuE3KX34t9DrDuId0Q\=\= {
+  box-sizing: border-box;
+  padding: 5px;
+  height: calc(100% - 77px);
+  overflow: auto;
+}
+
+.RmTjFuE3KX34t9DrDuId0Q\=\=::-webkit-scrollbar-thumb {
+  background: #cdcdcd !important;
+  border-radius: 2px;
+}
+
+.RmTjFuE3KX34t9DrDuId0Q\=\=::-webkit-scrollbar {
+  width: 12px;
+}
+
+.RmTjFuE3KX34t9DrDuId0Q\=\=::-webkit-scrollbar-track {
+  background-color: #f5f5f5;
+}
+
+.Dr9X1SCNbR\+c1z6yRFP6cQ\=\=::-webkit-scrollbar-thumb {
+  background: #cdcdcd !important;
+  border-radius: 2px;
+}
+
+.Dr9X1SCNbR\+c1z6yRFP6cQ\=\=::-webkit-scrollbar {
+  width: 18px;
+}
+
+.Dr9X1SCNbR\+c1z6yRFP6cQ\=\=::-webkit-scrollbar-track {
+  background-color: #f5f5f5;
+}
+
+._4SBJ400b2OTyommQad\+\+ww\=\= {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  font-family: "Songti SC", "STSong", serif;
+}
+
+._4SBJ400b2OTyommQad\+\+ww\=\= > div {
+  flex-shrink: 0;
+}
+
+.CgvxFMHhl1XCEjMOrPtWjQ\=\= {
+  padding-left: 18px;
+  background: url("https://osscdn2.zhongheschool.com/common/defaultType/202404/202404261636300721.gif") 0 0 repeat-y;
+}
+
+._8rBFEbxfp\+NUONh5snIw7g\=\= {
+  width: 9px;
+  height: 2px;
+  background: #858585;
+}
+
+._9IRZAbAkH0rOgFKytrd99w\=\=,
+.u0jF4OVSHf17N3rd2t\+9zA\=\= {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  padding: 1px;
+  height: 22px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+._9IRZAbAkH0rOgFKytrd99w\=\=:hover,
+.u0jF4OVSHf17N3rd2t\+9zA\=\=:hover {
+  background-color: #ebebeb;
+}
+
+._9IRZAbAkH0rOgFKytrd99w\=\= > div,
+.u0jF4OVSHf17N3rd2t\+9zA\=\= > div {
+  display: flex;
+  align-items: center;
+}
+
+._9IRZAbAkH0rOgFKytrd99w\=\= .bETq4X-XRGsXFrxHW-fTBg\=\=,
+.u0jF4OVSHf17N3rd2t\+9zA\=\= .bETq4X-XRGsXFrxHW-fTBg\=\= {
+  flex-shrink: 0;
+  height: 18px;
+  width: 18px;
+  background-image: url("https://osscdn2.zhongheschool.com/common/defaultType/202503/202503171558340059.png");
+}
+
+.WRfowCHL0HzIFaWyvO\+c4A\=\=,
+.\+025ub2\+ze6LD8Iq6uthtg\=\= {
+  padding: 0px 4px 0px 0px;
+  background-color: #f2d493 !important;
+  z-index: 3;
+}
+
+.\+025ub2\+ze6LD8Iq6uthtg\=\= {
+  margin-left: -1px;
+}
+
+.tYyQlhBN559xWVaK3mT8zw\=\= {
+  background-position: -74px 0;
+}
+
+.MhkW2aB\+JJsbb9QDRcdoZw\=\= {
+  background-position: -74px -18px;
+}
+
+.kpwTDCLOhHchJK22VCo01Q\=\= {
+  background-position: -74px -36px;
+}
+
+.zOlAJBzeF2Dzu2fwNVb8NA\=\= {
+  background-position: -92px -18px;
+}
+
+._6njayP4KdJnRcWatPT9jZg\=\= {
+  background-position: -92px 0;
+}
+
+.wdRbtjXW8horsjRB\+pCFRQ\=\= {
+  background-position: -92px -36px;
+}
+
+.u0jF4OVSHf17N3rd2t\+9zA\=\= {
+  background-position: -56px -18px;
+}
+
+.rzSGOO8JzA2yhd3GXhxCOw\=\= {
+  background-position: -56px 0px;
+}
+
+._3OhPNSTKHyjr7lqvZdQH-g\=\= {
+  background-position: -56px -36px;
+}
+
+.Dr9X1SCNbR\+c1z6yRFP6cQ\=\= {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  line-height: 22px;
+  white-space: pre-wrap;
+  user-select: text;
+  overflow-y: auto;
+}
+
+.Dr9X1SCNbR\+c1z6yRFP6cQ\=\= > div {
+  padding: 20px 25px;
+  font-family: "Songti SC", "STSong", serif;
+  line-height: 28px;
+}
+
+.Dr9X1SCNbR\+c1z6yRFP6cQ\=\= h4 {
+  text-align: center;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+._0eZdR22z6OAmWmBw-VoFOA\=\= {
+  padding: 0px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: #fff;
+  background-size: cover;
+  font-size: 46px;
+  font-family: "Songti SC", "STSong", serif;
+  font-weight: 700;
+  text-align: left;
+  color: #454545;
+  line-height: 46px;
+}
+
+h4 {
+  font-weight: 800;
+}
+
+@media (max-width: 1240px) {
+  .law-page {
+    padding: 8px;
+  }
+
+  .law-page__content > .iet2TRwpa65B6Itl3s8WBw\=\= {
+    width: calc(100vw - 16px) !important;
+    margin-top: 8px !important;
+    margin-bottom: 8px !important;
+    height: calc(100vh - 16px) !important;
+  }
+}

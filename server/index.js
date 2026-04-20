@@ -10,6 +10,8 @@ import { startScheduledCourseSync } from "./lib/scheduler.js";
 import { authRouter } from "./routes/auth.js";
 import { userRouter } from "./routes/user.js";
 import { adminRouter } from "./routes/admin.js";
+import { lawUserRouter } from "./routes/law-user.js";
+import { lawAdminRouter } from "./routes/law-admin.js";
 import { shopUserRouter } from "./routes/shop-user.js";
 import { shopAdminRouter } from "./routes/shop-admin.js";
 import { paymentRouter } from "./routes/payment.js";
@@ -61,6 +63,8 @@ app.get("/api/health", (_req, res) => {
 
 app.use("/api/auth", authRouter);
 app.use("/api/payment", paymentRouter);
+app.use("/api/user/laws", lawUserRouter);
+app.use("/api/admin/laws", lawAdminRouter);
 app.use("/api/user/shop", shopUserRouter);
 app.use("/api/admin/shop", shopAdminRouter);
 app.use("/api/user", userRouter);

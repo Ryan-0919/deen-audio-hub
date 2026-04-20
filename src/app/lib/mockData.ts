@@ -186,6 +186,67 @@ export interface AudioLibraryItem extends Audio {
   courseRefs: { courseId: string; courseName: string; tagId: string; tagName: string }[];
 }
 
+export type LawNodeType = "folder" | "record";
+
+export interface LawTreeNode {
+  id: string;
+  title: string;
+  nodeType: LawNodeType;
+  pathLabels: string[];
+  recordId?: string;
+  recordCount: number;
+  children?: LawTreeNode[];
+}
+
+export interface LawRecordMeta {
+  id: string;
+  sourceLawId: number;
+  topCategoryId: number;
+  topCategoryTitle: string;
+  bookTitle: string;
+  title: string;
+  pathLabels: string[];
+  pathString: string;
+  updatedAt: string;
+}
+
+export interface LawContentItem extends LawRecordMeta {
+  content: string;
+}
+
+export interface LawSearchResult extends LawRecordMeta {
+  snippet: string;
+}
+
+export interface LawOverviewPayload {
+  tree: LawTreeNode[];
+  totalRecords: number;
+  topCategoryCount: number;
+  lastUpdated: string;
+  initialNodeId: string;
+}
+
+export interface LawNodeContentPayload {
+  nodeId: string;
+  nodeType: LawNodeType;
+  nodeTitle: string;
+  pathLabels: string[];
+  items: LawContentItem[];
+  total: number;
+}
+
+export interface LawAdminCategoryOption {
+  id: number;
+  title: string;
+}
+
+export interface LawAdminSummary {
+  totalRecords: number;
+  topCategoryCount: number;
+  lastUpdated: string;
+  topCategories: LawAdminCategoryOption[];
+}
+
 export type ShopProductType = "virtual" | "physical" | "hybrid";
 export type ShopProductStatus = "draft" | "on_sale" | "off_sale";
 export type ShopOrderStatus = "pending_payment" | "paid" | "partially_fulfilled" | "completed" | "cancelled" | "refunding" | "refunded";
@@ -908,6 +969,12 @@ export const mockApi = {
   getUserProgress: (_userId: string, courseId: string, audioId: string) =>
     request<UserProgress | undefined>(`/api/user/audios/${audioId}/progress?courseId=${encodeURIComponent(courseId)}`, { auth: "user" }),
 
+  getLawOverview: () => request<LawOverviewPayload>("/api/user/laws/overview", { auth: "user" }),
+  getLawContent: (nodeId: string) =>
+    request<LawNodeContentPayload>(`/api/user/laws/content${buildQueryString({ nodeId })}`, { auth: "user" }),
+  searchLaws: (keyword: string) =>
+    request<LawSearchResult[]>(`/api/user/laws/search${buildQueryString({ keyword })}`, { auth: "user" }),
+
   getShopHome: () => request<ShopHomePayload>("/api/user/shop/home", { auth: "user" }),
   getShopCategories: () => request<ShopCategory[]>("/api/user/shop/categories", { auth: "user" }),
   getShopProducts: (params?: {
@@ -1199,6 +1266,24 @@ export const mockApi = {
 
   extractScriptFile: (file: File) =>
     uploadSingleFile<{ text: string }>("/api/admin/uploads/script-file", file, "admin"),
+
+  getAdminLawSummary: () => request<LawAdminSummary>("/api/admin/laws/summary", { auth: "admin" }),
+  getAdminLawEntries: (params?: { keyword?: string; topCategoryId?: string; page?: number; pageSize?: number }) =>
+    request<PagedResult<LawRecordMeta>>(
+      `/api/admin/laws/entries${buildQueryString({
+        keyword: params?.keyword,
+        topCategoryId: params?.topCategoryId && params.topCategoryId !== "all" ? params.topCategoryId : undefined,
+        page: params?.page,
+        pageSize: params?.pageSize,
+      })}`,
+      { auth: "admin" },
+    ),
+  syncAdminLaws: () =>
+    postJson<{ source: string; sourceLabel: string; totalRecords: number; topCategoryCount: number; syncedAt: string }>(
+      "/api/admin/laws/sync",
+      {},
+      "admin",
+    ),
 
   createCourse: async (payload: {
     name: string;

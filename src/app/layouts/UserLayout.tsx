@@ -1,4 +1,4 @@
-import { BookMarked, UserRound } from "lucide-react";
+import { BookMarked, Scale, UserRound } from "lucide-react";
 import { NavLink, Navigate, Outlet, useLocation } from "react-router";
 import { cn } from "../components/ui/utils";
 import { getUserToken } from "../lib/user-session";
@@ -10,6 +10,12 @@ const navigation = [
     icon: BookMarked,
     isActive: (pathname: string) =>
       pathname.startsWith("/user/courses") || pathname.startsWith("/user/course/") || pathname.startsWith("/user/player/"),
+  },
+  {
+    label: "法条",
+    to: "/user/laws",
+    icon: Scale,
+    isActive: (pathname: string) => pathname.startsWith("/user/laws"),
   },
   {
     label: "我的",
@@ -37,7 +43,7 @@ export function UserLayout() {
 
       {!hideNavigation ? (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/80 bg-white/95 backdrop-blur">
-          <div className="mx-auto grid h-16 max-w-sm grid-cols-2 px-2">
+          <div className="mx-auto grid h-16 max-w-sm grid-cols-3 px-2">
             {navigation.map((item) => {
               const Icon = item.icon;
               const active = item.isActive(location.pathname);
