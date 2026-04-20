@@ -40,6 +40,19 @@ const SCRIPT_MIME_TYPES = new Set([
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ]);
+const HANDOUT_EXTENSIONS = new Set([".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".txt", ".zip"]);
+const HANDOUT_MIME_TYPES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/plain",
+  "application/zip",
+  "application/x-zip-compressed",
+]);
 const EXCEL_EXTENSIONS = new Set([".xls", ".xlsx"]);
 const EXCEL_MIME_TYPES = new Set([
   "application/vnd.ms-excel",
@@ -102,6 +115,14 @@ const uploadScript = createUploadMiddleware({
   allowedExtensions: SCRIPT_EXTENSIONS,
   allowedMimeTypes: SCRIPT_MIME_TYPES,
   fileLabel: "文案文件",
+});
+
+const uploadHandout = createUploadMiddleware({
+  maxFileSize: 50 * MB,
+  maxFileCount: 1,
+  allowedExtensions: HANDOUT_EXTENSIONS,
+  allowedMimeTypes: HANDOUT_MIME_TYPES,
+  fileLabel: "璁蹭箟鏂囦欢",
 });
 
 const uploadExcel = createUploadMiddleware({
@@ -1304,9 +1325,12 @@ adminRouter.get("/courses/:courseId/detail", async (req, res) => {
 });
 
 adminRouter.post("/courses", async (req, res) => {
-  const { name, cover, coverObjectKey, description, status, openTime, tags = [] } = req.body ?? {};
+  const { name, cover, coverObjectKey, handoutUrl, handoutObjectKey, handoutName, description, status, openTime, tags = [] } = req.body ?? {};
   if (!name || !cover || !description) return fail(res, "请填写完整的课程信息", 400);
   const resolvedCoverObjectKey = coverObjectKey || extractObjectKeyFromUrl(cover) || null;
+  const resolvedHandoutUrl = `${handoutUrl ?? ""}`.trim() || null;
+  const resolvedHandoutObjectKey = handoutObjectKey || extractObjectKeyFromUrl(resolvedHandoutUrl || "") || null;
+  const resolvedHandoutName = `${handoutName ?? ""}`.trim() || null;
 
   const lastCourse = await prisma.course.findFirst({
     orderBy: { sortOrder: "desc" },
@@ -1317,6 +1341,9 @@ adminRouter.post("/courses", async (req, res) => {
       name,
       coverUrl: cover,
       coverObjectKey: resolvedCoverObjectKey,
+      handoutUrl: resolvedHandoutUrl,
+      handoutObjectKey: resolvedHandoutObjectKey,
+      handoutName: resolvedHandoutName,
       description,
       status,
       openTime: toDate(openTime),
@@ -1353,6 +1380,7 @@ adminRouter.post("/courses", async (req, res) => {
     detail: {
       status: course.status,
       tags: tags.map((tag) => `${tag}`.trim()).filter(Boolean),
+      hasHandout: Boolean(course.handoutObjectKey || course.handoutUrl),
     },
   });
 
@@ -1384,7 +1412,7 @@ adminRouter.patch("/courses/order", async (req, res) => {
 adminRouter.patch("/courses/:courseId", async (req, res) => {
   const previousCourse = await prisma.course.findUnique({
     where: { id: req.params.courseId },
-    select: { id: true, name: true, status: true, coverObjectKey: true, openTime: true },
+    select: { id: true, name: true, status: true, coverObjectKey: true, handoutObjectKey: true, openTime: true },
   });
 
   const payload = { ...req.body };
@@ -1392,6 +1420,15 @@ adminRouter.patch("/courses/:courseId", async (req, res) => {
   if (payload.cover) payload.coverUrl = payload.cover;
   if (payload.coverObjectKey !== undefined || payload.cover) {
     payload.coverObjectKey = payload.coverObjectKey || extractObjectKeyFromUrl(payload.cover || "") || null;
+  }
+  if (payload.handoutUrl !== undefined) {
+    payload.handoutUrl = `${payload.handoutUrl ?? ""}`.trim() || null;
+  }
+  if (payload.handoutName !== undefined) {
+    payload.handoutName = `${payload.handoutName ?? ""}`.trim() || null;
+  }
+  if (payload.handoutObjectKey !== undefined || payload.handoutUrl !== undefined) {
+    payload.handoutObjectKey = payload.handoutObjectKey || extractObjectKeyFromUrl(payload.handoutUrl || "") || null;
   }
 
   delete payload.cover;
@@ -1447,6 +1484,10 @@ adminRouter.patch("/courses/:courseId", async (req, res) => {
     previousObjectKey: previousCourse?.coverObjectKey ?? "",
     nextObjectKey: course.coverObjectKey ?? "",
   });
+  cleanupReplacedObject({
+    previousObjectKey: previousCourse?.handoutObjectKey ?? "",
+    nextObjectKey: course.handoutObjectKey ?? "",
+  });
   recordAdminAction(req, {
     action: "course.update",
     entityType: "course",
@@ -1456,6 +1497,7 @@ adminRouter.patch("/courses/:courseId", async (req, res) => {
       status: course.status,
       previousStatus: previousCourse?.status ?? "",
       openTime: course.openTime,
+      hasHandout: Boolean(course.handoutObjectKey || course.handoutUrl),
     },
   });
 
@@ -1465,7 +1507,7 @@ adminRouter.patch("/courses/:courseId", async (req, res) => {
 adminRouter.delete("/courses/:courseId", async (req, res) => {
   const targetCourse = await prisma.course.findUnique({
     where: { id: req.params.courseId },
-    select: { id: true, name: true, coverObjectKey: true },
+    select: { id: true, name: true, coverObjectKey: true, handoutObjectKey: true },
   });
   await prisma.$transaction([
     prisma.userProgress.deleteMany({
@@ -1476,6 +1518,7 @@ adminRouter.delete("/courses/:courseId", async (req, res) => {
     }),
   ]);
   cleanupRemovedObject(targetCourse?.coverObjectKey ?? "");
+  cleanupRemovedObject(targetCourse?.handoutObjectKey ?? "");
   recordAdminAction(req, {
     action: "course.delete",
     entityType: "course",
@@ -2053,6 +2096,20 @@ adminRouter.post("/uploads/course-cover", uploadImage.single("file"), async (req
   return ok(res, uploaded, "封面上传成功");
 });
 
+adminRouter.post("/uploads/course-handout", uploadHandout.single("file"), async (req, res) => {
+  const file = req.file;
+  if (!file) return fail(res, "璇烽€夋嫨璁蹭箟鏂囦欢", 400);
+
+  const uploaded = await uploadBuffer({
+    fileName: file.originalname,
+    buffer: file.buffer,
+    mimeType: file.mimetype,
+    folder: "course-handouts",
+  });
+
+  return ok(res, uploaded, "璁蹭箟涓婁紶鎴愬姛");
+});
+
 adminRouter.post("/uploads/system-image", uploadImage.single("file"), async (req, res) => {
   const file = req.file;
   if (!file) return fail(res, "请选择图片文件", 400);
@@ -2067,6 +2124,20 @@ adminRouter.post("/uploads/system-image", uploadImage.single("file"), async (req
   return ok(res, uploaded, "系统图片上传成功");
 });
 
+adminRouter.post("/uploads/shop-image", uploadImage.single("file"), async (req, res) => {
+  const file = req.file;
+  if (!file) return fail(res, "请选择商品图片", 400);
+
+  const uploaded = await uploadBuffer({
+    fileName: file.originalname,
+    buffer: file.buffer,
+    mimeType: file.mimetype,
+    folder: "shop-images",
+  });
+
+  return ok(res, uploaded, "商品图片上传成功");
+});
+
 adminRouter.post("/library/audios/upload", uploadLibraryAudio.array("files"), async (req, res) => {
   const files = req.files;
   const { folderId, script = "" } = req.body ?? {};
@@ -2078,6 +2149,11 @@ adminRouter.post("/library/audios/upload", uploadLibraryAudio.array("files"), as
     where: { id: folderId },
     select: { name: true },
   });
+
+  if (!folder) {
+    return fail(res, "涓婁紶鐩爣鏂囦欢澶逛笉瀛樺湪锛岃鍒锋柊椤甸潰鍚庨噸璇?", 400);
+  }
+
   const created = [];
 
   try {
@@ -2137,6 +2213,14 @@ adminRouter.post("/library/audios/upload", uploadLibraryAudio.array("files"), as
 
     return ok(res, created, "音频上传成功");
   } catch (error) {
+    console.error("Library audio upload failed:", {
+      folderId,
+      folderName: folder.name,
+      fileCount: files.length,
+      fileNames: files.map((file) => file.originalname),
+      message: error?.message,
+      stack: error?.stack,
+    });
     void notifyMarkdownSafely(
       "audio-library-upload-failed",
       buildAudioUploadFailedMarkdown({

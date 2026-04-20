@@ -16,10 +16,16 @@ const ossClient = ossConfigured
   ? new OSS({
       region: config.ossRegion,
       bucket: config.ossBucket,
+      secure: config.ossSecure,
+      timeout: config.ossTimeoutMs,
+      retryMax: config.ossRetryMax,
       accessKeyId: config.ossAccessKeyId,
       accessKeySecret: config.ossAccessKeySecret,
     })
   : null;
+
+const MAX_OBJECT_KEY_LENGTH = 255;
+const MAX_SLUG_LENGTH = 120;
 
 const buildPublicUrl = (objectKey, fallbackUrl = "") => {
   if (config.ossPublicBaseUrl) {
@@ -28,10 +34,18 @@ const buildPublicUrl = (objectKey, fallbackUrl = "") => {
   return fallbackUrl;
 };
 
+const buildOriginObjectUrl = (objectKey = "") => {
+  if (!objectKey) return "";
+  const protocol = config.ossSecure ? "https" : "http";
+  return `${protocol}://${config.ossBucket}.${config.ossRegion}.aliyuncs.com/${objectKey}`;
+};
+
 const getDefaultBucketHosts = () => [
   `http://${config.ossBucket}.${config.ossRegion}.aliyuncs.com/`,
   `https://${config.ossBucket}.${config.ossRegion}.aliyuncs.com/`,
 ];
+
+const stripUrlQueryAndHash = (value = "") => value.split("#", 1)[0].split("?", 1)[0];
 
 export const extractObjectKeyFromUrl = (url = "") => {
   if (!url) return "";
@@ -39,13 +53,13 @@ export const extractObjectKeyFromUrl = (url = "") => {
   if (config.ossPublicBaseUrl) {
     const base = `${config.ossPublicBaseUrl.replace(/\/$/, "")}/`;
     if (url.startsWith(base)) {
-      return decodeURIComponent(url.slice(base.length));
+      return decodeURIComponent(stripUrlQueryAndHash(url.slice(base.length)));
     }
   }
 
   for (const host of getDefaultBucketHosts()) {
     if (url.startsWith(host)) {
-      return decodeURIComponent(url.slice(host.length));
+      return decodeURIComponent(stripUrlQueryAndHash(url.slice(host.length)));
     }
   }
 
@@ -88,9 +102,16 @@ export const uploadBuffer = async ({ fileName, buffer, mimeType, folder }) => {
     (fileName.includes(".") ? fileName.split(".").pop() : "") ||
     "bin";
   const baseName = normalizedFileName.replace(/\.[^.]+$/, "") || "file";
-  const objectKey = `${folder}/${Date.now()}-${randomUUID()}-${slugify(baseName)}.${ext}`;
+  const slug = slugify(baseName).slice(0, MAX_SLUG_LENGTH) || "file";
+  const suffix = `${Date.now()}-${randomUUID()}-${slug}.${ext}`;
+  const folderPrefix = `${folder}/`;
+  const maxSuffixLength = Math.max(MAX_OBJECT_KEY_LENGTH - folderPrefix.length, 32);
+  const objectKey = `${folderPrefix}${suffix.slice(0, maxSuffixLength)}`;
 
-  const result = await ossClient.put(objectKey, buffer, {
+  const result = await ossClient.multipartUpload(objectKey, buffer, {
+    timeout: config.ossTimeoutMs,
+    parallel: config.ossMultipartParallel,
+    mime: mimeType || lookupMime(normalizedFileName) || lookupMime(fileName) || "application/octet-stream",
     headers: {
       "Content-Type": mimeType || lookupMime(normalizedFileName) || lookupMime(fileName) || "application/octet-stream",
     },
@@ -98,7 +119,11 @@ export const uploadBuffer = async ({ fileName, buffer, mimeType, folder }) => {
 
   return {
     objectKey,
-    url: buildPublicUrl(objectKey, result.url),
+    url: buildPublicUrl(objectKey, buildOriginObjectUrl(objectKey)),
+    readableUrl: getReadableObjectUrl({
+      objectKey,
+      fallbackUrl: buildPublicUrl(objectKey, buildOriginObjectUrl(objectKey)),
+    }),
   };
 };
 

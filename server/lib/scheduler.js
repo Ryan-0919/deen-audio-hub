@@ -1,5 +1,6 @@
 import { prisma } from "./prisma.js";
 import { writeSystemAuditLog } from "./audit.js";
+import { config } from "./config.js";
 import { formatDate } from "./time.js";
 import {
   buildCourseAutoOpenFailureMarkdown,
@@ -9,6 +10,7 @@ import {
 } from "./notifications.js";
 
 let runningSyncPromise = null;
+let runningExpiredShopOrderPromise = null;
 
 const DAILY_SUMMARY_HOUR = 20;
 const DAILY_SUMMARY_MINUTE = 0;
@@ -35,6 +37,41 @@ const getNextDailySummaryTime = (value = new Date()) => {
   }
 
   return next;
+};
+
+const resolveShopOrderPayExpireAt = (order) =>
+  order?.payExpireAt
+    ? new Date(order.payExpireAt)
+    : new Date(new Date(order.createdAt).getTime() + config.shopOrderAutoCloseMinutes * 60 * 1000);
+
+const isShopOrderExpired = (order, now = new Date()) =>
+  order?.status === "pending_payment" &&
+  order?.paymentStatus === "unpaid" &&
+  resolveShopOrderPayExpireAt(order).getTime() <= now.getTime();
+
+const restoreShopOrderStock = async (db, orderId) => {
+  const items = await db.shopOrderItem.findMany({
+    where: {
+      orderId,
+    },
+    select: {
+      skuId: true,
+      quantity: true,
+    },
+  });
+
+  for (const item of items) {
+    await db.shopSku.update({
+      where: {
+        id: item.skuId,
+      },
+      data: {
+        stock: {
+          increment: item.quantity,
+        },
+      },
+    });
+  }
 };
 
 const syncScheduledCoursesInternal = async () => {
@@ -143,6 +180,110 @@ const syncScheduledCoursesInternal = async () => {
   return result;
 };
 
+const syncExpiredShopOrdersInternal = async () => {
+  const now = new Date();
+  const fallbackExpireBefore = new Date(now.getTime() - config.shopOrderAutoCloseMinutes * 60 * 1000);
+
+  const dueOrders = await prisma.shopOrder.findMany({
+    where: {
+      status: "pending_payment",
+      paymentStatus: "unpaid",
+      OR: [
+        {
+          payExpireAt: {
+            lte: now,
+          },
+        },
+        {
+          payExpireAt: null,
+          createdAt: {
+            lte: fallbackExpireBefore,
+          },
+        },
+      ],
+    },
+    select: {
+      id: true,
+      orderNo: true,
+      createdAt: true,
+      payExpireAt: true,
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+    take: 100,
+  });
+
+  const result = {
+    closedCount: 0,
+    failedOrderIds: [],
+  };
+
+  for (const dueOrder of dueOrders) {
+    try {
+      const closedOrder = await prisma.$transaction(async (tx) => {
+        const currentOrder = await tx.shopOrder.findUnique({
+          where: {
+            id: dueOrder.id,
+          },
+          select: {
+            id: true,
+            orderNo: true,
+            status: true,
+            paymentStatus: true,
+            createdAt: true,
+            payExpireAt: true,
+          },
+        });
+
+        if (!currentOrder || !isShopOrderExpired(currentOrder, now)) {
+          return null;
+        }
+
+        const updated = await tx.shopOrder.updateMany({
+          where: {
+            id: currentOrder.id,
+            status: "pending_payment",
+            paymentStatus: "unpaid",
+          },
+          data: {
+            status: "cancelled",
+            cancelledAt: now,
+          },
+        });
+
+        if (updated.count === 0) {
+          return null;
+        }
+
+        await restoreShopOrderStock(tx, currentOrder.id);
+        return currentOrder;
+      });
+
+      if (!closedOrder) {
+        continue;
+      }
+
+      result.closedCount += 1;
+      await writeSystemAuditLog({
+        action: "shop.order.auto_close",
+        entityType: "shopOrder",
+        entityId: closedOrder.id,
+        entityName: closedOrder.orderNo,
+        detail: {
+          reason: "payment_timeout",
+          payExpireAt: resolveShopOrderPayExpireAt(closedOrder),
+        },
+      });
+    } catch (error) {
+      result.failedOrderIds.push(dueOrder.id);
+      console.error(`Expired shop order close failed for order ${dueOrder.id}:`, error);
+    }
+  }
+
+  return result;
+};
+
 const sendDailyActiveSummary = async () => {
   const now = new Date();
   const systemConfig = await prisma.systemConfig.findUnique({
@@ -245,6 +386,23 @@ const startCourseSyncLoop = (intervalMs) => {
   }, safeInterval);
 };
 
+const startExpiredShopOrderLoop = (intervalMs) => {
+  const safeInterval = Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : 30000;
+
+  const run = async () => {
+    try {
+      await syncExpiredShopOrders();
+    } catch (error) {
+      console.error("Expired shop order sync failed:", error);
+    }
+  };
+
+  void run();
+  return setInterval(() => {
+    void run();
+  }, safeInterval);
+};
+
 const startDailySummaryJob = () => {
   let timer = null;
 
@@ -287,13 +445,30 @@ export const syncScheduledCourses = async () => {
   return currentRun;
 };
 
+export const syncExpiredShopOrders = async () => {
+  if (runningExpiredShopOrderPromise) {
+    return runningExpiredShopOrderPromise;
+  }
+
+  const currentRun = syncExpiredShopOrdersInternal().finally(() => {
+    if (runningExpiredShopOrderPromise === currentRun) {
+      runningExpiredShopOrderPromise = null;
+    }
+  });
+
+  runningExpiredShopOrderPromise = currentRun;
+  return currentRun;
+};
+
 export const startScheduledCourseSync = (intervalMs) => {
   const syncInterval = startCourseSyncLoop(intervalMs);
+  const expiredShopOrderInterval = startExpiredShopOrderLoop(intervalMs);
   const dailySummaryJob = startDailySummaryJob();
 
   return {
     stop: () => {
       clearInterval(syncInterval);
+      clearInterval(expiredShopOrderInterval);
       dailySummaryJob.stop();
     },
   };

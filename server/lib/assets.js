@@ -12,12 +12,24 @@ export const cleanupObjectIfUnused = async (objectKey = "") => {
   const normalized = `${objectKey ?? ""}`.trim();
   if (!normalized) return false;
 
-  const [audioCount, courseCount, systemConfig] = await Promise.all([
+  const [audioCount, courseCoverCount, courseHandoutCount, productCoverCount, productImageCount, bannerImageCount, systemConfig] = await Promise.all([
     prisma.audio.count({
       where: { objectKey: normalized },
     }),
     prisma.course.count({
       where: { coverObjectKey: normalized },
+    }),
+    prisma.course.count({
+      where: { handoutObjectKey: normalized },
+    }),
+    prisma.shopProduct.count({
+      where: { coverObjectKey: normalized },
+    }),
+    prisma.shopProductImage.count({
+      where: { imageObjectKey: normalized },
+    }),
+    prisma.shopBanner.count({
+      where: { imageObjectKey: normalized },
     }),
     prisma.systemConfig.findUnique({
       where: { id: 1 },
@@ -28,7 +40,15 @@ export const cleanupObjectIfUnused = async (objectKey = "") => {
     }),
   ]);
 
-  if (audioCount > 0 || courseCount > 0 || hasSystemImageReference(systemConfig, normalized)) {
+  if (
+    audioCount > 0 ||
+    courseCoverCount > 0 ||
+    courseHandoutCount > 0 ||
+    productCoverCount > 0 ||
+    productImageCount > 0 ||
+    bannerImageCount > 0 ||
+    hasSystemImageReference(systemConfig, normalized)
+  ) {
     return false;
   }
 

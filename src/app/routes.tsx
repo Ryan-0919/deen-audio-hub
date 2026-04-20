@@ -14,8 +14,15 @@ const withSuspense = (element: ReactNode) => <Suspense fallback={<RouteLoading /
 
 function LegacyUserLoginRedirect() {
   const location = useLocation();
-
   return <Navigate to={{ pathname: "/", search: location.search, hash: location.hash }} replace />;
+}
+
+function UserShopHiddenRedirect() {
+  return <Navigate to="/user/courses" replace />;
+}
+
+function AdminShopHiddenRedirect() {
+  return <Navigate to="/admin/courses" replace />;
 }
 
 const UserLayout = lazyPage(() => import("./layouts/UserLayout"), "UserLayout");
@@ -24,6 +31,7 @@ const UserLogin = lazyPage(() => import("./pages/user/UserLogin"), "UserLogin");
 const MyCourses = lazyPage(() => import("./pages/user/MyCourses"), "MyCourses");
 const CourseDetail = lazyPage(() => import("./pages/user/CourseDetail"), "CourseDetail");
 const AudioPlayer = lazyPage(() => import("./pages/user/AudioPlayer"), "AudioPlayer");
+const UserMe = lazyPage(() => import("./pages/user/UserMe"), "UserMe");
 const AdminLogin = lazyPage(() => import("./pages/admin/AdminLogin"), "AdminLogin");
 const UserList = lazyPage(() => import("./pages/admin/UserList"), "UserList");
 const CourseList = lazyPage(() => import("./pages/admin/CourseList"), "CourseList");
@@ -51,6 +59,8 @@ export const router = createBrowserRouter([
       { path: "courses", element: withSuspense(<MyCourses />) },
       { path: "course/:courseId", element: withSuspense(<CourseDetail />) },
       { path: "player/:courseId/:audioId", element: withSuspense(<AudioPlayer />) },
+      { path: "shop/*", element: <UserShopHiddenRedirect /> },
+      { path: "me", element: withSuspense(<UserMe />) },
     ],
   },
   {
@@ -68,6 +78,7 @@ export const router = createBrowserRouter([
       { path: "courses/:courseId/edit", element: withSuspense(<CourseEdit />) },
       { path: "courses/:courseId/content", element: withSuspense(<CourseContent />) },
       { path: "library", element: withSuspense(<AudioLibrary />) },
+      { path: "shop/*", element: <AdminShopHiddenRedirect /> },
       { path: "logs", element: withSuspense(<SystemLogs />) },
       { path: "settings", element: withSuspense(<SystemConfig />) },
       { path: "image-settings", element: withSuspense(<SystemImageConfig />) },

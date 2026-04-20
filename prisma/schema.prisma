@@ -17,6 +17,63 @@ enum CourseStatus {
   scheduled
 }
 
+enum ShopProductType {
+  virtual
+  physical
+  hybrid
+}
+
+enum ShopProductStatus {
+  draft
+  on_sale
+  off_sale
+}
+
+enum ShopOrderStatus {
+  pending_payment
+  paid
+  partially_fulfilled
+  completed
+  cancelled
+  refunding
+  refunded
+}
+
+enum ShopPaymentStatus {
+  unpaid
+  paid
+  failed
+  refunded
+}
+
+enum ShopDigitalFulfillmentStatus {
+  pending
+  success
+  failed
+}
+
+enum ShopShipmentStatus {
+  pending
+  shipped
+  in_transit
+  signed
+  failed
+}
+
+enum ShopRefundStatus {
+  pending
+  approved
+  rejected
+  completed
+  failed
+}
+
+enum ShopBannerLinkType {
+  product
+  category
+  custom
+}
+
 model Admin {
   id           String   @id @default(cuid())
   account      String   @unique @db.VarChar(50)
@@ -39,6 +96,10 @@ model User {
   permissions    UserCoursePermission[]
   devices        UserDevice[]
   progresses     UserProgress[]
+  addresses      UserAddress[]
+  cartItems      ShopCartItem[]
+  shopOrders     ShopOrder[]
+  digitalFulfillments ShopDigitalFulfillment[]
 }
 
 model UserDevice {
@@ -61,6 +122,9 @@ model Course {
   name              String                 @db.VarChar(191)
   coverUrl          String                 @db.VarChar(500)
   coverObjectKey    String?                @db.VarChar(255)
+  handoutUrl        String?                @db.VarChar(500)
+  handoutObjectKey  String?                @db.VarChar(255)
+  handoutName       String?                @db.VarChar(255)
   description       String                 @db.LongText
   status            CourseStatus           @default(closed)
   openTime          DateTime
@@ -72,6 +136,7 @@ model Course {
   tags              Tag[]
   permissions       UserCoursePermission[]
   courseAudios      CourseAudio[]
+  shopProducts      ShopProductCourse[]
 
   @@index([status, openTime])
 }
@@ -214,5 +279,329 @@ model WebhookLog {
 
   @@index([createdAt])
   @@index([scene, createdAt])
+  @@index([status, createdAt])
+}
+
+model ShopConfig {
+  id                  Int         @id @default(1)
+  shopNotice          String?     @db.LongText
+  customerServiceUrl  String?     @db.VarChar(500)
+  featuredProductIds  String?     @db.LongText
+  featuredCategoryIds String?     @db.LongText
+  paymentGuide        String?     @db.LongText
+  enableWechatH5      Boolean     @default(true)
+  enableWechatJsapi   Boolean     @default(true)
+  enableAlipayWap     Boolean     @default(true)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  banners             ShopBanner[]
+}
+
+model ShopBanner {
+  id             String             @id @default(cuid())
+  configId       Int                @default(1)
+  title          String?            @db.VarChar(100)
+  imageUrl       String             @db.VarChar(500)
+  imageObjectKey String?            @db.VarChar(255)
+  linkType       ShopBannerLinkType @default(product)
+  linkTarget     String             @db.VarChar(255)
+  sortOrder      Int                @default(0)
+  status         Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  config         ShopConfig         @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  @@index([configId, sortOrder])
+  @@index([status, sortOrder])
+}
+
+model ShopCategory {
+  id        String        @id @default(cuid())
+  name      String        @unique @db.VarChar(100)
+  sortOrder Int           @default(0)
+  status    Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  products  ShopProduct[]
+
+  @@index([sortOrder])
+}
+
+model ShopProduct {
+  id               String             @id @default(cuid())
+  categoryId       String?
+  name             String             @db.VarChar(191)
+  subtitle         String?            @db.VarChar(255)
+  coverUrl         String             @db.VarChar(500)
+  coverObjectKey   String?            @db.VarChar(255)
+  type             ShopProductType
+  status           ShopProductStatus  @default(draft)
+  description      String?            @db.LongText
+  detailContent    String?            @db.LongText
+  requiresShipping Boolean            @default(false)
+  sortOrder        Int                @default(0)
+  salesCount       Int                @default(0)
+  isDeleted        Boolean            @default(false)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  category         ShopCategory?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  images           ShopProductImage[]
+  skus             ShopSku[]
+  courses          ShopProductCourse[]
+  orderItems       ShopOrderItem[]
+  cartItems        ShopCartItem[]
+
+  @@index([categoryId, status, sortOrder])
+  @@index([type, status, sortOrder])
+}
+
+model ShopProductImage {
+  id             String      @id @default(cuid())
+  productId      String
+  imageUrl       String      @db.VarChar(500)
+  imageObjectKey String?     @db.VarChar(255)
+  sortOrder      Int         @default(0)
+  createdAt      DateTime    @default(now())
+
+  product        ShopProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, sortOrder])
+}
+
+model ShopProductCourse {
+  id        String      @id @default(cuid())
+  productId String
+  courseId  String
+  createdAt DateTime    @default(now())
+
+  product   ShopProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  course    Course      @relation(fields: [courseId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, courseId])
+  @@index([courseId])
+}
+
+model ShopSku {
+  id            String      @id @default(cuid())
+  productId     String
+  name          String      @db.VarChar(191)
+  price         Decimal     @db.Decimal(10, 2)
+  originalPrice Decimal?    @db.Decimal(10, 2)
+  stock         Int         @default(0)
+  weight        Int?        @default(0)
+  isDefault     Boolean     @default(false)
+  status        Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  product       ShopProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  cartItems     ShopCartItem[]
+  orderItems    ShopOrderItem[]
+
+  @@index([productId, status])
+}
+
+model UserAddress {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String   @db.VarChar(50)
+  phone     String   @db.VarChar(20)
+  province  String   @db.VarChar(50)
+  city      String   @db.VarChar(50)
+  district  String   @db.VarChar(50)
+  address   String   @db.VarChar(255)
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isDefault])
+}
+
+model ShopCartItem {
+  id        String      @id @default(cuid())
+  userId    String
+  productId String
+  skuId     String
+  quantity  Int         @default(1)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   ShopProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku       ShopSku     @relation(fields: [skuId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, skuId])
+  @@index([userId, updatedAt])
+}
+
+model ShopOrder {
+  id               String                  @id @default(cuid())
+  orderNo          String                  @unique @db.VarChar(50)
+  userId           String
+  status           ShopOrderStatus         @default(pending_payment)
+  paymentStatus    ShopPaymentStatus       @default(unpaid)
+  totalAmount      Decimal                 @db.Decimal(10, 2)
+  payAmount        Decimal                 @db.Decimal(10, 2)
+  freightAmount    Decimal                 @default(0) @db.Decimal(10, 2)
+  payExpireAt      DateTime?
+  remark           String?                 @db.VarChar(255)
+  receiverName     String?                 @db.VarChar(50)
+  receiverPhone    String?                 @db.VarChar(20)
+  receiverProvince String?                 @db.VarChar(50)
+  receiverCity     String?                 @db.VarChar(50)
+  receiverDistrict String?                 @db.VarChar(50)
+  receiverAddress  String?                 @db.VarChar(255)
+  paidAt           DateTime?
+  cancelledAt      DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  user             User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items            ShopOrderItem[]
+  payments         ShopPaymentRecord[]
+  digitalFulfillments ShopDigitalFulfillment[]
+  shipments        ShopShipment[]
+  refunds          ShopRefundRecord[]
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([paymentStatus, createdAt])
+  @@index([status, paymentStatus, payExpireAt])
+}
+
+model ShopOrderItem {
+  id                    String      @id @default(cuid())
+  orderId               String
+  productId             String
+  skuId                 String
+  productNameSnapshot   String      @db.VarChar(191)
+  productTypeSnapshot   ShopProductType
+  coverSnapshot         String      @db.VarChar(500)
+  priceSnapshot         Decimal     @db.Decimal(10, 2)
+  originalPriceSnapshot Decimal?    @db.Decimal(10, 2)
+  quantity              Int         @default(1)
+  requiresShipping      Boolean     @default(false)
+  courseIdsSnapshot     String?     @db.LongText
+  createdAt             DateTime    @default(now())
+
+  order                 ShopOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product               ShopProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
+  sku                   ShopSku     @relation(fields: [skuId], references: [id], onDelete: Restrict)
+  digitalFulfillments   ShopDigitalFulfillment[]
+  shipmentItems         ShopShipmentItem[]
+  refunds               ShopRefundRecord[]
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([skuId])
+}
+
+model ShopPaymentRecord {
+  id            String            @id @default(cuid())
+  orderId       String
+  channel       String            @db.VarChar(50)
+  status        ShopPaymentStatus @default(unpaid)
+  transactionNo String?           @db.VarChar(100)
+  payAmount     Decimal           @db.Decimal(10, 2)
+  paidAt        DateTime?
+  rawPayload    String?           @db.LongText
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  order         ShopOrder         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@index([transactionNo])
+}
+
+model ShopDigitalFulfillment {
+  id           String                       @id @default(cuid())
+  orderId      String
+  orderItemId  String
+  userId       String
+  status       ShopDigitalFulfillmentStatus @default(pending)
+  grantType    String                       @db.VarChar(50)
+  grantPayload String?                      @db.LongText
+  grantedAt    DateTime?
+  errorMessage String?                      @db.VarChar(500)
+  createdAt    DateTime                     @default(now())
+  updatedAt    DateTime                     @updatedAt
+
+  order        ShopOrder                    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem    ShopOrderItem                @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  user         User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, status])
+  @@index([orderItemId])
+  @@index([userId, status])
+}
+
+model ShopShipment {
+  id         String             @id @default(cuid())
+  orderId    String
+  status     ShopShipmentStatus @default(pending)
+  company    String?            @db.VarChar(100)
+  trackingNo String?            @db.VarChar(100)
+  shippedAt  DateTime?
+  signedAt   DateTime?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  order      ShopOrder          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  items      ShopShipmentItem[]
+  tracks     ShopShipmentTrack[]
+
+  @@index([orderId])
+  @@index([status, createdAt])
+  @@index([trackingNo])
+}
+
+model ShopShipmentItem {
+  id          String        @id @default(cuid())
+  shipmentId  String
+  orderItemId String
+  quantity    Int           @default(1)
+
+  shipment    ShopShipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  orderItem   ShopOrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@unique([shipmentId, orderItemId])
+  @@index([shipmentId])
+  @@index([orderItemId])
+}
+
+model ShopShipmentTrack {
+  id         String       @id @default(cuid())
+  shipmentId String
+  content    String       @db.VarChar(255)
+  location   String?      @db.VarChar(100)
+  trackTime  DateTime
+  createdAt  DateTime     @default(now())
+
+  shipment   ShopShipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentId, trackTime])
+}
+
+model ShopRefundRecord {
+  id            String           @id @default(cuid())
+  orderId       String
+  orderItemId   String?
+  status        ShopRefundStatus @default(pending)
+  refundAmount  Decimal          @db.Decimal(10, 2)
+  reason        String?          @db.VarChar(255)
+  resultMessage String?          @db.VarChar(500)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  order         ShopOrder        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem     ShopOrderItem?   @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, createdAt])
   @@index([status, createdAt])
 }

@@ -9,6 +9,9 @@ import { startScheduledCourseSync } from "./lib/scheduler.js";
 import { authRouter } from "./routes/auth.js";
 import { userRouter } from "./routes/user.js";
 import { adminRouter } from "./routes/admin.js";
+import { shopUserRouter } from "./routes/shop-user.js";
+import { shopAdminRouter } from "./routes/shop-admin.js";
+import { paymentRouter } from "./routes/payment.js";
 
 const app = express();
 app.set("trust proxy", true);
@@ -43,14 +46,22 @@ app.use(
     credentials: true,
   }),
 );
-app.use(express.json({ limit: "20mb" }));
-app.use(express.urlencoded({ extended: true, limit: "20mb" }));
+const captureRawBody = (req, _res, buf, encoding) => {
+  if (!buf?.length) return;
+  req.rawBody = buf.toString(encoding || "utf8");
+};
+
+app.use(express.json({ limit: "20mb", verify: captureRawBody }));
+app.use(express.urlencoded({ extended: true, limit: "20mb", verify: captureRawBody }));
 
 app.get("/api/health", (_req, res) => {
   ok(res, { status: "ok" });
 });
 
 app.use("/api/auth", authRouter);
+app.use("/api/payment", paymentRouter);
+app.use("/api/user/shop", shopUserRouter);
+app.use("/api/admin/shop", shopAdminRouter);
 app.use("/api/user", userRouter);
 app.use("/api/admin", adminRouter);
 

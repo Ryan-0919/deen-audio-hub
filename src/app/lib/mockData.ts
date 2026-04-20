@@ -18,6 +18,10 @@ export interface Course {
   id: string;
   name: string;
   cover: string;
+  handoutUrl: string;
+  handoutObjectKey: string;
+  handoutName: string;
+  hasHandout: boolean;
   description: string;
   status: CourseStatus;
   openTime: string;
@@ -178,6 +182,464 @@ export interface AudioLibraryItem extends Audio {
   courseRefs: { courseId: string; courseName: string; tagId: string; tagName: string }[];
 }
 
+export type ShopProductType = "virtual" | "physical" | "hybrid";
+export type ShopProductStatus = "draft" | "on_sale" | "off_sale";
+export type ShopOrderStatus = "pending_payment" | "paid" | "partially_fulfilled" | "completed" | "cancelled" | "refunding" | "refunded";
+export type ShopPaymentStatus = "unpaid" | "paid" | "failed" | "refunded";
+export type ShopShipmentStatus = "pending" | "shipped" | "in_transit" | "signed" | "failed";
+export type ShopPaymentChannel = "wechat_jsapi" | "wechat_h5" | "alipay_wap";
+export type ShopBannerLinkType = "product" | "category" | "custom";
+
+export interface ShopBanner {
+  id: string;
+  title: string;
+  imageUrl: string;
+  imageSourceUrl?: string;
+  imageObjectKey: string;
+  linkType: ShopBannerLinkType;
+  linkTarget: string;
+  sortOrder: number;
+  status: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ShopConfig {
+  shopNotice: string;
+  customerServiceUrl: string;
+  featuredProductIds: string[];
+  featuredCategoryIds: string[];
+  paymentGuide: string;
+  enableWechatH5: boolean;
+  enableWechatJsapi: boolean;
+  enableAlipayWap: boolean;
+  runtimePaymentMode: string;
+  banners: ShopBanner[];
+}
+
+export interface AdminShopConfigPayload {
+  shopNotice: string;
+  customerServiceUrl: string;
+  featuredProductIds: string[];
+  featuredCategoryIds: string[];
+  paymentGuide: string;
+  enableWechatH5: boolean;
+  enableWechatJsapi: boolean;
+  enableAlipayWap: boolean;
+  banners: {
+    title: string;
+    imageUrl: string;
+    imageObjectKey: string;
+    linkType: ShopBannerLinkType;
+    linkTarget: string;
+    sortOrder: number;
+    status: boolean;
+  }[];
+}
+
+export interface ShopCategory {
+  id: string;
+  name: string;
+  sortOrder: number;
+  status: boolean;
+  productCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ShopProduct {
+  id: string;
+  categoryId: string;
+  categoryName: string;
+  name: string;
+  subtitle: string;
+  coverUrl: string;
+  type: ShopProductType;
+  status: ShopProductStatus;
+  minPrice: string;
+  maxPrice: string;
+  originalPrice: string;
+  defaultSkuId: string;
+  requiresShipping: boolean;
+  salesCount: number;
+  sortOrder: number;
+  skuCount: number;
+  courseCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ShopProductImage {
+  id: string;
+  imageUrl: string;
+  sortOrder: number;
+}
+
+export interface ShopSku {
+  id: string;
+  productId: string;
+  name: string;
+  price: string;
+  originalPrice: string;
+  stock: number;
+  weight: number;
+  isDefault: boolean;
+  status: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ShopBoundCourse {
+  id: string;
+  name: string;
+  coverUrl: string;
+  description: string;
+  status: CourseStatus | "";
+  openTime: string;
+}
+
+export interface ShopProductDetail extends ShopProduct {
+  description: string;
+  detailContent: string;
+  images: ShopProductImage[];
+  skus: ShopSku[];
+  boundCourses: ShopBoundCourse[];
+}
+
+export interface AdminShopProduct extends ShopProduct {
+  coverPreviewUrl?: string;
+  isDeleted: boolean;
+}
+
+export interface AdminShopProductImage extends ShopProductImage {
+  imageObjectKey: string;
+  imagePreviewUrl?: string;
+}
+
+export interface AdminShopSkuInput {
+  id?: string;
+  name: string;
+  price: string;
+  originalPrice: string;
+  stock: number;
+  weight: number;
+  isDefault: boolean;
+  status: boolean;
+  sortOrder: number;
+}
+
+export interface AdminShopProductImageInput {
+  id?: string;
+  imageUrl: string;
+  imageObjectKey: string;
+  sortOrder: number;
+}
+
+export interface AdminShopProductDetail extends AdminShopProduct {
+  coverObjectKey: string;
+  description: string;
+  detailContent: string;
+  images: AdminShopProductImage[];
+  skus: ShopSku[];
+  courseIds: string[];
+  boundCourses: ShopBoundCourse[];
+}
+
+export interface AdminShopProductPayload {
+  categoryId: string;
+  name: string;
+  subtitle: string;
+  coverUrl: string;
+  coverObjectKey?: string;
+  type: ShopProductType;
+  status: ShopProductStatus;
+  description: string;
+  detailContent: string;
+  sortOrder: number;
+  courseIds: string[];
+  images: AdminShopProductImageInput[];
+  skus: AdminShopSkuInput[];
+}
+
+export interface ShopCartItem {
+  id: string;
+  userId: string;
+  productId: string;
+  productName: string;
+  productType: ShopProductType;
+  coverUrl: string;
+  skuId: string;
+  skuName: string;
+  price: string;
+  originalPrice: string;
+  quantity: number;
+  stock: number;
+  subtotal: string;
+  requiresShipping: boolean;
+  available: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ShopCartPayload {
+  items: ShopCartItem[];
+  summary: {
+    itemCount: number;
+    amount: string;
+    availableCount: number;
+  };
+}
+
+export interface ShopAddress {
+  id: string;
+  userId: string;
+  name: string;
+  phone: string;
+  province: string;
+  city: string;
+  district: string;
+  address: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ShopCheckoutPreviewItem {
+  productId: string;
+  productName: string;
+  productType: ShopProductType;
+  coverUrl: string;
+  skuId: string;
+  skuName: string;
+  quantity: number;
+  price: string;
+  originalPrice: string;
+  subtotal: string;
+  requiresShipping: boolean;
+  courseIds: string[];
+}
+
+export interface ShopCheckoutPreview {
+  items: ShopCheckoutPreviewItem[];
+  productAmount: string;
+  freightAmount: string;
+  discountAmount: string;
+  payAmount: string;
+  requiresShipping: boolean;
+  address: ShopAddress | null;
+  warnings: string[];
+}
+
+export interface ShopOrderItem {
+  id: string;
+  orderId: string;
+  productId: string;
+  skuId: string;
+  productName: string;
+  productType: ShopProductType;
+  coverUrl: string;
+  price: string;
+  originalPrice: string;
+  quantity: number;
+  requiresShipping: boolean;
+  courseIds: string[];
+  createdAt: string;
+}
+
+export interface ShopShipmentTrack {
+  id: string;
+  shipmentId: string;
+  content: string;
+  location: string;
+  trackTime: string;
+  createdAt: string;
+}
+
+export interface ShopShipmentItem {
+  id: string;
+  shipmentId: string;
+  orderItemId: string;
+  quantity: number;
+  productName: string;
+  productType: ShopProductType | "";
+  requiresShipping: boolean;
+}
+
+export interface ShopShipment {
+  id: string;
+  orderId: string;
+  orderNo: string;
+  userId: string;
+  userPhone: string;
+  status: ShopShipmentStatus;
+  company: string;
+  trackingNo: string;
+  shippedAt: string;
+  signedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  items: ShopShipmentItem[];
+  latestTrack: ShopShipmentTrack | null;
+  tracks: ShopShipmentTrack[];
+}
+
+export interface ShopPaymentRecord {
+  id: string;
+  orderId: string;
+  channel: ShopPaymentChannel | string;
+  status: ShopPaymentStatus;
+  transactionNo: string;
+  payAmount: string;
+  paidAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ShopDigitalFulfillment {
+  id: string;
+  orderId: string;
+  orderItemId: string;
+  userId: string;
+  status: "pending" | "success" | "failed";
+  grantType: string;
+  grantPayload: string;
+  grantedAt: string;
+  errorMessage: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ShopOrder {
+  id: string;
+  orderNo: string;
+  userId: string;
+  userPhone: string;
+  status: ShopOrderStatus;
+  paymentStatus: ShopPaymentStatus;
+  hasPendingShipmentItems: boolean;
+  shipmentStatus: ShopShipmentStatus;
+  digitalFulfillmentStatus: string;
+  totalAmount: string;
+  payAmount: string;
+  freightAmount: string;
+  payExpireAt: string;
+  remark: string;
+  receiverName: string;
+  receiverPhone: string;
+  receiverProvince: string;
+  receiverCity: string;
+  receiverDistrict: string;
+  receiverAddress: string;
+  paidAt: string;
+  cancelledAt: string;
+  completedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  itemCount: number;
+  items: ShopOrderItem[];
+}
+
+export interface ShopOrderDetail extends ShopOrder {
+  payments: ShopPaymentRecord[];
+  digitalFulfillments: ShopDigitalFulfillment[];
+  shipments: ShopShipment[];
+}
+
+export interface ShopLogistics {
+  orderId: string;
+  orderNo: string;
+  orderStatus: ShopOrderStatus;
+  shipmentId: string;
+  company: string;
+  trackingNo: string;
+  status: ShopShipmentStatus;
+  tracks: ShopShipmentTrack[];
+  shipments: ShopShipment[];
+}
+
+export interface ShopHomePayload {
+  banners: ShopBanner[];
+  shopNotice: string;
+  customerServiceUrl: string;
+  paymentGuide: string;
+  enableWechatH5: boolean;
+  enableWechatJsapi: boolean;
+  enableAlipayWap: boolean;
+  featuredCategories: ShopCategory[];
+  featuredProducts: ShopProduct[];
+  courseProducts: ShopProduct[];
+  physicalProducts: ShopProduct[];
+  hybridProducts: ShopProduct[];
+}
+
+export interface UserShopOrderSummary {
+  total: number;
+  pendingPayment: number;
+  pendingShipment: number;
+  pendingReceipt: number;
+}
+
+export interface AdminShopProductListSummary {
+  total: number;
+  onSale: number;
+  draft: number;
+  offSale: number;
+}
+
+export interface AdminShopOrderListSummary {
+  total: number;
+  pendingPayment: number;
+  paid: number;
+  waitingShipment: number;
+}
+
+export interface AdminShopShipmentListSummary {
+  total: number;
+  pending: number;
+  shipped: number;
+  inTransit: number;
+  signed: number;
+  failed: number;
+}
+
+export interface ShopListResult<T, S = undefined> {
+  list: T[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+  };
+  summary?: S;
+}
+
+export interface ShopCreateOrderResult {
+  orderId: string;
+  orderNo: string;
+  status: ShopOrderStatus;
+  paymentStatus: ShopPaymentStatus;
+  payAmount: string;
+  payExpireAt: string;
+}
+
+export interface ShopWechatJsapiPaymentPayload {
+  type: "wechat_jsapi";
+  appId: string;
+  timeStamp: string;
+  nonceStr: string;
+  package: string;
+  signType: string;
+  paySign: string;
+  returnUrl: string;
+}
+
+export interface ShopPaymentStartResult {
+  mode: "mock" | "gateway";
+  channel: ShopPaymentChannel;
+  launchUrl: string;
+  paymentPayload: ShopWechatJsapiPaymentPayload | null;
+  order: ShopOrderDetail;
+}
+
 interface ApiEnvelope<T> {
   code: number;
   message: string;
@@ -200,7 +662,7 @@ const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.repl
 const ADMIN_CACHE_TTL_MS = 30 * 1000;
 
 const buildUrl = (path: string) => (API_BASE ? `${API_BASE}${path}` : path);
-const buildQueryString = (params: Record<string, string | number | undefined>) => {
+const buildQueryString = (params: Record<string, string | number | boolean | undefined>) => {
   const searchParams = new URLSearchParams();
 
   Object.entries(params).forEach(([key, value]) => {
@@ -316,6 +778,34 @@ const deleteRequest = <T>(path: string, auth: "user" | "admin" | "auto" = "auto"
     auth,
   });
 
+const requestBlob = async (path: string, options?: RequestInit & { auth?: "user" | "admin" | "auto" }): Promise<Blob> => {
+  const headers = new Headers(options?.headers);
+  const token = getToken(options?.auth ?? "auto");
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const response = await fetch(buildUrl(path), {
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    const json = (await response.json().catch(() => null)) as ApiEnvelope<unknown> | null;
+    const message = json?.message ?? "请求失败";
+    if (response.status === 401) {
+      if ((options?.auth ?? "auto") === "admin" || path.startsWith("/api/admin")) clearAdminSession();
+      else clearUserSession();
+    }
+    throw new ApiRequestError(message, {
+      code: json?.code,
+      status: response.status,
+    });
+  }
+
+  return response.blob();
+};
+
 const uploadFiles = async <T>(
   path: string,
   files: File[],
@@ -414,6 +904,221 @@ export const mockApi = {
   getUserProgress: (_userId: string, courseId: string, audioId: string) =>
     request<UserProgress | undefined>(`/api/user/audios/${audioId}/progress?courseId=${encodeURIComponent(courseId)}`, { auth: "user" }),
 
+  getShopHome: () => request<ShopHomePayload>("/api/user/shop/home", { auth: "user" }),
+  getShopCategories: () => request<ShopCategory[]>("/api/user/shop/categories", { auth: "user" }),
+  getShopProducts: (params?: {
+    categoryId?: string;
+    type?: ShopProductType | "all";
+    keyword?: string;
+    sortBy?: "default" | "sales_desc" | "price_asc" | "price_desc" | "latest";
+    page?: number;
+    pageSize?: number;
+  }) =>
+    request<ShopListResult<ShopProduct>>(
+      `/api/user/shop/products${buildQueryString({
+        categoryId: params?.categoryId,
+        type: params?.type && params.type !== "all" ? params.type : undefined,
+        keyword: params?.keyword,
+        sortBy: params?.sortBy,
+        page: params?.page,
+        pageSize: params?.pageSize,
+      })}`,
+      { auth: "user" },
+    ),
+  getShopProductDetail: (productId: string) => request<ShopProductDetail>(`/api/user/shop/products/${productId}`, { auth: "user" }),
+  getShopCart: () => request<ShopCartPayload>("/api/user/shop/cart", { auth: "user" }),
+  addShopCartItem: (payload: { productId: string; skuId: string; quantity: number }) =>
+    postJson<ShopCartPayload>("/api/user/shop/cart/items", payload, "user"),
+  updateShopCartItem: (itemId: string, payload: { quantity: number }) =>
+    patchJson<ShopCartPayload>(`/api/user/shop/cart/items/${itemId}`, payload, "user"),
+  deleteShopCartItem: (itemId: string) => deleteRequest<ShopCartPayload>(`/api/user/shop/cart/items/${itemId}`, "user"),
+  getShopAddresses: () => request<ShopAddress[]>("/api/user/shop/addresses", { auth: "user" }),
+  createShopAddress: (payload: {
+    name: string;
+    phone: string;
+    province: string;
+    city: string;
+    district: string;
+    address: string;
+    isDefault?: boolean;
+  }) => postJson<ShopAddress>("/api/user/shop/addresses", payload, "user"),
+  updateShopAddress: (
+    addressId: string,
+    payload: Partial<{
+      name: string;
+      phone: string;
+      province: string;
+      city: string;
+      district: string;
+      address: string;
+      isDefault: boolean;
+    }>,
+  ) => patchJson<ShopAddress>(`/api/user/shop/addresses/${addressId}`, payload, "user"),
+  deleteShopAddress: (addressId: string) => deleteRequest<{ success: boolean }>(`/api/user/shop/addresses/${addressId}`, "user"),
+  previewShopCheckout: (payload: {
+    source: "cart" | "buy_now";
+    cartItemIds?: string[];
+    buyNowSkuId?: string;
+    buyNowQuantity?: number;
+    addressId?: string;
+  }) => postJson<ShopCheckoutPreview>("/api/user/shop/checkout/preview", payload, "user"),
+  createShopOrder: (payload: {
+    source: "cart" | "buy_now";
+    cartItemIds?: string[];
+    buyNowSkuId?: string;
+    buyNowQuantity?: number;
+    addressId?: string;
+    remark?: string;
+    payChannel: ShopPaymentChannel;
+  }) => postJson<ShopCreateOrderResult>("/api/user/shop/orders", payload, "user"),
+  payShopOrder: (orderId: string, payChannel: ShopPaymentChannel, options?: { wechatOpenId?: string }) =>
+    postJson<ShopPaymentStartResult>(
+      `/api/user/shop/orders/${orderId}/pay`,
+      { payChannel, wechatOpenId: options?.wechatOpenId },
+      "user",
+    ),
+  syncShopOrderPaymentStatus: (orderId: string) =>
+    postJson<ShopOrderDetail>(`/api/user/shop/orders/${orderId}/payment-status/sync`, {}, "user"),
+  getShopOrderDetail: (orderId: string) => request<ShopOrderDetail>(`/api/user/shop/orders/${orderId}`, { auth: "user" }),
+  getShopOrderLogistics: (orderId: string) => request<ShopLogistics>(`/api/user/shop/orders/${orderId}/logistics`, { auth: "user" }),
+  getShopOrderSummary: () => request<UserShopOrderSummary>("/api/user/shop/orders/summary", { auth: "user" }),
+  getShopOrders: (params?: {
+    status?: "all" | "pending_payment" | "pending_shipment" | "shipped" | "completed" | "cancelled";
+    page?: number;
+    pageSize?: number;
+  }) =>
+    request<ShopListResult<ShopOrder>>(
+      `/api/user/shop/orders${buildQueryString({
+        status: params?.status && params.status !== "all" ? params.status : undefined,
+        page: params?.page,
+        pageSize: params?.pageSize,
+      })}`,
+      { auth: "user" },
+    ),
+  cancelShopOrder: (orderId: string) => postJson<ShopOrder>(`/api/user/shop/orders/${orderId}/cancel`, {}, "user"),
+  confirmShopOrderReceipt: (orderId: string) => postJson<ShopLogistics>(`/api/user/shop/orders/${orderId}/confirm-receipt`, {}, "user"),
+
+  getAdminShopConfig: () => request<ShopConfig>("/api/admin/shop/config", { auth: "admin" }),
+  updateAdminShopConfig: (payload: AdminShopConfigPayload) => patchJson<ShopConfig>("/api/admin/shop/config", payload, "admin"),
+
+  getAdminShopCategories: (params?: { keyword?: string; status?: "all" | "enabled" | "disabled" }) =>
+    request<ShopCategory[]>(
+      `/api/admin/shop/categories${buildQueryString({
+        keyword: params?.keyword,
+        status: params?.status && params.status !== "all" ? params.status : undefined,
+      })}`,
+      { auth: "admin" },
+    ),
+  createAdminShopCategory: (payload: { name: string; sortOrder: number; status: boolean }) =>
+    postJson<ShopCategory>("/api/admin/shop/categories", payload, "admin"),
+  updateAdminShopCategory: (categoryId: string, payload: { name: string; sortOrder: number; status: boolean }) =>
+    patchJson<ShopCategory>(`/api/admin/shop/categories/${categoryId}`, payload, "admin"),
+  deleteAdminShopCategory: (categoryId: string) => deleteRequest<{ success: boolean }>(`/api/admin/shop/categories/${categoryId}`, "admin"),
+
+  getAdminShopProducts: (params?: {
+    keyword?: string;
+    categoryId?: string;
+    type?: ShopProductType | "all";
+    status?: ShopProductStatus | "all";
+    page?: number;
+    pageSize?: number;
+  }) =>
+    request<ShopListResult<AdminShopProduct, AdminShopProductListSummary>>(
+      `/api/admin/shop/products${buildQueryString({
+        keyword: params?.keyword,
+        categoryId: params?.categoryId && params.categoryId !== "all" ? params.categoryId : undefined,
+        type: params?.type && params.type !== "all" ? params.type : undefined,
+        status: params?.status && params.status !== "all" ? params.status : undefined,
+        page: params?.page,
+        pageSize: params?.pageSize,
+      })}`,
+      { auth: "admin" },
+    ),
+  getAdminShopProductDetail: (productId: string) => request<AdminShopProductDetail>(`/api/admin/shop/products/${productId}`, { auth: "admin" }),
+  createAdminShopProduct: (payload: AdminShopProductPayload) => postJson<AdminShopProductDetail>("/api/admin/shop/products", payload, "admin"),
+  updateAdminShopProduct: (productId: string, payload: AdminShopProductPayload) =>
+    patchJson<AdminShopProductDetail>(`/api/admin/shop/products/${productId}`, payload, "admin"),
+  publishAdminShopProduct: (productId: string, status: ShopProductStatus) =>
+    postJson<AdminShopProductDetail>(`/api/admin/shop/products/${productId}/publish`, { status }, "admin"),
+  deleteAdminShopProduct: (productId: string) => deleteRequest<{ success: boolean }>(`/api/admin/shop/products/${productId}`, "admin"),
+  getAdminShopOrders: (params?: {
+    orderNo?: string;
+    phone?: string;
+    keyword?: string;
+    status?: ShopOrderStatus | "all";
+    paymentStatus?: ShopPaymentStatus | "all";
+    shipmentStatus?: ShopShipmentStatus | "pending" | "all";
+    page?: number;
+    pageSize?: number;
+  }) =>
+    request<ShopListResult<ShopOrder, AdminShopOrderListSummary>>(
+      `/api/admin/shop/orders${buildQueryString({
+        orderNo: params?.orderNo,
+        phone: params?.phone,
+        keyword: params?.keyword,
+        status: params?.status && params.status !== "all" ? params.status : undefined,
+        paymentStatus: params?.paymentStatus && params.paymentStatus !== "all" ? params.paymentStatus : undefined,
+        shipmentStatus: params?.shipmentStatus && params.shipmentStatus !== "all" ? params.shipmentStatus : undefined,
+        page: params?.page,
+        pageSize: params?.pageSize,
+      })}`,
+      { auth: "admin" },
+    ),
+  getAdminShopOrderDetail: (orderId: string) => request<ShopOrderDetail>(`/api/admin/shop/orders/${orderId}`, { auth: "admin" }),
+  closeAdminShopOrder: (orderId: string, reason: string) => postJson<ShopOrderDetail>(`/api/admin/shop/orders/${orderId}/close`, { reason }, "admin"),
+  getAdminShopShipments: (params?: {
+    orderNo?: string;
+    phone?: string;
+    keyword?: string;
+    trackingNo?: string;
+    status?: ShopShipmentStatus | "all";
+    page?: number;
+    pageSize?: number;
+  }) =>
+    request<ShopListResult<ShopShipment, AdminShopShipmentListSummary>>(
+      `/api/admin/shop/shipments${buildQueryString({
+        orderNo: params?.orderNo,
+        phone: params?.phone,
+        keyword: params?.keyword,
+        trackingNo: params?.trackingNo,
+        status: params?.status && params.status !== "all" ? params.status : undefined,
+        page: params?.page,
+        pageSize: params?.pageSize,
+      })}`,
+      { auth: "admin" },
+    ),
+  createAdminShopShipment: (
+    orderId: string,
+    payload: {
+      company: string;
+      trackingNo: string;
+      remark?: string;
+      status?: ShopShipmentStatus;
+      items: { orderItemId: string; quantity: number }[];
+    },
+  ) => postJson<ShopShipment>(`/api/admin/shop/orders/${orderId}/shipments`, payload, "admin"),
+  updateAdminShopShipment: (
+    shipmentId: string,
+    payload: {
+      company?: string;
+      trackingNo?: string;
+      status?: ShopShipmentStatus;
+      trackContent?: string;
+      location?: string;
+      trackTime?: string;
+    },
+  ) => patchJson<ShopShipment>(`/api/admin/shop/shipments/${shipmentId}`, payload, "admin"),
+  createAdminShopShipmentTrack: (
+    shipmentId: string,
+    payload: {
+      content: string;
+      location?: string;
+      trackTime?: string;
+    },
+  ) => postJson<ShopShipment>(`/api/admin/shop/shipments/${shipmentId}/tracks`, payload, "admin"),
+  uploadShopImage: (file: File) =>
+    uploadSingleFile<{ objectKey: string; url: string; readableUrl?: string }>("/api/admin/uploads/shop-image", file, "admin"),
+
   getAllUsers: (params?: { keyword?: string; status?: UserStatus | "all"; courseId?: string; page?: number; pageSize?: number }) =>
     request<PagedResult<User>>(
       `/api/admin/users${buildQueryString({
@@ -482,17 +1187,39 @@ export const mockApi = {
   uploadCoverImage: (file: File) =>
     uploadSingleFile<{ objectKey: string; url: string }>("/api/admin/uploads/course-cover", file, "admin"),
 
+  uploadCourseHandout: (file: File) =>
+    uploadSingleFile<{ objectKey: string; url: string }>("/api/admin/uploads/course-handout", file, "admin"),
+
   uploadSystemImage: (file: File) =>
     uploadSingleFile<{ objectKey: string; url: string }>("/api/admin/uploads/system-image", file, "admin"),
 
   extractScriptFile: (file: File) =>
     uploadSingleFile<{ text: string }>("/api/admin/uploads/script-file", file, "admin"),
 
-  createCourse: async (payload: { name: string; cover: string; coverObjectKey?: string; description: string; status: CourseStatus; openTime: string; tags?: string[] }) => {
+  createCourse: async (payload: {
+    name: string;
+    cover: string;
+    coverObjectKey?: string;
+    handoutUrl?: string | null;
+    handoutObjectKey?: string | null;
+    handoutName?: string | null;
+    description: string;
+    status: CourseStatus;
+    openTime: string;
+    tags?: string[];
+  }) => {
     invalidateAdminCourseListCache();
     return postJson<Course>("/api/admin/courses", payload, "admin");
   },
-  updateCourse: async (courseId: string, payload: Partial<Course> & { coverObjectKey?: string | null }) => {
+  updateCourse: async (
+    courseId: string,
+    payload: Partial<Course> & {
+      coverObjectKey?: string | null;
+      handoutUrl?: string | null;
+      handoutObjectKey?: string | null;
+      handoutName?: string | null;
+    },
+  ) => {
     invalidateAdminCourseListCache();
     return patchJson<Course>(`/api/admin/courses/${courseId}`, payload, "admin");
   },
@@ -608,6 +1335,7 @@ export const mockApi = {
   },
 
   getBrandingConfig: () => request<BrandingConfig>("/api/auth/branding", { auth: "auto" }),
+  downloadCourseHandout: (courseId: string) => requestBlob(`/api/user/courses/${courseId}/handout/download`, { auth: "user" }),
   getSystemConfig: () => request<SystemConfig>("/api/admin/system-config", { auth: "admin" }),
   updateSystemConfig: (payload: Partial<SystemConfig>) => patchJson<SystemConfig>("/api/admin/system-config", payload, "admin"),
   testWebhook: (webhookUrl: string) => postJson<{ success: boolean }>("/api/admin/system-config/test-webhook", { webhookUrl }, "admin"),

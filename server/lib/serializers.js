@@ -9,6 +9,13 @@ export const serializeCourse = (course, audioCount = 0) => ({
     objectKey: course.coverObjectKey ?? "",
     fallbackUrl: course.coverUrl,
   }),
+  handoutUrl: getReadableObjectUrl({
+    objectKey: course.handoutObjectKey ?? "",
+    fallbackUrl: course.handoutUrl ?? "",
+  }),
+  handoutObjectKey: course.handoutObjectKey ?? "",
+  handoutName: course.handoutName ? normalizeDisplayText(course.handoutName) : "",
+  hasHandout: Boolean(course.handoutObjectKey || course.handoutUrl),
   description: normalizeDisplayText(course.description),
   status: course.status,
   openTime: formatDateTime(course.openTime),

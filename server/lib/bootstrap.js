@@ -43,4 +43,13 @@ export const bootstrap = async () => {
       },
     });
   }
+
+  const shopConfig = await prisma.shopConfig.findUnique({ where: { id: 1 } });
+  if (!shopConfig) {
+    await prisma.shopConfig.create({
+      data: {
+        id: 1,
+      },
+    });
+  }
 };

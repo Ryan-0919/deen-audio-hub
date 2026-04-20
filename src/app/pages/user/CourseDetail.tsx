@@ -1,6 +1,7 @@
-import { ArrowLeft, CircleCheck, Clock3, PlayCircle } from "lucide-react";
+import { ArrowLeft, CircleCheck, Clock3, FileDown, Loader2, PlayCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
+import { toast } from "sonner";
 import { Badge } from "../../components/ui/badge";
 import { cn } from "../../components/ui/utils";
 import { Audio, Course, Tag, UserProgress, mockApi } from "../../lib/mockData";
@@ -20,12 +21,24 @@ const formatDuration = (seconds: number) => {
 const formatProgress = (seconds = 0) => formatDuration(seconds);
 const formatPercent = (progress = 0, duration = 0) => (duration ? Math.min(100, Math.round((progress / duration) * 100)) : 0);
 
+const triggerFileDownload = (blob: Blob, fileName: string) => {
+  const objectUrl = window.URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
+};
+
 export function CourseDetail() {
   const navigate = useNavigate();
   const location = useLocation();
   const { courseId } = useParams<{ courseId: string }>();
   const stateCourse = (location.state as { course?: Course } | null)?.course;
   const seededCourse = stateCourse && stateCourse.id === courseId ? stateCourse : null;
+
   const [course, setCourse] = useState<Course | null>(seededCourse);
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagId, setSelectedTagId] = useState("");
@@ -34,6 +47,8 @@ export function CourseDetail() {
   const [tagCache, setTagCache] = useState<Record<string, TagContent>>({});
   const [loading, setLoading] = useState(!seededCourse);
   const [tagLoading, setTagLoading] = useState(Boolean(seededCourse));
+  const [downloadingHandout, setDownloadingHandout] = useState(false);
+
   const cachedTagContent = selectedTagId ? tagCache[selectedTagId] : undefined;
 
   useEffect(() => {
@@ -100,7 +115,7 @@ export function CourseDetail() {
           setAudios(initialTagContent.audios);
           setProgressList(initialTagContent.progress);
         }
-      } catch (error) {
+      } catch {
         if (!active) return;
         setCourse(null);
         setTags([]);
@@ -169,12 +184,25 @@ export function CourseDetail() {
 
   const getProgress = (audioId: string) => progressList.find((item) => item.audioId === audioId);
 
+  const handleDownloadHandout = async () => {
+    if (!course?.hasHandout || downloadingHandout) return;
+
+    try {
+      setDownloadingHandout(true);
+      const blob = await mockApi.downloadCourseHandout(course.id);
+      const fileName = course.handoutName || `${course.name}-讲义`;
+      triggerFileDownload(blob, fileName);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "讲义下载失败");
+    } finally {
+      setDownloadingHandout(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#f6f8fb] px-4 py-6">
-        <div className="mx-auto max-w-sm rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500">
-          课程加载中...
-        </div>
+        <div className="mx-auto max-w-sm rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500">课程加载中...</div>
       </div>
     );
   }
@@ -182,9 +210,7 @@ export function CourseDetail() {
   if (!course) {
     return (
       <div className="min-h-screen bg-[#f6f8fb] px-4 py-6">
-        <div className="mx-auto max-w-sm rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500">
-          课程不存在
-        </div>
+        <div className="mx-auto max-w-sm rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500">课程不存在</div>
       </div>
     );
   }
@@ -216,6 +242,11 @@ export function CourseDetail() {
               <Badge variant="secondary" className="bg-blue-50 text-blue-600">
                 {course.audioCount} 条音频
               </Badge>
+              {course.hasHandout ? (
+                <Badge variant="secondary" className="bg-emerald-50 text-emerald-700">
+                  含配套讲义
+                </Badge>
+              ) : null}
             </div>
 
             <div>
@@ -225,35 +256,33 @@ export function CourseDetail() {
           </div>
         </div>
 
-        <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-3">
-          <div className="overflow-x-auto">
-            <div className="flex min-w-max gap-2">
-              {tags.map((tag) => (
-                <button
-                  key={tag.id}
-                  type="button"
-                  onClick={() => setSelectedTagId(tag.id)}
-                  className={cn(
-                    "rounded-full border px-4 py-2 text-sm transition-colors",
-                    selectedTagId === tag.id ? "border-blue-600 bg-blue-600 text-white" : "border-slate-200 bg-white text-slate-600",
-                  )}
-                >
-                  {tag.name}
-                </button>
-              ))}
+        {tags.length > 0 ? (
+          <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-3">
+            <div className="overflow-x-auto">
+              <div className="flex min-w-max gap-2">
+                {tags.map((tag) => (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    onClick={() => setSelectedTagId(tag.id)}
+                    className={cn(
+                      "rounded-full border px-4 py-2 text-sm transition-colors",
+                      selectedTagId === tag.id ? "border-blue-600 bg-blue-600 text-white" : "border-slate-200 bg-white text-slate-600",
+                    )}
+                  >
+                    {tag.name}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
+        ) : null}
 
         <div className="mt-4 space-y-3">
           {tagLoading ? (
-            <div className="rounded-3xl border border-slate-200 bg-white px-6 py-14 text-center text-sm text-slate-500">
-              内容加载中...
-            </div>
+            <div className="rounded-3xl border border-slate-200 bg-white px-6 py-14 text-center text-sm text-slate-500">内容加载中...</div>
           ) : audios.length === 0 ? (
-            <div className="rounded-3xl border border-slate-200 bg-white px-6 py-14 text-center text-sm text-slate-500">
-              暂无课程
-            </div>
+            <div className="rounded-3xl border border-slate-200 bg-white px-6 py-14 text-center text-sm text-slate-500">暂无音频内容</div>
           ) : (
             audios.map((audio) => {
               const progress = getProgress(audio.id);
@@ -321,6 +350,22 @@ export function CourseDetail() {
           )}
         </div>
       </div>
+
+      {course.hasHandout ? (
+        <div className="pointer-events-none fixed inset-x-0 bottom-24 z-30">
+          <div className="mx-auto flex max-w-sm justify-end px-4">
+            <button
+              type="button"
+              onClick={() => void handleDownloadHandout()}
+              disabled={downloadingHandout}
+              className="pointer-events-auto flex size-16 flex-col items-center justify-center rounded-full bg-[linear-gradient(180deg,#2563eb_0%,#1d4ed8_100%)] text-white shadow-[0_18px_45px_rgba(37,99,235,0.35)] transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-80"
+            >
+              {downloadingHandout ? <Loader2 className="size-5 animate-spin" /> : <FileDown className="size-5" />}
+              <span className="mt-1 text-[11px] font-medium leading-none">讲义</span>
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

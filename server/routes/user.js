@@ -1,10 +1,12 @@
 import { Router } from "express";
+import { Readable } from "node:stream";
 import { prisma } from "../lib/prisma.js";
 import { ok, fail } from "../lib/response.js";
 import { serializeAudio, serializeAudioListItem, serializeCourse, serializeTag } from "../lib/serializers.js";
 import { formatDateTime } from "../lib/time.js";
 import { requireUserAuth } from "../middleware/auth.js";
 import { syncScheduledCourses } from "../lib/scheduler.js";
+import { getReadableObjectUrl } from "../lib/upload.js";
 
 export const userRouter = Router();
 
@@ -68,6 +70,20 @@ const buildTagContent = (courseAudios, progressMap) => {
     audios: courseAudios.map((item) => serializeAudioListItem(item.audio)),
     progress: courseAudios.map((item) => progressMap.get(item.audioId)).filter(Boolean),
   };
+};
+
+const sanitizeDownloadFileName = (value, fallback = "course-handout") => {
+  const normalized = `${value ?? ""}`.trim().replace(/[\\/:*?"<>|]+/g, "-");
+  return normalized || fallback;
+};
+
+const encodeContentDispositionFileName = (fileName) =>
+  encodeURIComponent(fileName).replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+
+const buildAttachmentDisposition = (fileName) => {
+  const normalized = sanitizeDownloadFileName(fileName);
+  const asciiFallback = normalized.replace(/[^\x20-\x7E]+/g, "_");
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeContentDispositionFileName(normalized)}`;
 };
 
 const getTagAudiosWithProgress = async ({ tagId, userId, courseId, courseAudios }) => {
@@ -236,6 +252,49 @@ userRouter.get("/courses/:courseId/detail", async (req, res) => {
     });
   } catch (error) {
     return fail(res, error.message || "课程不存在", 404);
+  }
+});
+
+userRouter.get("/courses/:courseId/handout/download", async (req, res) => {
+  try {
+    const course = await assertCoursePermission(req.auth.userId, req.params.courseId);
+    const handoutUrl = getReadableObjectUrl({
+      objectKey: course.handoutObjectKey ?? "",
+      fallbackUrl: course.handoutUrl ?? "",
+    });
+
+    if (!handoutUrl) {
+      return fail(res, "褰撳墠璇剧▼鏆傛棤璁蹭箟", 404);
+    }
+
+    const upstream = await fetch(handoutUrl);
+    if (!upstream.ok || !upstream.body) {
+      return fail(res, "璁蹭箟涓嬭浇澶辫触", 502);
+    }
+
+    const fileName = sanitizeDownloadFileName(course.handoutName || `${course.name}-讲义`);
+    const contentType = upstream.headers.get("content-type") || "application/octet-stream";
+    const contentLength = upstream.headers.get("content-length");
+
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Disposition", buildAttachmentDisposition(fileName));
+    res.setHeader("Cache-Control", "private, no-store, max-age=0");
+    if (contentLength) {
+      res.setHeader("Content-Length", contentLength);
+    }
+
+    const stream = Readable.fromWeb(upstream.body);
+    stream.on("error", (error) => {
+      console.error("Course handout stream failed:", error);
+      if (!res.headersSent) {
+        res.status(500).end();
+      } else {
+        res.destroy(error);
+      }
+    });
+    stream.pipe(res);
+  } catch (error) {
+    return fail(res, error.message || "璁蹭箟涓嬭浇澶辫触", 500);
   }
 });
 

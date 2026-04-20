@@ -38,7 +38,7 @@ export function AdminLayout() {
         <div className="border-b border-slate-200 px-6 py-6">
           <AppLogo />
           <h1 className="mt-4 text-xl font-semibold text-slate-900">后台管理</h1>
-          <p className="mt-2 text-sm text-slate-500">电脑端管理工作台</p>
+          <p className="mt-2 text-sm text-slate-500">课程、音频与系统配置工作台</p>
         </div>
 
         <nav className="flex-1 space-y-1 px-4 py-4">
@@ -78,7 +78,7 @@ export function AdminLayout() {
         <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-8">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">{currentNav?.name ?? "后台管理"}</h2>
-            <p className="text-sm text-slate-500">得恩法考音频课程系统</p>
+            <p className="text-sm text-slate-500">得恩法考音频系统</p>
           </div>
         </header>
 
