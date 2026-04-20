@@ -86,7 +86,7 @@ const buildUploadValidationError = (message) => {
   return error;
 };
 
-const createUploadMiddleware = ({ maxFileSize, maxFileCount, allowedExtensions, allowedMimeTypes, fileLabel }) =>
+const createUploadMiddleware = ({ maxFileSize, maxFileCount, allowedExtensions, allowedMimeTypes, fileLabel, ignoreMimeType = false }) =>
   multer({
     storage: multer.memoryStorage(),
     limits: {
@@ -97,7 +97,8 @@ const createUploadMiddleware = ({ maxFileSize, maxFileCount, allowedExtensions, 
       const extension = extname(file.originalname).toLowerCase();
       const mimeType = `${file.mimetype ?? ""}`.toLowerCase();
       const extensionAllowed = allowedExtensions.has(extension);
-      const mimeAllowed = allowedMimeTypes.has(mimeType) || (!mimeType || mimeType === "application/octet-stream");
+      const mimeAllowed =
+        ignoreMimeType || allowedMimeTypes.has(mimeType) || (!mimeType || mimeType === "application/octet-stream");
 
       if (extensionAllowed && mimeAllowed) {
         callback(null, true);
@@ -150,6 +151,7 @@ const uploadScript = createUploadMiddleware({
   maxFileCount: 1,
   allowedExtensions: SCRIPT_EXTENSIONS,
   allowedMimeTypes: SCRIPT_MIME_TYPES,
+  ignoreMimeType: true,
   fileLabel: "文案文件",
 });
 

@@ -4,6 +4,7 @@ import { unlink, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { extname, join } from "path";
 import iconv from "iconv-lite";
+import * as unzipper from "unzipper";
 
 const isWindows = process.platform === "win32";
 
@@ -71,41 +72,8 @@ const decodeTextBuffer = (buffer) => {
   return normalizeScriptText(iconv.decode(buffer, "gb18030"));
 };
 
-const parseDocxFile = async (filePath) => {
-  if (!isWindows) {
-    throw new Error("当前服务器暂不支持解析 docx，请先转换为 txt 或 md 再上传");
-  }
-
-  const script = `
-    $ErrorActionPreference = 'Stop'
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $archive = [System.IO.Compression.ZipFile]::OpenRead(${toPowerShellLiteral(filePath)})
-    try {
-      $entry = $archive.Entries | Where-Object {
-        $_.FullName -eq 'word/document.xml' -or
-        $_.FullName -eq 'word\\document.xml' -or
-        $_.FullName -like '*/word/document.xml' -or
-        $_.FullName -like '*\\word\\document.xml'
-      } | Select-Object -First 1
-      if ($null -eq $entry) {
-        throw 'word/document.xml not found'
-      }
-      $stream = $entry.Open()
-      $reader = New-Object System.IO.StreamReader($stream)
-      try {
-        $xml = $reader.ReadToEnd()
-        [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($xml))
-      } finally {
-        $reader.Dispose()
-        $stream.Dispose()
-      }
-    } finally {
-      $archive.Dispose()
-    }
-  `;
-
-  const xml = decodePowerShellBase64(await runPowerShell(script));
-  return normalizeScriptText(
+const parseWordDocumentXml = (xml) =>
+  normalizeScriptText(
     decodeXmlEntities(
       xml
         .replace(/>\s+</g, "><")
@@ -116,6 +84,23 @@ const parseDocxFile = async (filePath) => {
         .replace(/<[^>]+>/g, ""),
     ),
   );
+
+const parseDocxBuffer = async (buffer) => {
+  try {
+    const archive = await unzipper.Open.buffer(buffer);
+    const entry = archive.files.find((item) => {
+      const filePath = `${item.path ?? item.props?.path ?? ""}`.replace(/\\/g, "/");
+      return filePath === "word/document.xml" || filePath.endsWith("/word/document.xml");
+    });
+
+    if (!entry) {
+      throw new Error("word/document.xml not found");
+    }
+
+    return parseWordDocumentXml((await entry.buffer()).toString("utf8"));
+  } catch (error) {
+    throw new Error(error instanceof Error ? `docx 文档解析失败：${error.message}` : "docx 文档解析失败");
+  }
 };
 
 const parseDocFile = async (filePath) => {
@@ -150,7 +135,7 @@ const parseDocFile = async (filePath) => {
 
   try {
     return normalizeScriptText(decodePowerShellBase64(await runPowerShell(script)));
-  } catch (error) {
+  } catch (_error) {
     throw new Error("doc 文档解析失败，请确认当前服务器已安装 Microsoft Word；若未安装，请先转换为 docx、txt 或 md");
   }
 };
@@ -162,7 +147,11 @@ export const extractScriptFromFile = async ({ fileName, buffer }) => {
     return decodeTextBuffer(buffer);
   }
 
-  if (![".doc", ".docx"].includes(extension)) {
+  if (extension === ".docx") {
+    return parseDocxBuffer(buffer);
+  }
+
+  if (extension !== ".doc") {
     throw new Error("仅支持 txt、md、srt、lrc、doc、docx 文案文件");
   }
 
@@ -170,7 +159,7 @@ export const extractScriptFromFile = async ({ fileName, buffer }) => {
 
   try {
     await writeFile(tempPath, buffer);
-    return extension === ".docx" ? await parseDocxFile(tempPath) : await parseDocFile(tempPath);
+    return await parseDocFile(tempPath);
   } finally {
     await unlink(tempPath).catch(() => null);
   }
