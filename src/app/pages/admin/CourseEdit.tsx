@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, KeyboardEvent } from "react";
 import { useNavigate, useParams } from "react-router";
-import { ArrowLeft, FileText, ImagePlus, Plus, Rows2, Trash2, UploadCloud, X } from "lucide-react";
+import { ArrowLeft, ImagePlus, Plus, Rows2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -10,8 +10,6 @@ import { Textarea } from "../../components/ui/textarea";
 import { mockApi, Tag } from "../../lib/mockData";
 
 type CourseMode = "open" | "closed" | "scheduled";
-
-const HANDOUT_ACCEPT = ".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip";
 
 const modeMeta: Record<CourseMode, { label: string; desc: string }> = {
   open: {
@@ -43,18 +41,13 @@ export function CourseEdit() {
   const { courseId } = useParams<{ courseId: string }>();
   const isEdit = Boolean(courseId);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
-  const handoutInputRef = useRef<HTMLInputElement | null>(null);
 
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
-  const [handoutUploading, setHandoutUploading] = useState(false);
   const [name, setName] = useState("");
   const [cover, setCover] = useState("");
   const [coverObjectKey, setCoverObjectKey] = useState("");
-  const [handoutUrl, setHandoutUrl] = useState("");
-  const [handoutObjectKey, setHandoutObjectKey] = useState("");
-  const [handoutName, setHandoutName] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<CourseMode>("closed");
   const [openTime, setOpenTime] = useState("");
@@ -77,9 +70,6 @@ export function CourseEdit() {
         setName(detail.course.name);
         setCover(detail.course.cover);
         setCoverObjectKey(detail.course.coverObjectKey ?? "");
-        setHandoutUrl(detail.course.handoutUrl ?? "");
-        setHandoutObjectKey(detail.course.handoutObjectKey ?? "");
-        setHandoutName(detail.course.handoutName ?? "");
         setDescription(detail.course.description);
         setStatus(detail.course.status);
         setOpenTime(detail.course.openTime);
@@ -109,25 +99,6 @@ export function CourseEdit() {
       toast.error(error instanceof Error ? error.message : "课程封面上传失败");
     } finally {
       setCoverUploading(false);
-    }
-  };
-
-  const handleHandoutUpload = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-
-    setHandoutUploading(true);
-    try {
-      const uploaded = await mockApi.uploadCourseHandout(file);
-      setHandoutUrl(uploaded.url);
-      setHandoutObjectKey(uploaded.objectKey);
-      setHandoutName(file.name);
-      toast.success("课程讲义已上传");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "课程讲义上传失败");
-    } finally {
-      setHandoutUploading(false);
     }
   };
 
@@ -175,12 +146,6 @@ export function CourseEdit() {
     }
   };
 
-  const handleClearHandout = () => {
-    setHandoutUrl("");
-    setHandoutObjectKey("");
-    setHandoutName("");
-  };
-
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
 
@@ -195,9 +160,6 @@ export function CourseEdit() {
         name: name.trim(),
         cover,
         coverObjectKey,
-        handoutUrl: handoutUrl || null,
-        handoutObjectKey: handoutObjectKey || null,
-        handoutName: handoutName || null,
         description: description.trim(),
         status,
         openTime: openTime || getDefaultOpenTime(),
@@ -240,7 +202,7 @@ export function CourseEdit() {
           <div>
             <p className="text-sm font-medium text-blue-600">{isEdit ? "编辑课程" : "新建课程"}</p>
             <h1 className="mt-1 text-3xl font-semibold text-slate-900">{isEdit ? "课程设置" : "创建课程"}</h1>
-            <p className="mt-2 text-sm text-slate-500">维护课程名称、封面、讲义、简介、开放方式和课程标签。</p>
+            <p className="mt-2 text-sm text-slate-500">维护课程名称、封面、简介、开放方式和课程标签。</p>
           </div>
         </div>
 
@@ -257,7 +219,7 @@ export function CourseEdit() {
           <section className="rounded-3xl border border-slate-200 bg-white p-8">
             <div className="mb-6">
               <h2 className="text-xl font-semibold text-slate-900">基础信息</h2>
-              <p className="mt-2 text-sm text-slate-500">课程封面必传，讲义选传。讲义上传后会在用户端课程详情显示下载悬浮球。</p>
+              <p className="mt-2 text-sm text-slate-500">维护课程名称、封面、简介、开放方式和课程标签。</p>
             </div>
 
             <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -279,62 +241,6 @@ export function CourseEdit() {
                   />
                 </div>
 
-                <div className="rounded-3xl border border-slate-200 bg-slate-50/70 p-5">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <FileText className="size-5 text-blue-600" />
-                        <h3 className="text-base font-semibold text-slate-900">配套讲义</h3>
-                      </div>
-                      <p className="mt-2 text-sm leading-6 text-slate-500">支持 PDF、Word、PPT、Excel、TXT、ZIP，可上传也可以不上传。</p>
-                    </div>
-                    <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600">选传</span>
-                  </div>
-
-                  <input ref={handoutInputRef} type="file" accept={HANDOUT_ACCEPT} className="hidden" onChange={handleHandoutUpload} />
-
-                  <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-white p-4">
-                    {handoutName ? (
-                      <div className="flex flex-wrap items-center gap-3">
-                        <div className="flex min-w-0 flex-1 items-center gap-3">
-                          <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-                            <FileText className="size-5" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-slate-900">{handoutName}</p>
-                            <p className="mt-1 text-xs text-slate-500">用户端会显示下载讲义的悬浮球</p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          {handoutUrl ? (
-                            <Button type="button" variant="outline" size="sm" asChild>
-                              <a href={handoutUrl} target="_blank" rel="noreferrer">
-                                查看
-                              </a>
-                            </Button>
-                          ) : null}
-                          <Button type="button" variant="outline" size="sm" onClick={() => handoutInputRef.current?.click()} disabled={handoutUploading}>
-                            <UploadCloud className="mr-2 size-4" />
-                            {handoutUploading ? "上传中..." : "更换"}
-                          </Button>
-                          <Button type="button" variant="ghost" size="icon" onClick={handleClearHandout} disabled={handoutUploading}>
-                            <X className="size-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-6 text-center">
-                        <UploadCloud className="mb-3 size-7 text-blue-600" />
-                        <p className="text-sm font-medium text-slate-900">{handoutUploading ? "讲义上传中..." : "点击上传课程讲义"}</p>
-                        <p className="mt-2 text-xs text-slate-500">上传后用户可在课程详情一键下载</p>
-                        <Button type="button" variant="outline" className="mt-4" onClick={() => handoutInputRef.current?.click()} disabled={handoutUploading}>
-                          选择讲义文件
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </div>
               </div>
 
               <div className="space-y-3">
@@ -442,7 +348,6 @@ export function CourseEdit() {
             <h2 className="text-lg font-semibold text-slate-900">保存说明</h2>
             <div className="mt-4 space-y-3 text-sm leading-6 text-slate-500">
               <p>课程保存后，可继续在内容管理中引用音频或直接上传音频。</p>
-              <p>讲义为可选项，不上传时用户端不会显示下载按钮。</p>
               <p>课程删除后，仅移除课程内关联，不删除音频库中的音频。</p>
             </div>
           </section>
@@ -451,7 +356,7 @@ export function CourseEdit() {
             <Button type="button" variant="outline" onClick={() => navigate("/admin/courses")}>
               返回
             </Button>
-            <Button type="submit" disabled={saving || coverUploading || handoutUploading}>
+            <Button type="submit" disabled={saving || coverUploading}>
               {saving ? "保存中..." : isEdit ? "保存课程" : "创建课程"}
             </Button>
           </div>

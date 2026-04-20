@@ -18,10 +18,6 @@ export interface Course {
   id: string;
   name: string;
   cover: string;
-  handoutUrl: string;
-  handoutObjectKey: string;
-  handoutName: string;
-  hasHandout: boolean;
   description: string;
   status: CourseStatus;
   openTime: string;
@@ -44,6 +40,10 @@ export interface Audio {
   duration: number;
   hasScript: boolean;
   script?: string;
+  handoutUrl?: string;
+  handoutObjectKey?: string;
+  handoutName?: string;
+  hasHandout?: boolean;
   uploadedAt?: string;
   audioUrl?: string;
 }
@@ -1187,8 +1187,8 @@ export const mockApi = {
   uploadCoverImage: (file: File) =>
     uploadSingleFile<{ objectKey: string; url: string }>("/api/admin/uploads/course-cover", file, "admin"),
 
-  uploadCourseHandout: (file: File) =>
-    uploadSingleFile<{ objectKey: string; url: string }>("/api/admin/uploads/course-handout", file, "admin"),
+  uploadAudioHandout: (file: File) =>
+    uploadSingleFile<{ objectKey: string; url: string }>("/api/admin/uploads/audio-handout", file, "admin"),
 
   uploadSystemImage: (file: File) =>
     uploadSingleFile<{ objectKey: string; url: string }>("/api/admin/uploads/system-image", file, "admin"),
@@ -1200,9 +1200,6 @@ export const mockApi = {
     name: string;
     cover: string;
     coverObjectKey?: string;
-    handoutUrl?: string | null;
-    handoutObjectKey?: string | null;
-    handoutName?: string | null;
     description: string;
     status: CourseStatus;
     openTime: string;
@@ -1213,12 +1210,7 @@ export const mockApi = {
   },
   updateCourse: async (
     courseId: string,
-    payload: Partial<Course> & {
-      coverObjectKey?: string | null;
-      handoutUrl?: string | null;
-      handoutObjectKey?: string | null;
-      handoutName?: string | null;
-    },
+    payload: Partial<Course> & { coverObjectKey?: string | null },
   ) => {
     invalidateAdminCourseListCache();
     return patchJson<Course>(`/api/admin/courses/${courseId}`, payload, "admin");
@@ -1315,6 +1307,14 @@ export const mockApi = {
     ),
   updateAudioName: (audioId: string, name: string) => patchJson<Audio>(`/api/admin/library/audios/${audioId}/name`, { name }, "admin"),
   updateAudioScript: (audioId: string, script: string) => patchJson<Audio>(`/api/admin/library/audios/${audioId}/script`, { script }, "admin"),
+  updateAudioHandout: (
+    audioId: string,
+    payload: {
+      handoutUrl?: string | null;
+      handoutObjectKey?: string | null;
+      handoutName?: string | null;
+    },
+  ) => patchJson<Audio>(`/api/admin/library/audios/${audioId}/handout`, payload, "admin"),
   moveAudiosToFolder: async (audioIds: string[], folderId: string) => {
     invalidateFolderListCache();
     return postJson<{ success: boolean }>("/api/admin/library/audios/move-folder", { audioIds, folderId }, "admin");
@@ -1335,7 +1335,8 @@ export const mockApi = {
   },
 
   getBrandingConfig: () => request<BrandingConfig>("/api/auth/branding", { auth: "auto" }),
-  downloadCourseHandout: (courseId: string) => requestBlob(`/api/user/courses/${courseId}/handout/download`, { auth: "user" }),
+  downloadAudioHandout: (courseId: string, audioId: string) =>
+    requestBlob(`/api/user/courses/${courseId}/audios/${audioId}/handout/download`, { auth: "user" }),
   getSystemConfig: () => request<SystemConfig>("/api/admin/system-config", { auth: "admin" }),
   updateSystemConfig: (payload: Partial<SystemConfig>) => patchJson<SystemConfig>("/api/admin/system-config", payload, "admin"),
   testWebhook: (webhookUrl: string) => postJson<{ success: boolean }>("/api/admin/system-config/test-webhook", { webhookUrl }, "admin"),

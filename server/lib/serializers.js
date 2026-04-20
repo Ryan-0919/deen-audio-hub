@@ -9,13 +9,6 @@ export const serializeCourse = (course, audioCount = 0) => ({
     objectKey: course.coverObjectKey ?? "",
     fallbackUrl: course.coverUrl,
   }),
-  handoutUrl: getReadableObjectUrl({
-    objectKey: course.handoutObjectKey ?? "",
-    fallbackUrl: course.handoutUrl ?? "",
-  }),
-  handoutObjectKey: course.handoutObjectKey ?? "",
-  handoutName: course.handoutName ? normalizeDisplayText(course.handoutName) : "",
-  hasHandout: Boolean(course.handoutObjectKey || course.handoutUrl),
   description: normalizeDisplayText(course.description),
   status: course.status,
   openTime: formatDateTime(course.openTime),
@@ -38,6 +31,13 @@ export const serializeAudio = (audio) => ({
   duration: audio.duration,
   hasScript: Boolean(audio.scriptText?.trim()),
   script: audio.scriptText ? normalizeDisplayText(audio.scriptText) : undefined,
+  handoutUrl: getReadableObjectUrl({
+    objectKey: audio.handoutObjectKey ?? "",
+    fallbackUrl: audio.handoutUrl ?? "",
+  }),
+  handoutObjectKey: audio.handoutObjectKey ?? "",
+  handoutName: audio.handoutName ? normalizeDisplayText(audio.handoutName) : "",
+  hasHandout: Boolean(audio.handoutObjectKey || audio.handoutUrl),
   uploadedAt: formatDateTime(audio.uploadedAt),
   audioUrl: getReadableObjectUrl({
     objectKey: audio.objectKey ?? "",
@@ -51,6 +51,13 @@ export const serializeAudioListItem = (audio) => ({
   folderId: audio.folderId,
   duration: audio.duration,
   hasScript: Boolean(audio.scriptText?.trim()),
+  handoutUrl: getReadableObjectUrl({
+    objectKey: audio.handoutObjectKey ?? "",
+    fallbackUrl: audio.handoutUrl ?? "",
+  }),
+  handoutObjectKey: audio.handoutObjectKey ?? "",
+  handoutName: audio.handoutName ? normalizeDisplayText(audio.handoutName) : "",
+  hasHandout: Boolean(audio.handoutObjectKey || audio.handoutUrl),
 });
 
 export const serializeUser = (user) => ({

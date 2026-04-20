@@ -12,9 +12,13 @@ export const cleanupObjectIfUnused = async (objectKey = "") => {
   const normalized = `${objectKey ?? ""}`.trim();
   if (!normalized) return false;
 
-  const [audioCount, courseCoverCount, courseHandoutCount, productCoverCount, productImageCount, bannerImageCount, systemConfig] = await Promise.all([
+  const [audioCount, audioHandoutCount, courseCoverCount, courseHandoutCount, productCoverCount, productImageCount, bannerImageCount, systemConfig] =
+    await Promise.all([
     prisma.audio.count({
       where: { objectKey: normalized },
+    }),
+    prisma.audio.count({
+      where: { handoutObjectKey: normalized },
     }),
     prisma.course.count({
       where: { coverObjectKey: normalized },
@@ -38,10 +42,11 @@ export const cleanupObjectIfUnused = async (objectKey = "") => {
         playerDiscImageObjectKey: true,
       },
     }),
-  ]);
+    ]);
 
   if (
     audioCount > 0 ||
+    audioHandoutCount > 0 ||
     courseCoverCount > 0 ||
     courseHandoutCount > 0 ||
     productCoverCount > 0 ||

@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { CheckCircle2, FileText, FolderOpen, FolderPlus, Loader2, MoveRight, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "../../components/ui/badge";
@@ -18,6 +18,7 @@ type ScriptFilter = "all" | "scripted" | "unscripted";
 type SortMode = "uploaded-desc" | "name-asc";
 
 const PAGE_SIZE = 15;
+const HANDOUT_ACCEPT = ".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip";
 const emptyMeta: AudioLibraryMeta = { totalAudioCount: 0, referencedCount: 0, pendingScriptCount: 0, tagOptions: [] };
 
 const formatDuration = (seconds: number) => {
@@ -48,6 +49,7 @@ function UploadingNotice({ title, description }: { title: string; description: s
 }
 
 export function AudioLibrary() {
+  const handoutInputRef = useRef<HTMLInputElement | null>(null);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [items, setItems] = useState<AudioLibraryItem[]>([]);
@@ -71,6 +73,7 @@ export function AudioLibrary() {
   const [showBatchUploadDialog, setShowBatchUploadDialog] = useState(false);
   const [showEditNameDialog, setShowEditNameDialog] = useState(false);
   const [showScriptDialog, setShowScriptDialog] = useState(false);
+  const [showHandoutDialog, setShowHandoutDialog] = useState(false);
   const [showAddCourseDialog, setShowAddCourseDialog] = useState(false);
   const [showMoveFolderDialog, setShowMoveFolderDialog] = useState(false);
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
@@ -78,6 +81,9 @@ export function AudioLibrary() {
   const [folderName, setFolderName] = useState("");
   const [audioName, setAudioName] = useState("");
   const [scriptText, setScriptText] = useState("");
+  const [handoutUrl, setHandoutUrl] = useState("");
+  const [handoutObjectKey, setHandoutObjectKey] = useState("");
+  const [handoutName, setHandoutName] = useState("");
   const [singleFile, setSingleFile] = useState<File | null>(null);
   const [batchFiles, setBatchFiles] = useState<File[]>([]);
   const [targetCourseId, setTargetCourseId] = useState("");
@@ -86,6 +92,7 @@ export function AudioLibrary() {
   const [targetFolderId, setTargetFolderId] = useState("");
   const [singleUploading, setSingleUploading] = useState(false);
   const [batchUploading, setBatchUploading] = useState(false);
+  const [handoutUploading, setHandoutUploading] = useState(false);
   const deferredKeyword = useDeferredValue(keyword.trim());
 
   const selectedFolder = useMemo(() => folders.find((folder) => folder.id === selectedFolderId) ?? null, [folders, selectedFolderId]);
@@ -307,6 +314,94 @@ export function AudioLibrary() {
     }
   };
 
+  const syncAudioHandoutState = (updatedAudio: {
+    id: string;
+    handoutUrl?: string;
+    handoutObjectKey?: string;
+    handoutName?: string;
+    hasHandout?: boolean;
+  }) => {
+    setItems((current) =>
+      current.map((item) =>
+        item.id === updatedAudio.id
+          ? {
+              ...item,
+              handoutUrl: updatedAudio.handoutUrl ?? "",
+              handoutObjectKey: updatedAudio.handoutObjectKey ?? "",
+              handoutName: updatedAudio.handoutName ?? "",
+              hasHandout: Boolean(updatedAudio.hasHandout),
+            }
+          : item,
+      ),
+    );
+
+    setEditingAudio((current) =>
+      current && current.id === updatedAudio.id
+        ? {
+            ...current,
+            handoutUrl: updatedAudio.handoutUrl ?? "",
+            handoutObjectKey: updatedAudio.handoutObjectKey ?? "",
+            handoutName: updatedAudio.handoutName ?? "",
+            hasHandout: Boolean(updatedAudio.hasHandout),
+          }
+        : current,
+    );
+  };
+
+  const openHandoutDialog = (audio: AudioLibraryItem) => {
+    setEditingAudio(audio);
+    setHandoutUrl(audio.handoutUrl ?? "");
+    setHandoutObjectKey(audio.handoutObjectKey ?? "");
+    setHandoutName(audio.handoutName ?? "");
+    setShowHandoutDialog(true);
+  };
+
+  const handleAudioHandoutUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !editingAudio) return;
+
+    setHandoutUploading(true);
+    try {
+      const uploaded = await mockApi.uploadAudioHandout(file);
+      const updated = await mockApi.updateAudioHandout(editingAudio.id, {
+        handoutUrl: uploaded.url,
+        handoutObjectKey: uploaded.objectKey,
+        handoutName: file.name,
+      });
+
+      setHandoutUrl(updated.handoutUrl ?? "");
+      setHandoutObjectKey(updated.handoutObjectKey ?? "");
+      setHandoutName(updated.handoutName ?? "");
+      syncAudioHandoutState(updated);
+      toast.success("讲义已上传");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "讲义上传失败");
+    } finally {
+      setHandoutUploading(false);
+    }
+  };
+
+  const handleClearHandout = async () => {
+    if (!editingAudio || handoutUploading) return;
+
+    try {
+      const updated = await mockApi.updateAudioHandout(editingAudio.id, {
+        handoutUrl: null,
+        handoutObjectKey: null,
+        handoutName: null,
+      });
+
+      setHandoutUrl("");
+      setHandoutObjectKey("");
+      setHandoutName("");
+      syncAudioHandoutState(updated);
+      toast.success("讲义已移除");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "移除讲义失败");
+    }
+  };
+
   const handleDeleteAudio = async (audioId: string) => {
     if (!window.confirm("确定删除该音频吗？未被引用的音频删除后不可恢复。")) return;
 
@@ -438,6 +533,7 @@ export function AudioLibrary() {
                           <TableHead>上传时间</TableHead>
                           <TableHead>时长</TableHead>
                           <TableHead>文案状态</TableHead>
+                          <TableHead>讲义</TableHead>
                           <TableHead className="text-right">操作</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -451,10 +547,11 @@ export function AudioLibrary() {
                             <TableCell>{item.uploadedAt}</TableCell>
                             <TableCell>{formatDuration(item.duration)}</TableCell>
                             <TableCell>{item.hasScript ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700"><CheckCircle2 className="size-3.5" />已上传文案</span> : <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-700"><FileText className="size-3.5" />未上传文案</span>}</TableCell>
-                            <TableCell className="text-right"><div className="flex justify-end gap-2"><Button variant="outline" size="sm" onClick={() => { setEditingAudio(item); setAudioName(item.name); setShowEditNameDialog(true); }}><Pencil className="mr-2 size-4" />改名</Button><Button variant="outline" size="sm" onClick={() => { setEditingAudio(item); setScriptText(item.script ?? ""); setShowScriptDialog(true); }}><FileText className="mr-2 size-4" />文案</Button><Button variant="destructive" size="sm" onClick={() => void handleDeleteAudio(item.id)}><Trash2 className="mr-2 size-4" />删除</Button></div></TableCell>
+                            <TableCell>{item.hasHandout ? <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700"><FileText className="size-3.5" />已上传</span> : <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500">未上传</span>}</TableCell>
+                            <TableCell className="text-right"><div className="flex justify-end gap-2"><Button variant="outline" size="sm" onClick={() => { setEditingAudio(item); setAudioName(item.name); setShowEditNameDialog(true); }}><Pencil className="mr-2 size-4" />改名</Button><Button variant="outline" size="sm" onClick={() => { setEditingAudio(item); setScriptText(item.script ?? ""); setShowScriptDialog(true); }}><FileText className="mr-2 size-4" />文案</Button><Button variant="outline" size="sm" onClick={() => openHandoutDialog(item)}><FileText className="mr-2 size-4" />讲义</Button><Button variant="destructive" size="sm" onClick={() => void handleDeleteAudio(item.id)}><Trash2 className="mr-2 size-4" />删除</Button></div></TableCell>
                           </TableRow>
                         ))}
-                        {items.length === 0 ? <TableRow><TableCell colSpan={8} className="py-16 text-center text-slate-500">{searchScope === "current" && !selectedFolderId ? "请先选择文件夹" : "暂无音频数据"}</TableCell></TableRow> : null}
+                        {items.length === 0 ? <TableRow><TableCell colSpan={9} className="py-16 text-center text-slate-500">{searchScope === "current" && !selectedFolderId ? "请先选择文件夹" : "暂无音频数据"}</TableCell></TableRow> : null}
                       </TableBody>
                     </Table>
                   </div>
@@ -508,6 +605,80 @@ export function AudioLibrary() {
             <div className="space-y-2"><div className="flex items-center justify-between"><Label>文案内容</Label><span className="text-xs text-slate-400">{scriptText.length} 字</span></div><Textarea value={scriptText} onChange={(event) => setScriptText(event.target.value)} rows={14} className="min-h-[360px] max-h-[50vh] overflow-y-auto [field-sizing:fixed]" placeholder="请输入完整音频文案" /></div>
           </div>
           <DialogFooter className="border-t border-slate-200 pt-4"><Button variant="outline" onClick={() => setShowScriptDialog(false)}>取消</Button><Button onClick={() => void handleSaveScript()}>保存文案</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showHandoutDialog}
+        onOpenChange={(open) => {
+          if (handoutUploading) return;
+          setShowHandoutDialog(open);
+          if (!open) {
+            setEditingAudio(null);
+            setHandoutUrl("");
+            setHandoutObjectKey("");
+            setHandoutName("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>音频讲义</DialogTitle>
+            <DialogDescription>当前讲义会显示在用户端播放页的悬浮下载按钮中。</DialogDescription>
+          </DialogHeader>
+
+          <input ref={handoutInputRef} type="file" accept={HANDOUT_ACCEPT} className="hidden" onChange={handleAudioHandoutUpload} />
+
+          <div className="space-y-4 py-4">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">当前音频：{editingAudio?.name ?? "未选择音频"}</div>
+
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-4">
+              {handoutName ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                      <FileText className="size-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-900">{handoutName}</p>
+                      <p className="mt-1 text-xs text-slate-500">上传后，用户可在当前音频播放页直接下载。</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {handoutUrl ? (
+                      <Button type="button" variant="outline" size="sm" asChild>
+                        <a href={handoutUrl} target="_blank" rel="noreferrer">
+                          查看
+                        </a>
+                      </Button>
+                    ) : null}
+                    <Button type="button" variant="outline" size="sm" onClick={() => handoutInputRef.current?.click()} disabled={handoutUploading}>
+                      {handoutUploading ? "上传中..." : "更换"}
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => void handleClearHandout()} disabled={handoutUploading}>
+                      移除
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-6 text-center">
+                  <FileText className="mb-3 size-7 text-blue-600" />
+                  <p className="text-sm font-medium text-slate-900">{handoutUploading ? "讲义上传中..." : "点击上传音频讲义"}</p>
+                  <p className="mt-2 text-xs text-slate-500">支持 PDF、Word、PPT、Excel、TXT、ZIP，可上传也可不上传。</p>
+                  <Button type="button" variant="outline" className="mt-4" onClick={() => handoutInputRef.current?.click()} disabled={handoutUploading}>
+                    选择讲义文件
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowHandoutDialog(false)} disabled={handoutUploading}>
+              关闭
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

@@ -255,12 +255,26 @@ userRouter.get("/courses/:courseId/detail", async (req, res) => {
   }
 });
 
-userRouter.get("/courses/:courseId/handout/download", async (req, res) => {
+userRouter.get("/courses/:courseId/audios/:audioId/handout/download", async (req, res) => {
   try {
     const course = await assertCoursePermission(req.auth.userId, req.params.courseId);
+    const relation = await prisma.courseAudio.findFirst({
+      where: {
+        courseId: course.id,
+        audioId: req.params.audioId,
+      },
+      include: {
+        audio: true,
+      },
+    });
+
+    if (!relation) {
+      return fail(res, "音频不存在", 404);
+    }
+
     const handoutUrl = getReadableObjectUrl({
-      objectKey: course.handoutObjectKey ?? "",
-      fallbackUrl: course.handoutUrl ?? "",
+      objectKey: relation.audio.handoutObjectKey ?? "",
+      fallbackUrl: relation.audio.handoutUrl ?? "",
     });
 
     if (!handoutUrl) {
@@ -272,7 +286,7 @@ userRouter.get("/courses/:courseId/handout/download", async (req, res) => {
       return fail(res, "璁蹭箟涓嬭浇澶辫触", 502);
     }
 
-    const fileName = sanitizeDownloadFileName(course.handoutName || `${course.name}-讲义`);
+    const fileName = sanitizeDownloadFileName(relation.audio.handoutName || `${relation.audio.name}-讲义`, "audio-handout");
     const contentType = upstream.headers.get("content-type") || "application/octet-stream";
     const contentLength = upstream.headers.get("content-length");
 
@@ -285,7 +299,7 @@ userRouter.get("/courses/:courseId/handout/download", async (req, res) => {
 
     const stream = Readable.fromWeb(upstream.body);
     stream.on("error", (error) => {
-      console.error("Course handout stream failed:", error);
+      console.error("Audio handout stream failed:", error);
       if (!res.headersSent) {
         res.status(500).end();
       } else {

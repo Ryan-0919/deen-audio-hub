@@ -1,6 +1,7 @@
-import { ArrowLeft, Pause, Play, Repeat, Repeat1, SkipBack, SkipForward } from "lucide-react";
+import { ArrowLeft, FileDown, Loader2, Pause, Play, Repeat, Repeat1, SkipBack, SkipForward } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
+import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { Slider } from "../../components/ui/slider";
 import { cn } from "../../components/ui/utils";
@@ -16,6 +17,17 @@ const formatTime = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, "0")}`;
+};
+
+const triggerFileDownload = (blob: Blob, fileName: string) => {
+  const objectUrl = window.URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
 };
 
 export function AudioPlayer() {
@@ -37,6 +49,7 @@ export function AudioPlayer() {
   const [completed, setCompleted] = useState(false);
   const [playerError, setPlayerError] = useState("");
   const [playerDiscImageUrl, setPlayerDiscImageUrl] = useState("");
+  const [downloadingHandout, setDownloadingHandout] = useState(false);
   const [playbackRate, setPlaybackRate] = useState<number>(() => {
     if (typeof window === "undefined") return 1;
     const savedRate = Number(window.localStorage.getItem("userPlaybackRate") ?? "1");
@@ -334,6 +347,21 @@ export function AudioPlayer() {
     setLoopMode((currentMode) => (currentMode === "sequence" ? "single" : "sequence"));
   };
 
+  const handleDownloadHandout = async () => {
+    if (!courseId || !audio?.hasHandout || downloadingHandout) return;
+
+    try {
+      setDownloadingHandout(true);
+      const blob = await mockApi.downloadAudioHandout(courseId, audio.id);
+      const fileName = audio.handoutName || `${audio.name}-讲义`;
+      triggerFileDownload(blob, fileName);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "讲义下载失败");
+    } finally {
+      setDownloadingHandout(false);
+    }
+  };
+
   const currentPrevAudio = prevAudio ?? (loopMode === "sequence" ? lastAudio : undefined);
   const currentNextAudio = nextAudio ?? (loopMode === "sequence" ? firstAudio : undefined);
   const playerStatus = completed ? "已学完" : isPlaying ? "播放中" : currentTime > 0 ? "暂停中" : "未播放";
@@ -485,6 +513,22 @@ export function AudioPlayer() {
           </div>
         </div>
       </div>
+
+      {audio.hasHandout ? (
+        <div className="pointer-events-none fixed inset-x-0 bottom-24 z-30">
+          <div className="mx-auto flex max-w-sm justify-end px-4">
+            <button
+              type="button"
+              onClick={() => void handleDownloadHandout()}
+              disabled={downloadingHandout}
+              className="pointer-events-auto flex size-16 flex-col items-center justify-center rounded-full bg-[linear-gradient(180deg,#2563eb_0%,#1d4ed8_100%)] text-white shadow-[0_18px_45px_rgba(37,99,235,0.35)] transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-80"
+            >
+              {downloadingHandout ? <Loader2 className="size-5 animate-spin" /> : <FileDown className="size-5" />}
+              <span className="mt-1 text-[11px] font-medium leading-none">讲义</span>
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

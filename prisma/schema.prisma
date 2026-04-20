@@ -169,6 +169,9 @@ model Audio {
   folderId    String
   duration    Int            @default(0)
   scriptText  String?        @db.LongText
+  handoutUrl  String?        @db.VarChar(500)
+  handoutObjectKey String?   @db.VarChar(255)
+  handoutName String?        @db.VarChar(255)
   objectKey   String         @unique @db.VarChar(255)
   objectUrl   String         @db.VarChar(500)
   mimeType    String?        @db.VarChar(100)

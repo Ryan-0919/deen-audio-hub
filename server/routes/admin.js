@@ -432,6 +432,9 @@ const getAudioLibraryItems = async (query = {}) => {
             folderId: true,
             duration: true,
             scriptText: true,
+            handoutUrl: true,
+            handoutObjectKey: true,
+            handoutName: true,
             objectKey: true,
             objectUrl: true,
             uploadedAt: true,
@@ -1325,13 +1328,9 @@ adminRouter.get("/courses/:courseId/detail", async (req, res) => {
 });
 
 adminRouter.post("/courses", async (req, res) => {
-  const { name, cover, coverObjectKey, handoutUrl, handoutObjectKey, handoutName, description, status, openTime, tags = [] } = req.body ?? {};
+  const { name, cover, coverObjectKey, description, status, openTime, tags = [] } = req.body ?? {};
   if (!name || !cover || !description) return fail(res, "请填写完整的课程信息", 400);
   const resolvedCoverObjectKey = coverObjectKey || extractObjectKeyFromUrl(cover) || null;
-  const resolvedHandoutUrl = `${handoutUrl ?? ""}`.trim() || null;
-  const resolvedHandoutObjectKey = handoutObjectKey || extractObjectKeyFromUrl(resolvedHandoutUrl || "") || null;
-  const resolvedHandoutName = `${handoutName ?? ""}`.trim() || null;
-
   const lastCourse = await prisma.course.findFirst({
     orderBy: { sortOrder: "desc" },
   });
@@ -1341,9 +1340,6 @@ adminRouter.post("/courses", async (req, res) => {
       name,
       coverUrl: cover,
       coverObjectKey: resolvedCoverObjectKey,
-      handoutUrl: resolvedHandoutUrl,
-      handoutObjectKey: resolvedHandoutObjectKey,
-      handoutName: resolvedHandoutName,
       description,
       status,
       openTime: toDate(openTime),
@@ -1380,7 +1376,6 @@ adminRouter.post("/courses", async (req, res) => {
     detail: {
       status: course.status,
       tags: tags.map((tag) => `${tag}`.trim()).filter(Boolean),
-      hasHandout: Boolean(course.handoutObjectKey || course.handoutUrl),
     },
   });
 
@@ -1412,7 +1407,7 @@ adminRouter.patch("/courses/order", async (req, res) => {
 adminRouter.patch("/courses/:courseId", async (req, res) => {
   const previousCourse = await prisma.course.findUnique({
     where: { id: req.params.courseId },
-    select: { id: true, name: true, status: true, coverObjectKey: true, handoutObjectKey: true, openTime: true },
+    select: { id: true, name: true, status: true, coverObjectKey: true, openTime: true },
   });
 
   const payload = { ...req.body };
@@ -1420,15 +1415,6 @@ adminRouter.patch("/courses/:courseId", async (req, res) => {
   if (payload.cover) payload.coverUrl = payload.cover;
   if (payload.coverObjectKey !== undefined || payload.cover) {
     payload.coverObjectKey = payload.coverObjectKey || extractObjectKeyFromUrl(payload.cover || "") || null;
-  }
-  if (payload.handoutUrl !== undefined) {
-    payload.handoutUrl = `${payload.handoutUrl ?? ""}`.trim() || null;
-  }
-  if (payload.handoutName !== undefined) {
-    payload.handoutName = `${payload.handoutName ?? ""}`.trim() || null;
-  }
-  if (payload.handoutObjectKey !== undefined || payload.handoutUrl !== undefined) {
-    payload.handoutObjectKey = payload.handoutObjectKey || extractObjectKeyFromUrl(payload.handoutUrl || "") || null;
   }
 
   delete payload.cover;
@@ -1484,10 +1470,6 @@ adminRouter.patch("/courses/:courseId", async (req, res) => {
     previousObjectKey: previousCourse?.coverObjectKey ?? "",
     nextObjectKey: course.coverObjectKey ?? "",
   });
-  cleanupReplacedObject({
-    previousObjectKey: previousCourse?.handoutObjectKey ?? "",
-    nextObjectKey: course.handoutObjectKey ?? "",
-  });
   recordAdminAction(req, {
     action: "course.update",
     entityType: "course",
@@ -1497,7 +1479,6 @@ adminRouter.patch("/courses/:courseId", async (req, res) => {
       status: course.status,
       previousStatus: previousCourse?.status ?? "",
       openTime: course.openTime,
-      hasHandout: Boolean(course.handoutObjectKey || course.handoutUrl),
     },
   });
 
@@ -1932,6 +1913,45 @@ adminRouter.patch("/library/audios/:audioId/script", async (req, res) => {
   return ok(res, serializeAudio(audio), "文案已保存");
 });
 
+adminRouter.patch("/library/audios/:audioId/handout", async (req, res) => {
+  const previousAudio = await prisma.audio.findUnique({
+    where: { id: req.params.audioId },
+    select: { id: true, name: true, handoutUrl: true, handoutObjectKey: true, handoutName: true },
+  });
+
+  const handoutUrl = `${req.body?.handoutUrl ?? ""}`.trim() || null;
+  const handoutName = `${req.body?.handoutName ?? ""}`.trim() || null;
+  const handoutObjectKey = req.body?.handoutObjectKey || extractObjectKeyFromUrl(handoutUrl || "") || null;
+
+  const audio = await prisma.audio.update({
+    where: { id: req.params.audioId },
+    data: {
+      handoutUrl,
+      handoutObjectKey,
+      handoutName,
+    },
+  });
+
+  cleanupReplacedObject({
+    previousObjectKey: previousAudio?.handoutObjectKey ?? "",
+    nextObjectKey: audio.handoutObjectKey ?? "",
+  });
+
+  recordAdminAction(req, {
+    action: "audio.handout.update",
+    entityType: "audio",
+    entityId: audio.id,
+    entityName: audio.name,
+    detail: {
+      hadHandoutBefore: Boolean(previousAudio?.handoutObjectKey || previousAudio?.handoutUrl),
+      hasHandoutNow: Boolean(audio.handoutObjectKey || audio.handoutUrl),
+      handoutName: audio.handoutName ?? "",
+    },
+  });
+
+  return ok(res, serializeAudio(audio), "音频讲义已更新");
+});
+
 adminRouter.post("/library/audios/move-folder", async (req, res) => {
   const { audioIds = [], folderId } = req.body ?? {};
   await prisma.audio.updateMany({
@@ -1955,7 +1975,7 @@ adminRouter.post("/library/audios/move-folder", async (req, res) => {
 adminRouter.delete("/library/audios/:audioId", async (req, res) => {
   const targetAudio = await prisma.audio.findUnique({
     where: { id: req.params.audioId },
-    select: { id: true, name: true, objectKey: true },
+    select: { id: true, name: true, objectKey: true, handoutObjectKey: true },
   });
   const refCount = await prisma.courseAudio.count({
     where: { audioId: req.params.audioId },
@@ -1966,6 +1986,7 @@ adminRouter.delete("/library/audios/:audioId", async (req, res) => {
     where: { id: req.params.audioId },
   });
   cleanupRemovedObject(targetAudio?.objectKey ?? "");
+  cleanupRemovedObject(targetAudio?.handoutObjectKey ?? "");
   recordAdminAction(req, {
     action: "audio.delete",
     entityType: "audio",
@@ -2096,7 +2117,7 @@ adminRouter.post("/uploads/course-cover", uploadImage.single("file"), async (req
   return ok(res, uploaded, "封面上传成功");
 });
 
-adminRouter.post("/uploads/course-handout", uploadHandout.single("file"), async (req, res) => {
+adminRouter.post("/uploads/audio-handout", uploadHandout.single("file"), async (req, res) => {
   const file = req.file;
   if (!file) return fail(res, "璇烽€夋嫨璁蹭箟鏂囦欢", 400);
 
@@ -2104,7 +2125,7 @@ adminRouter.post("/uploads/course-handout", uploadHandout.single("file"), async 
     fileName: file.originalname,
     buffer: file.buffer,
     mimeType: file.mimetype,
-    folder: "course-handouts",
+    folder: "audio-handouts",
   });
 
   return ok(res, uploaded, "璁蹭箟涓婁紶鎴愬姛");
