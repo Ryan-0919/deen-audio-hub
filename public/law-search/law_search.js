@@ -49,6 +49,7 @@ const SEARCH_ICON_URL =
   "https://osscdn2.zhongheschool.com/common/defaultType/202401/202401231435070667.png";
 const MAX_ICON_URL = "https://oss.zhumavip.com/images/lawPage/ic-fangda.png";
 const RESTORE_ICON_URL = "https://oss.zhumavip.com/images/lawPage/ic-zuixiaohua.png";
+const MOBILE_MEDIA_QUERY = "(max-width: 768px)";
 
 const state = {
   tree: [],
@@ -110,16 +111,25 @@ function bindStaticEvents() {
   });
 
   getEl("toggle-left").addEventListener("click", () => {
+    if (isMobileLayout()) {
+      return;
+    }
     state.isLeftCollapsed = true;
     renderLayout();
   });
 
   getEl("expand-left").addEventListener("click", () => {
+    if (isMobileLayout()) {
+      return;
+    }
     state.isLeftCollapsed = false;
     renderLayout();
   });
 
   getEl("movebar").addEventListener("mousedown", (event) => {
+    if (isMobileLayout()) {
+      return;
+    }
     state.dragging = true;
     state.dragStart = { x: event.pageX };
     event.stopPropagation();
@@ -145,6 +155,10 @@ function bindStaticEvents() {
     state.dragging = false;
     state.dragStart = null;
     event.stopPropagation();
+  });
+
+  window.addEventListener("resize", () => {
+    renderLayout();
   });
 
   getEl("tree-root").addEventListener("click", handleTreeClick);
@@ -256,9 +270,13 @@ function renderShell() {
 
 function renderTopIcons() {
   const icon = getEl("toggle-fullscreen");
+  icon.style.display = isMobileLayout() ? "none" : "block";
   icon.src = state.isFullscreen ? RESTORE_ICON_URL : MAX_ICON_URL;
   icon.alt = state.isFullscreen ? "还原" : "放大";
   icon.onclick = () => {
+    if (isMobileLayout()) {
+      return;
+    }
     state.isFullscreen = !state.isFullscreen;
     renderLayout();
   };
@@ -266,8 +284,21 @@ function renderTopIcons() {
 
 function renderLayout() {
   const box = getEl("law-box");
-  box.className = state.isFullscreen ? `${styles.box} ${styles.full}` : styles.box;
-  if (!state.isFullscreen) {
+  const mobile = isMobileLayout();
+
+  if (mobile) {
+    state.isFullscreen = false;
+    state.isLeftCollapsed = false;
+  }
+
+  box.className = !mobile && state.isFullscreen ? `${styles.box} ${styles.full}` : styles.box;
+  if (mobile) {
+    box.style.marginTop = "0";
+    box.style.marginBottom = "0";
+    box.style.width = "100%";
+    box.style.height = "100%";
+    box.style.minHeight = "0";
+  } else if (!state.isFullscreen) {
     box.style.marginTop = "40px";
     box.style.marginBottom = "40px";
     box.style.width = "1200px";
@@ -283,9 +314,9 @@ function renderLayout() {
 
   renderTopIcons();
 
-  getEl("law-left-expanded").hidden = state.isLeftCollapsed;
-  getEl("law-left-collapsed").hidden = !state.isLeftCollapsed;
-  getEl("law-left").style.width = `${state.leftWidth}px`;
+  getEl("law-left-expanded").hidden = mobile ? false : state.isLeftCollapsed;
+  getEl("law-left-collapsed").hidden = mobile ? true : !state.isLeftCollapsed;
+  getEl("law-left").style.width = mobile ? "100%" : `${state.leftWidth}px`;
 }
 
 function handleTreeClick(event) {
@@ -735,6 +766,10 @@ function writeJsonStorage(key, value) {
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
+}
+
+function isMobileLayout() {
+  return window.matchMedia(MOBILE_MEDIA_QUERY).matches;
 }
 
 function getEl(id) {

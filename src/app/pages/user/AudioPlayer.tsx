@@ -110,7 +110,7 @@ export function AudioPlayer() {
       try {
         const data = await mockApi.getBrandingConfig();
         setPlayerDiscImageUrl(data.playerDiscImageUrl ?? "");
-      } catch (error) {
+      } catch {
         setPlayerDiscImageUrl("");
       }
     };
@@ -171,7 +171,7 @@ export function AudioPlayer() {
 
     try {
       await node.play();
-    } catch (error) {
+    } catch {
       setPlayerError("音频已切换，请点击播放继续收听");
     }
   };
@@ -209,7 +209,7 @@ export function AudioPlayer() {
 
       try {
         await node.play();
-      } catch (error) {
+      } catch {
         setPlayerError("音频已切换，请点击播放继续收听");
       } finally {
         autoplayRequestedRef.current = false;
@@ -289,7 +289,7 @@ export function AudioPlayer() {
     if (node.paused) {
       try {
         await node.play();
-      } catch (error) {
+      } catch {
         setPlayerError("音频暂时无法播放");
       }
       return;
@@ -368,23 +368,25 @@ export function AudioPlayer() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f6f8fb] px-4 py-6">
-        <div className="mx-auto max-w-sm rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500">音频加载中...</div>
+      <div className="min-h-screen bg-[#f6f8fb] px-4 py-6 md:px-6 md:py-8">
+        <div className="mx-auto max-w-7xl rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500">音频加载中...</div>
       </div>
     );
   }
 
   if (!audio || !course || !tag) {
     return (
-      <div className="min-h-screen bg-[#f6f8fb] px-4 py-6">
-        <div className="mx-auto max-w-sm rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500">音频不存在</div>
+      <div className="min-h-screen bg-[#f6f8fb] px-4 py-6 md:px-6 md:py-8">
+        <div className="mx-auto max-w-7xl rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500">音频不存在</div>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-[#f6f8fb]">
-      <div className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/95 backdrop-blur">
+      <audio ref={audioRef} src={audio.audioUrl} preload="metadata" />
+
+      <div className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/95 backdrop-blur md:hidden">
         <div className="mx-auto flex h-14 max-w-sm items-center px-4">
           <button
             type="button"
@@ -398,130 +400,168 @@ export function AudioPlayer() {
         </div>
       </div>
 
-      <div className="mx-auto flex h-[calc(100vh-3.5rem)] max-w-sm flex-col overflow-hidden px-4 py-4">
-        <audio ref={audioRef} src={audio.audioUrl} preload="metadata" />
-
-        <div className="shrink-0 rounded-3xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center gap-4">
-            <div
-              className={cn(
-                "relative flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-full border-4 border-blue-100 bg-blue-50 shadow-sm",
-                isPlaying && "animate-[spin_10s_linear_infinite]",
-              )}
-            >
-              {playerDiscImageUrl ? (
-                <img src={playerDiscImageUrl} alt="播放器图片" className="size-full object-cover" />
-              ) : (
-                <div className="absolute inset-0 bg-blue-50" />
-              )}
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <h1 className="text-2xl font-semibold leading-8 text-slate-900">{audio.name}</h1>
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-500">{course.name}</span>
-                <span className="rounded-full bg-blue-50 px-3 py-1 text-blue-600">{tag.name}</span>
-                <span className="rounded-full bg-slate-900 px-3 py-1 text-white">{playerStatus}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-4 min-h-0 flex-1 overflow-hidden rounded-3xl border border-slate-200 bg-white p-4">
-          {playerError && <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{playerError}</div>}
-
-          <div
-            className={cn(
-              "h-full overflow-y-auto rounded-2xl bg-slate-50 px-4 py-4 text-[15px] leading-8 text-slate-700",
-              playerError && "mt-4",
-            )}
-          >
-            {audio.script ? (
-              <div className="whitespace-pre-wrap">{audio.script}</div>
-            ) : (
-              <div className="flex h-full items-center justify-center py-10 text-center text-sm text-slate-400">暂无文案内容</div>
-            )}
-          </div>
-        </div>
-
-        <div className="mt-4 shrink-0 rounded-3xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center justify-between text-sm text-slate-500">
-            <span>{formatTime(currentTime)}</span>
-            <span>总时长 {formatTime(duration)}</span>
-          </div>
-
-          <div className="mt-3">
-            <Slider value={[currentTime]} max={duration || 1} step={1} onValueChange={handleSeek} />
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <Button
+      <div className="hidden border-b border-slate-200/80 bg-white/95 backdrop-blur md:block">
+        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-6 px-6 xl:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
               type="button"
-              variant="outline"
-              onClick={handleToggleLoopMode}
-              className={cn(
-                "h-auto flex-col items-start rounded-2xl border-slate-200 px-4 py-3 text-left shadow-none",
-                loopMode === "single" && "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100",
-              )}
+              onClick={handleBack}
+              className="flex size-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700"
             >
-              <span className="text-xs font-medium text-slate-400">循环模式</span>
-              <span className="mt-1 flex items-center text-sm font-semibold">
-                {loopMode === "single" ? <Repeat1 className="mr-2 size-4" /> : <Repeat className="mr-2 size-4" />}
-                {loopMode === "single" ? "单曲循环" : "顺序循环"}
-              </span>
-            </Button>
+              <ArrowLeft className="size-5" />
+            </button>
 
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleCyclePlaybackRate}
-              className="h-auto flex-col items-start rounded-2xl border-slate-200 px-4 py-3 text-left shadow-none"
-            >
-              <span className="text-xs font-medium text-slate-400">播放速度</span>
-              <span className="mt-1 text-sm font-semibold text-slate-900">倍速 {playbackRate}x</span>
-            </Button>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-blue-600">音频播放</p>
+              <h1 className="truncate text-2xl font-semibold tracking-[-0.03em] text-slate-900">{audio.name}</h1>
+            </div>
           </div>
 
-          <div className="mt-5 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-            <div className="flex justify-start">
-              <Button
-                variant="outline"
-                onClick={() => void handleJump(currentPrevAudio)}
-                disabled={!currentPrevAudio}
-                className="h-12 rounded-full px-4"
-              >
-                <SkipBack className="mr-2 size-5" />
-                上一条
-              </Button>
-            </div>
-
-            <Button onClick={togglePlay} className="size-16 rounded-full bg-blue-600 p-0 text-white hover:bg-blue-700">
-              {isPlaying ? <Pause className="size-7" /> : <Play className="ml-1 size-7" />}
-            </Button>
-
-            <div className="flex justify-end">
-              <Button
-                variant="outline"
-                onClick={() => void handleJump(currentNextAudio)}
-                disabled={!currentNextAudio}
-                className="h-12 rounded-full px-4"
-              >
-                下一条
-                <SkipForward className="ml-2 size-5" />
-              </Button>
-            </div>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="rounded-full bg-slate-100 px-4 py-2 text-slate-600">{course.name}</span>
+            <span className="rounded-full bg-blue-50 px-4 py-2 text-blue-700">{tag.name}</span>
+            <span className="rounded-full bg-slate-900 px-4 py-2 text-white">{playerStatus}</span>
           </div>
         </div>
       </div>
 
+      <div className="mx-auto max-w-7xl px-4 py-4 md:px-6 md:py-8 xl:px-8">
+        <div className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
+          <aside className="space-y-4 xl:sticky xl:top-8 xl:h-fit">
+            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+              <div className="flex flex-col items-center text-center">
+                <div
+                  className={cn(
+                    "relative flex size-40 items-center justify-center overflow-hidden rounded-full border-[6px] border-blue-100 bg-blue-50 shadow-sm md:size-48",
+                    isPlaying && "animate-[spin_10s_linear_infinite]",
+                  )}
+                >
+                  {playerDiscImageUrl ? (
+                    <img src={playerDiscImageUrl} alt="播放器图片" className="size-full object-cover" />
+                  ) : (
+                    <div className="absolute inset-0 bg-blue-50" />
+                  )}
+                </div>
+
+                <h2 className="mt-5 text-2xl font-semibold text-slate-900">{audio.name}</h2>
+                <p className="mt-2 text-sm text-slate-500">{course.name}</p>
+
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm">
+                  <span className="rounded-full bg-blue-50 px-3 py-1 text-blue-700">{tag.name}</span>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">{playerStatus}</span>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+              <div className="flex items-center justify-between text-sm text-slate-500">
+                <span>{formatTime(currentTime)}</span>
+                <span>总时长 {formatTime(duration)}</span>
+              </div>
+
+              <div className="mt-3">
+                <Slider value={[currentTime]} max={duration || 1} step={1} onValueChange={handleSeek} />
+              </div>
+
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleToggleLoopMode}
+                  className={cn(
+                    "h-auto flex-col items-start rounded-2xl border-slate-200 px-4 py-3 text-left shadow-none",
+                    loopMode === "single" && "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100",
+                  )}
+                >
+                  <span className="text-xs font-medium text-slate-400">循环模式</span>
+                  <span className="mt-1 flex items-center text-sm font-semibold">
+                    {loopMode === "single" ? <Repeat1 className="mr-2 size-4" /> : <Repeat className="mr-2 size-4" />}
+                    {loopMode === "single" ? "单曲循环" : "顺序循环"}
+                  </span>
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCyclePlaybackRate}
+                  className="h-auto flex-col items-start rounded-2xl border-slate-200 px-4 py-3 text-left shadow-none"
+                >
+                  <span className="text-xs font-medium text-slate-400">播放速度</span>
+                  <span className="mt-1 text-sm font-semibold text-slate-900">倍速 {playbackRate}x</span>
+                </Button>
+              </div>
+
+              <div className="mt-5 flex items-center justify-between gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => void handleJump(currentPrevAudio)}
+                  disabled={!currentPrevAudio}
+                  className="h-12 flex-1 rounded-full px-4"
+                >
+                  <SkipBack className="mr-2 size-5" />
+                  上一条
+                </Button>
+
+                <Button onClick={togglePlay} className="size-16 shrink-0 rounded-full bg-blue-600 p-0 text-white hover:bg-blue-700">
+                  {isPlaying ? <Pause className="size-7" /> : <Play className="ml-1 size-7" />}
+                </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={() => void handleJump(currentNextAudio)}
+                  disabled={!currentNextAudio}
+                  className="h-12 flex-1 rounded-full px-4"
+                >
+                  下一条
+                  <SkipForward className="ml-2 size-5" />
+                </Button>
+              </div>
+            </section>
+          </aside>
+
+          <section className="min-h-0 rounded-3xl border border-slate-200 bg-white shadow-sm">
+            <div className="p-4 md:p-6">
+              {audio.hasHandout ? (
+                <div className="mb-4 flex justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void handleDownloadHandout()}
+                    disabled={downloadingHandout}
+                    className="rounded-full"
+                  >
+                    {downloadingHandout ? <Loader2 className="mr-2 size-4 animate-spin" /> : <FileDown className="mr-2 size-4" />}
+                    下载讲义
+                  </Button>
+                </div>
+              ) : null}
+
+              {playerError ? (
+                <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{playerError}</div>
+              ) : null}
+
+              <div className="overflow-hidden rounded-2xl bg-slate-50">
+                <div className="max-h-[calc(100vh-260px)] min-h-[360px] overflow-y-auto px-4 py-4 text-[15px] leading-8 text-slate-700 md:px-6 md:py-6 md:text-base md:leading-8">
+                  {audio.script ? (
+                    <div className="whitespace-pre-wrap">{audio.script}</div>
+                  ) : (
+                    <div className="flex min-h-[320px] items-center justify-center text-center text-sm text-slate-400">暂无文案内容</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
       {audio.hasHandout ? (
-        <div className="pointer-events-none fixed inset-x-0 bottom-24 z-30">
-          <div className="mx-auto flex max-w-sm justify-end px-4">
+        <div className="pointer-events-none fixed inset-x-0 bottom-24 z-30 md:bottom-8">
+          <div className="mx-auto flex max-w-7xl justify-end px-4 md:px-6 xl:px-8">
             <button
               type="button"
               onClick={() => void handleDownloadHandout()}
               disabled={downloadingHandout}
-              className="pointer-events-auto flex size-16 flex-col items-center justify-center rounded-full bg-[linear-gradient(180deg,#2563eb_0%,#1d4ed8_100%)] text-white shadow-[0_18px_45px_rgba(37,99,235,0.35)] transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-80"
+              className="pointer-events-auto flex size-16 flex-col items-center justify-center rounded-full bg-[linear-gradient(180deg,#2563eb_0%,#1d4ed8_100%)] text-white shadow-[0_18px_45px_rgba(37,99,235,0.35)] transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-80 md:hidden"
             >
               {downloadingHandout ? <Loader2 className="size-5 animate-spin" /> : <FileDown className="size-5" />}
               <span className="mt-1 text-[11px] font-medium leading-none">讲义</span>

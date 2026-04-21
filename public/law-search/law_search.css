@@ -5,6 +5,7 @@
 html,
 body {
   margin: 0;
+  height: 100%;
   min-height: 100%;
 }
 
@@ -16,6 +17,7 @@ body {
 
 .law-page {
   width: 100%;
+  min-height: 100%;
   min-height: 100vh;
   padding: 0 16px 40px;
 }
@@ -23,6 +25,7 @@ body {
 .law-page__content {
   display: flex;
   justify-content: center;
+  min-height: 100vh;
 }
 
 .law-inline-icon {
@@ -392,5 +395,112 @@ h4 {
     margin-top: 8px !important;
     margin-bottom: 8px !important;
     height: calc(100vh - 16px) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .law-page {
+    padding: 0;
+  }
+
+  .law-page__content {
+    min-height: 100vh;
+  }
+
+  .law-page__content > .iet2TRwpa65B6Itl3s8WBw\=\= {
+    width: 100% !important;
+    height: 100vh !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .foDQP3KaJV2f0zebGlTqLg\=\= {
+    padding: 0 14px;
+    height: 48px;
+    font-size: 15px;
+    line-height: 48px;
+  }
+
+  .foDQP3KaJV2f0zebGlTqLg\=\= > img {
+    display: none;
+  }
+
+  .W6XcCrT2dd-qXREMlc\+POg\=\= {
+    flex-direction: column;
+    height: calc(100% - 48px);
+  }
+
+  #law-left-expanded {
+    display: block !important;
+    width: 100%;
+  }
+
+  #law-left-collapsed {
+    display: none !important;
+  }
+
+  .X78sh31iqReN49kQLUunbw\=\=,
+  .KzrW119NxvD6FZu5TR9hvg\=\= {
+    width: 100% !important;
+    height: min(42vh, 360px) !important;
+    border-right: 0;
+    border-bottom: 1px solid #dfdfdf;
+  }
+
+  .fCX6MGsD3PopmhyLo58bMA\=\= {
+    display: none;
+  }
+
+  ._8\+rB95TY7bGxKVaAKQFIcw\=\= {
+    flex-wrap: wrap;
+    gap: 10px;
+    height: auto;
+    padding: 10px 12px;
+  }
+
+  ._8\+rB95TY7bGxKVaAKQFIcw\=\= > .-F6jE0\+QZM5GooWVuWNexw\=\= {
+    flex: 1 1 100%;
+    min-width: 0;
+    margin: 0;
+  }
+
+  ._8\+rB95TY7bGxKVaAKQFIcw\=\= > .-F6jE0\+QZM5GooWVuWNexw\=\= > input {
+    width: 100%;
+  }
+
+  ._8\+rB95TY7bGxKVaAKQFIcw\=\= > .-F6jE0\+QZM5GooWVuWNexw\=\= > img {
+    margin-left: 12px;
+  }
+
+  .jCwmR755zXuyzoQNLVpNlw\=\= {
+    margin-left: 0;
+    width: auto;
+    height: auto;
+    padding-right: 0;
+    gap: 8px;
+  }
+
+  .RmTjFuE3KX34t9DrDuId0Q\=\= {
+    height: calc(100% - 86px);
+    padding: 8px;
+  }
+
+  .Dr9X1SCNbR\+c1z6yRFP6cQ\=\= {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .Dr9X1SCNbR\+c1z6yRFP6cQ\=\= > div {
+    padding: 16px 14px;
+    line-height: 26px;
+    font-size: 15px;
+  }
+
+  ._0eZdR22z6OAmWmBw-VoFOA\=\= {
+    padding: 24px !important;
+    font-size: 32px;
+    line-height: 38px;
   }
 }
