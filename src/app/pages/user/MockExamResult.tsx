@@ -642,8 +642,8 @@ function SubjectiveReviewSheet({
                 </div>
               </FoldBlock>
 
-              {!record.summary.finalScorePending && question.lessonAudioUrl ? (
-                <ReviewVoicePlayer url={question.lessonAudioUrl} durationSeconds={question.lessonAudioDurationSeconds} />
+              {!record.summary.finalScorePending && question.reviewVoiceUrl ? (
+                <ReviewVoicePlayer url={question.reviewVoiceUrl} durationSeconds={question.reviewVoiceDurationSeconds} />
               ) : null}
             </div>
           </div>

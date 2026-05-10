@@ -75,6 +75,18 @@ const getMockExamPaperCoverUrl = (paper, fallbackPaperType = null) => {
   );
 };
 
+const getQuestionLessonAudioUrl = (question) =>
+  getReadableObjectUrl({
+    objectKey: question?.lessonAudioObjectKey ?? "",
+    fallbackUrl: question?.lessonAudioUrl ?? "",
+  });
+
+const getQuestionReviewVoiceUrl = (reviewJson) =>
+  getReadableObjectUrl({
+    objectKey: reviewJson?.reviewVoiceObjectKey ?? "",
+    fallbackUrl: reviewJson?.reviewVoiceUrl ?? "",
+  });
+
 const buildRecordPaperSnapshot = (paper) =>
   JSON.stringify({
     paper: {
@@ -534,10 +546,10 @@ const serializeQuestion = (question, answer, revealAnswer) => {
     }),
       reviewFeedbackStars: Number(reviewJson?.feedbackStars ?? 0) || 0,
       reviewFeedbackSubmittedAt: reviewJson?.feedbackSubmittedAt ? formatDateTime(reviewJson.feedbackSubmittedAt) : "",
-      lessonAudioUrl: `${question.lessonAudioUrl ?? ""}`.trim(),
+      lessonAudioUrl: getQuestionLessonAudioUrl(question),
       lessonAudioObjectKey: `${question.lessonAudioObjectKey ?? ""}`.trim(),
       lessonAudioDurationSeconds: Number(question.lessonAudioDurationSeconds ?? 0) || 0,
-      reviewVoiceUrl: `${reviewJson?.reviewVoiceUrl ?? ""}`.trim(),
+      reviewVoiceUrl: getQuestionReviewVoiceUrl(reviewJson),
       reviewVoiceObjectKey: `${reviewJson?.reviewVoiceObjectKey ?? ""}`.trim(),
       reviewVoiceDurationSeconds: Number(reviewJson?.reviewVoiceDurationSeconds ?? 0) || 0,
     };
@@ -570,7 +582,7 @@ const serializeQuestion = (question, answer, revealAnswer) => {
     reviewSource: "system",
     reviewFeedbackStars: 0,
     reviewFeedbackSubmittedAt: "",
-    lessonAudioUrl: `${question.lessonAudioUrl ?? ""}`.trim(),
+    lessonAudioUrl: getQuestionLessonAudioUrl(question),
     lessonAudioObjectKey: `${question.lessonAudioObjectKey ?? ""}`.trim(),
     lessonAudioDurationSeconds: Number(question.lessonAudioDurationSeconds ?? 0) || 0,
     reviewVoiceUrl: "",
