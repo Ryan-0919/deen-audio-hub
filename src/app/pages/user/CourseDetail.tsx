@@ -442,6 +442,58 @@ export function CourseDetail() {
     </section>
   );
 
+  const renderCourseOverviewSection = (className?: string, compact = false) => (
+    <section
+      className={cn(
+        "rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] p-4 shadow-[0_24px_90px_rgba(0,0,0,0.20)] backdrop-blur-[20px] md:rounded-[28px] md:p-5",
+        className,
+      )}
+    >
+      <div className="flex items-center gap-2 text-white">
+        <ListMusic className="size-4 text-[#8fd6ff]" />
+        <h3 className="text-sm font-semibold">学习概览</h3>
+      </div>
+
+      {compact ? (
+        <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-white/56">
+          <div className="rounded-[20px] bg-white/[0.05] px-4 py-3">
+            <div className="text-xs text-white/42">课程音频</div>
+            <div className="mt-2 text-lg font-semibold text-white">{allAudioEntries.length || course.audioCount}</div>
+          </div>
+
+          <div className="rounded-[20px] bg-white/[0.05] px-4 py-3">
+            <div className="text-xs text-white/42">课程总时长</div>
+            <div className="mt-2 text-lg font-semibold text-white">{formatDuration(courseTotalDuration)}</div>
+          </div>
+
+          <div className="col-span-2 rounded-[20px] bg-white/[0.05] px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm text-white/56">完成进度</span>
+              <span className="text-lg font-semibold text-white">{courseCompletionRate}%</span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4 space-y-3 text-sm text-white/56">
+          <div className="flex items-center justify-between rounded-[20px] bg-white/[0.05] px-4 py-3">
+            <span>课程音频</span>
+            <span className="font-semibold text-white">{allAudioEntries.length || course.audioCount}</span>
+          </div>
+
+          <div className="flex items-center justify-between rounded-[20px] bg-white/[0.05] px-4 py-3">
+            <span>课程总时长</span>
+            <span className="font-semibold text-white">{formatDuration(courseTotalDuration)}</span>
+          </div>
+
+          <div className="flex items-center justify-between rounded-[20px] bg-white/[0.05] px-4 py-3">
+            <span>完成进度</span>
+            <span className="font-semibold text-white">{courseCompletionRate}%</span>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+
   if (loading) {
     return (
       <div className="relative min-h-full overflow-hidden bg-[#040816] px-4 py-6 text-white md:px-6 md:py-8">
@@ -578,6 +630,8 @@ export function CourseDetail() {
               </div>
             </section>
 
+            {renderCourseOverviewSection("xl:hidden", true)}
+
             {tagSummaries.length > 0 ? renderMobileTagSelector() : null}
 
             <section className="rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] p-4 shadow-[0_24px_90px_rgba(0,0,0,0.20)] backdrop-blur-[20px] md:rounded-[30px] md:p-5">
@@ -675,29 +729,7 @@ export function CourseDetail() {
           </main>
 
           <aside className="space-y-4 xl:sticky xl:top-24 xl:h-fit">
-            <section className="rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] p-4 shadow-[0_24px_90px_rgba(0,0,0,0.20)] backdrop-blur-[20px] md:rounded-[28px] md:p-5">
-              <div className="flex items-center gap-2 text-white">
-                <ListMusic className="size-4 text-[#8fd6ff]" />
-                <h3 className="text-sm font-semibold">学习概览</h3>
-              </div>
-
-              <div className="mt-4 space-y-3 text-sm text-white/56">
-                <div className="flex items-center justify-between rounded-[20px] bg-white/[0.05] px-4 py-3">
-                  <span>课程音频</span>
-                  <span className="font-semibold text-white">{allAudioEntries.length || course.audioCount}</span>
-                </div>
-
-                <div className="flex items-center justify-between rounded-[20px] bg-white/[0.05] px-4 py-3">
-                  <span>课程总时长</span>
-                  <span className="font-semibold text-white">{formatDuration(courseTotalDuration)}</span>
-                </div>
-
-                <div className="flex items-center justify-between rounded-[20px] bg-white/[0.05] px-4 py-3">
-                  <span>完成进度</span>
-                  <span className="font-semibold text-white">{courseCompletionRate}%</span>
-                </div>
-              </div>
-            </section>
+            {renderCourseOverviewSection("hidden xl:block")}
 
             {tagSummaries.length > 0 ? renderTagSelectorSection("hidden md:block") : null}
           </aside>
