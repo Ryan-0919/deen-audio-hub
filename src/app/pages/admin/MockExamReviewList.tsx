@@ -1,6 +1,6 @@
 import { ArrowLeft, LoaderCircle, Plus, Search, Send, Trash2, Upload } from "lucide-react";
-import type { ReactNode } from "react";
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import type { ChangeEvent, ReactNode } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 import { AnnotatedAnswerText } from "../../components/AnnotatedAnswerText";
@@ -155,6 +155,7 @@ type DraftState = {
   rubricGuidance: Record<string, string>;
   rubricPoints: Record<string, EditableRubricPoint[]>;
   missedPoints: Record<string, EditableMissedPoint[]>;
+  reviewVoices: Record<string, EditableReviewVoice>;
 };
 
 type EditableAnswerMark = {
@@ -183,6 +184,12 @@ type EditableMissedPoint = {
   score: string;
 };
 
+type EditableReviewVoice = {
+  url: string;
+  objectKey: string;
+  durationSeconds: number;
+};
+
 const getSubQuestionKey = (questionId: string, subQuestionId: string) => `${questionId}::${subQuestionId}`;
 
 const buildDraftState = (detail: AdminMockExamReviewDetail): DraftState => {
@@ -194,8 +201,15 @@ const buildDraftState = (detail: AdminMockExamReviewDetail): DraftState => {
   const rubricGuidance: Record<string, string> = {};
   const rubricPoints: Record<string, EditableRubricPoint[]> = {};
   const missedPoints: Record<string, EditableMissedPoint[]> = {};
+  const reviewVoices: Record<string, EditableReviewVoice> = {};
 
   for (const question of detail.questions.filter((item) => item.type === "subjective_case")) {
+    reviewVoices[question.id] = {
+      url: question.reviewVoiceUrl ?? "",
+      objectKey: question.reviewVoiceObjectKey ?? "",
+      durationSeconds: Number(question.reviewVoiceDurationSeconds ?? 0) || 0,
+    };
+
     for (const subQuestion of question.subjectiveSubQuestions) {
       const key = getSubQuestionKey(question.id, subQuestion.id);
       scores[key] = `${subQuestion.score ?? 0}`;
@@ -229,7 +243,7 @@ const buildDraftState = (detail: AdminMockExamReviewDetail): DraftState => {
     }
   }
 
-  return { scores, comments, references, abilities, marks, rubricGuidance, rubricPoints, missedPoints };
+  return { scores, comments, references, abilities, marks, rubricGuidance, rubricPoints, missedPoints, reviewVoices };
 };
 
 const getPaperStageCount = (paper: AdminMockExamReviewPaperSummary | null, status: AdminMockExamReviewStatus) => {
@@ -1080,6 +1094,10 @@ function InlineSubQuestionReviewWorkbench({
   rubricGuidanceValue,
   rubricPoints,
   missedPoints,
+  reviewVoice,
+  reviewVoiceUploading,
+  onReviewVoiceUpload,
+  onReviewVoiceClear,
   marks,
   onScoreChange,
   onAbilityChange,
@@ -1099,6 +1117,10 @@ function InlineSubQuestionReviewWorkbench({
   rubricGuidanceValue: string;
   rubricPoints: EditableRubricPoint[];
   missedPoints: EditableMissedPoint[];
+  reviewVoice: EditableReviewVoice;
+  reviewVoiceUploading: boolean;
+  onReviewVoiceUpload: (event: ChangeEvent<HTMLInputElement>) => void;
+  onReviewVoiceClear: () => void;
   marks: EditableAnswerMark[];
   onScoreChange: (value: string) => void;
   onAbilityChange: (value: string) => void;
@@ -1109,6 +1131,7 @@ function InlineSubQuestionReviewWorkbench({
   onMissedPointsChange: (points: EditableMissedPoint[]) => void;
   onMarksChange: (marks: EditableAnswerMark[]) => void;
 }) {
+  const voiceInputRef = useRef<HTMLInputElement | null>(null);
   const hasAnswer = Boolean(subQuestion.answer?.trim());
   const maxScore = subQuestion.maxScore ?? question.score;
   const commentLength = commentValue.trim().length;
@@ -1302,6 +1325,7 @@ export function MockExamReviewList() {
   const [saving, setSaving] = useState(false);
   const [aiScoring, setAiScoring] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [uploadingVoiceQuestionId, setUploadingVoiceQuestionId] = useState("");
   const [selectedDetail, setSelectedDetail] = useState<AdminMockExamReviewDetail | null>(null);
   const [drafts, setDrafts] = useState<DraftState>({
     scores: {},
@@ -1312,6 +1336,7 @@ export function MockExamReviewList() {
     rubricGuidance: {},
     rubricPoints: {},
     missedPoints: {},
+    reviewVoices: {},
   });
   const deferredKeyword = useDeferredValue(keyword.trim());
 
@@ -1420,6 +1445,9 @@ export function MockExamReviewList() {
     try {
       const items: AdminMockExamReviewQuestionScoreInput[] = subjectiveQuestions.map((question) => ({
         questionId: question.id,
+        reviewVoiceUrl: (drafts.reviewVoices[question.id]?.url ?? "").trim(),
+        reviewVoiceObjectKey: (drafts.reviewVoices[question.id]?.objectKey ?? "").trim(),
+        reviewVoiceDurationSeconds: Number(drafts.reviewVoices[question.id]?.durationSeconds ?? 0) || 0,
         subQuestions: question.subjectiveSubQuestions.map((subQuestion) => {
           const key = getSubQuestionKey(question.id, subQuestion.id);
           const score = Number.parseInt(drafts.scores[key] ?? "0", 10);
@@ -1514,6 +1542,20 @@ export function MockExamReviewList() {
       setUploadingVoiceQuestionId("");
       event.target.value = "";
     }
+  };
+
+  const handleReviewVoiceClear = (questionId: string) => {
+    setDrafts((current) => ({
+      ...current,
+      reviewVoices: {
+        ...current.reviewVoices,
+        [questionId]: {
+          url: "",
+          objectKey: "",
+          durationSeconds: 0,
+        },
+      },
+    }));
   };
 
   if (!paperId) {
@@ -1818,6 +1860,10 @@ export function MockExamReviewList() {
                             rubricGuidanceValue={drafts.rubricGuidance[key] ?? ""}
                             rubricPoints={drafts.rubricPoints[key] ?? []}
                             missedPoints={drafts.missedPoints[key] ?? []}
+                            reviewVoice={drafts.reviewVoices[question.id] ?? { url: "", objectKey: "", durationSeconds: 0 }}
+                            reviewVoiceUploading={uploadingVoiceQuestionId === question.id}
+                            onReviewVoiceUpload={(event) => void handleReviewVoiceUpload(event, question.id)}
+                            onReviewVoiceClear={() => handleReviewVoiceClear(question.id)}
                             marks={drafts.marks[key] ?? []}
                             onScoreChange={(value) =>
                               setDrafts((current) => ({
