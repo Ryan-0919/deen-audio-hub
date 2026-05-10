@@ -7,10 +7,16 @@ import {
   randomBytes,
 } from "node:crypto";
 import { config } from "./config.js";
+import { buildShopPaymentRuntimeDiagnostics } from "./shop-payment-runtime.js";
 import { moneyToCents, parseCourseIdsSnapshot, recalculateShopOrderStatus, shopOrderDetailInclude } from "./shop.js";
 
 const WECHAT_PAY_API_BASE_URL = "https://api.mch.weixin.qq.com";
 const ALIPAY_SUCCESS_STATUSES = new Set(["TRADE_SUCCESS", "TRADE_FINISHED"]);
+const paymentChannelLabelMap = {
+  wechat_h5: "微信 H5",
+  wechat_jsapi: "微信 JSAPI",
+  alipay_wap: "支付宝 WAP",
+};
 
 const createHttpError = (message, statusCode = 400) => {
   const error = new Error(message);
@@ -118,6 +124,19 @@ const isPaymentChannelEnabled = (shopConfig, channel) => {
       return Boolean(shopConfig?.enableAlipayWap ?? true);
     default:
       return true;
+  }
+};
+
+const getPaymentChannelRuntime = (diagnostics, channel) => {
+  switch (channel) {
+    case "wechat_h5":
+      return diagnostics.channels.wechatH5;
+    case "wechat_jsapi":
+      return diagnostics.channels.wechatJsapi;
+    case "alipay_wap":
+      return diagnostics.channels.alipayWap;
+    default:
+      return null;
   }
 };
 
@@ -886,9 +905,24 @@ export const ensureShopPaymentChannelEnabled = async ({ db, channel }) => {
     },
   });
 
+  const diagnostics =
+    config.shopPaymentMode === "gateway"
+      ? buildShopPaymentRuntimeDiagnostics({
+          runtimeConfig: config,
+          shopConfig,
+        })
+      : null;
+  const channelRuntime = diagnostics ? getPaymentChannelRuntime(diagnostics, channel) : null;
+
   if (!isPaymentChannelEnabled(shopConfig, channel)) {
     throw createHttpError("当前支付方式暂未开启，请更换其他支付方式", 400);
   }
+  if (channelRuntime && !channelRuntime.ready) {
+    const missingMessage = channelRuntime.missing.length > 0 ? `，缺少 ${channelRuntime.missing.join("、")}` : "";
+    throw createHttpError(`${paymentChannelLabelMap[channel] ?? "当前"}支付暂未配置完成${missingMessage}，请联系管理员`, 503);
+  }
+
+  return shopConfig;
 };
 
 export const startShopOrderPayment = async ({

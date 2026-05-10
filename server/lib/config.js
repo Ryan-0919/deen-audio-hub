@@ -28,6 +28,10 @@ const optionalPositiveInt = (name, fallback) => {
   const value = Number.parseInt(optional(name) || "", 10);
   return Number.isFinite(value) && value > 0 ? value : fallback;
 };
+const optionalNonNegativeInt = (name, fallback) => {
+  const value = Number.parseInt(optional(name) || "", 10);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+};
 const normalizeMultiline = (value) => value.replace(/\\n/g, "\n").trim();
 const normalizeBaseUrl = (value) => `${value ?? ""}`.trim().replace(/\/+$/, "");
 const readPem = (valueName, pathName) => {
@@ -57,6 +61,13 @@ export const config = {
   audioProcessingDir: optional("AUDIO_PROCESSING_DIR"),
   audioTranscodeEnabled: optionalBoolean("AUDIO_TRANSCODE_ENABLED", true),
   ffmpegPath: optional("FFMPEG_PATH"),
+  mockExamAiReview: {
+    provider: optional("MOCK_EXAM_AI_PROVIDER") || "rules",
+    baseUrl: normalizeBaseUrl(optional("MOCK_EXAM_AI_BASE_URL")),
+    apiKey: optional("MOCK_EXAM_AI_API_KEY"),
+    model: optional("MOCK_EXAM_AI_MODEL"),
+    timeoutMs: optionalNonNegativeInt("MOCK_EXAM_AI_TIMEOUT_MS", 120000),
+  },
   shopPaymentMode: optional("SHOP_PAYMENT_MODE") || "mock",
   shopOrderAutoCloseMinutes: Math.max(Number(optional("SHOP_ORDER_AUTO_CLOSE_MINUTES") || "30"), 1),
   paySiteBaseUrl: normalizeBaseUrl(optional("PAY_SITE_BASE_URL")),

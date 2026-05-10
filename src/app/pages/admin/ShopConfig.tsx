@@ -18,6 +18,8 @@ import {
   mockApi,
 } from "../../lib/mockData";
 
+type PaymentRuntime = ShopConfig["paymentRuntime"];
+
 type BannerForm = {
   localId: string;
   title: string;
@@ -40,6 +42,7 @@ type ConfigFormState = {
   enableWechatJsapi: boolean;
   enableAlipayWap: boolean;
   runtimePaymentMode: string;
+  paymentRuntime: PaymentRuntime;
   banners: BannerForm[];
 };
 
@@ -60,6 +63,36 @@ const createEmptyBanner = (): BannerForm => ({
   status: true,
 });
 
+const createEmptyPaymentRuntime = (): PaymentRuntime => ({
+  mode: "",
+  siteBaseUrl: "",
+  notifyBaseUrl: "",
+  baseReady: false,
+  baseMissing: [],
+  refundSupported: false,
+  refundNotice: "",
+  channels: {
+    wechatH5: {
+      enabled: true,
+      ready: false,
+      missing: [],
+      note: "",
+    },
+    wechatJsapi: {
+      enabled: true,
+      ready: false,
+      missing: [],
+      note: "",
+    },
+    alipayWap: {
+      enabled: true,
+      ready: false,
+      missing: [],
+      note: "",
+    },
+  },
+});
+
 const createEmptyForm = (): ConfigFormState => ({
   shopNotice: "",
   customerServiceUrl: "",
@@ -70,6 +103,7 @@ const createEmptyForm = (): ConfigFormState => ({
   enableWechatJsapi: true,
   enableAlipayWap: true,
   runtimePaymentMode: "",
+  paymentRuntime: createEmptyPaymentRuntime(),
   banners: [],
 });
 
@@ -83,6 +117,7 @@ const mapConfigToForm = (config: ShopConfig): ConfigFormState => ({
   enableWechatJsapi: config.enableWechatJsapi,
   enableAlipayWap: config.enableAlipayWap,
   runtimePaymentMode: config.runtimePaymentMode,
+  paymentRuntime: config.paymentRuntime,
   banners: config.banners.map((banner, index) => ({
     localId: createLocalId(),
     title: banner.title,
@@ -126,6 +161,17 @@ const productStatusLabel: Record<string, string> = {
   draft: "草稿",
   on_sale: "上架中",
   off_sale: "已下架",
+};
+
+const getRuntimeBadgeClassName = (enabled: boolean, ready: boolean) => {
+  if (!enabled) return "bg-slate-100 text-slate-600";
+  if (ready) return "bg-emerald-100 text-emerald-700";
+  return "bg-rose-100 text-rose-700";
+};
+
+const getRuntimeBadgeLabel = (enabled: boolean, ready: boolean) => {
+  if (!enabled) return "已关闭";
+  return ready ? "已就绪" : "缺配置";
 };
 
 const loadAllAdminShopProducts = async () => {
@@ -178,6 +224,14 @@ export function ShopConfig() {
   const enabledChannelCount = useMemo(() => [form.enableWechatH5, form.enableWechatJsapi, form.enableAlipayWap].filter(Boolean).length, [form.enableAlipayWap, form.enableWechatH5, form.enableWechatJsapi]);
   const selectedProducts = useMemo(() => products.filter((product) => form.featuredProductIds.includes(product.id)), [form.featuredProductIds, products]);
   const selectedCategories = useMemo(() => categories.filter((category) => form.featuredCategoryIds.includes(category.id)), [categories, form.featuredCategoryIds]);
+  const paymentRuntimeCards = useMemo(
+    () => [
+      { key: "wechatH5", label: "微信 H5", runtime: form.paymentRuntime.channels.wechatH5 },
+      { key: "wechatJsapi", label: "微信 JSAPI", runtime: form.paymentRuntime.channels.wechatJsapi },
+      { key: "alipayWap", label: "支付宝 WAP", runtime: form.paymentRuntime.channels.alipayWap },
+    ],
+    [form.paymentRuntime],
+  );
 
   const updateBanner = (localId: string, updater: (banner: BannerForm) => BannerForm) => {
     setForm((current) => ({ ...current, banners: current.banners.map((banner) => (banner.localId === localId ? updater(banner) : banner)) }));
@@ -263,6 +317,71 @@ export function ShopConfig() {
                   <Switch checked={item.value} onCheckedChange={(checked) => setForm((current) => ({ ...current, [item.key]: checked }))} />
                 </div>
               ))}
+            </div>
+
+            <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">运行时诊断</p>
+                  <p className="mt-1 text-sm text-slate-500">直接读取服务端当前运行的支付模式和环境变量完整度。</p>
+                </div>
+                <Badge variant="secondary" className="bg-slate-100 text-slate-700">
+                  {paymentModeLabel(form.paymentRuntime.mode || form.runtimePaymentMode)}
+                </Badge>
+              </div>
+
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-sm font-medium text-slate-900">回跳 / 回调地址</p>
+                  <div className="mt-3 space-y-2 text-sm text-slate-600">
+                    <p>
+                      <span className="text-slate-500">PAY_SITE_BASE_URL:</span> {form.paymentRuntime.siteBaseUrl || "未配置"}
+                    </p>
+                    <p>
+                      <span className="text-slate-500">PAY_NOTIFY_BASE_URL:</span> {form.paymentRuntime.notifyBaseUrl || "未配置"}
+                    </p>
+                  </div>
+                  {form.paymentRuntime.baseMissing.length > 0 ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {form.paymentRuntime.baseMissing.map((item) => (
+                        <Badge key={item} variant="secondary" className="bg-rose-100 text-rose-700">
+                          缺少 {item}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-sm text-emerald-700">基础回跳和回调地址已就绪。</p>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-sm font-medium text-amber-900">退款现状</p>
+                  <p className="mt-3 text-sm leading-7 text-amber-800">{form.paymentRuntime.refundNotice}</p>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                {paymentRuntimeCards.map((item) => (
+                  <div key={item.key} className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-medium text-slate-900">{item.label}</p>
+                      <Badge variant="secondary" className={getRuntimeBadgeClassName(item.runtime.enabled, item.runtime.ready)}>
+                        {getRuntimeBadgeLabel(item.runtime.enabled, item.runtime.ready)}
+                      </Badge>
+                    </div>
+                    <p className="mt-3 text-sm leading-7 text-slate-600">{item.runtime.note}</p>
+                    {item.runtime.missing.length > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {item.runtime.missing.map((missing) => (
+                          <Badge key={`${item.key}-${missing}`} variant="secondary" className="bg-rose-100 text-rose-700">
+                            {missing}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
             </div>
           </section>
 

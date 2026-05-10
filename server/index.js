@@ -12,6 +12,10 @@ import { userRouter } from "./routes/user.js";
 import { adminRouter } from "./routes/admin.js";
 import { lawUserRouter } from "./routes/law-user.js";
 import { lawAdminRouter } from "./routes/law-admin.js";
+import { mockExamUserRouter } from "./routes/mock-exam-user.js";
+import { mockExamAdminRouter } from "./routes/mock-exam-admin.js";
+import { typingPracticeUserRouter } from "./routes/typing-practice-user.js";
+import { typingPracticeAdminRouter } from "./routes/typing-practice-admin.js";
 import { shopUserRouter } from "./routes/shop-user.js";
 import { shopAdminRouter } from "./routes/shop-admin.js";
 import { paymentRouter } from "./routes/payment.js";
@@ -21,6 +25,14 @@ app.set("trust proxy", true);
 app.disable("x-powered-by");
 
 const allowedOrigins = new Set(config.corsOrigins);
+const isFrpBoxOrigin = (origin = "") => {
+  try {
+    const { hostname } = new URL(origin);
+    return hostname === "frp-box.com" || hostname.endsWith(".frp-box.com");
+  } catch {
+    return false;
+  }
+};
 
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -40,6 +52,11 @@ app.use(
       }
 
       if (allowedOrigins.has(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      if (isFrpBoxOrigin(origin)) {
         callback(null, true);
         return;
       }
@@ -64,6 +81,10 @@ app.get("/api/health", (_req, res) => {
 app.use("/api/auth", authRouter);
 app.use("/api/payment", paymentRouter);
 app.use("/api/user/laws", lawUserRouter);
+app.use("/api/user/mock-exams", mockExamUserRouter);
+app.use("/api/admin/mock-exams", mockExamAdminRouter);
+app.use("/api/user/typing-practice", typingPracticeUserRouter);
+app.use("/api/admin/typing-practice", typingPracticeAdminRouter);
 app.use("/api/admin/laws", lawAdminRouter);
 app.use("/api/user/shop", shopUserRouter);
 app.use("/api/admin/shop", shopAdminRouter);

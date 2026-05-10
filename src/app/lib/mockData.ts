@@ -1,8 +1,16 @@
+import {
+  clearAdminSessionForMode,
+  getAdminConsoleMode,
+  getAdminConsoleModeFromPath,
+  getAdminTokenForMode,
+  isAdminConsolePath,
+} from "./admin-session";
 import { clearUserSession as clearPersistedUserSession, getUserToken } from "./user-session";
 
 export type UserStatus = "active" | "disabled";
 export type CourseStatus = "open" | "closed" | "scheduled";
 export type AudioProcessStatus = "pending" | "processing" | "ready" | "failed";
+export type AdminRole = "super_admin" | "operations_admin" | "user_admin" | "review_admin";
 
 export interface User {
   id: string;
@@ -13,6 +21,7 @@ export interface User {
   lastLogin: string;
   deviceCount: number;
   coursePermissions: string[];
+  mockExamPermissions: string[];
 }
 
 export interface Course {
@@ -81,6 +90,7 @@ export interface AdminAccount {
   id: string;
   account: string;
   name: string;
+  role: AdminRole;
   createdAt: string;
   updatedAt: string;
 }
@@ -92,6 +102,248 @@ export interface SystemConfig {
   brandLogoObjectKey: string;
   playerDiscImageUrl: string;
   playerDiscImageObjectKey: string;
+  portalConfig: PortalConfig;
+  typingPracticeDifficultyConfigs?: TypingPracticeDifficultyConfig[];
+  mockExamLaunchConfig?: MockExamLaunchConfig;
+}
+
+export type MockExamAiReviewProvider = "rules" | "openai-compatible";
+
+export interface MockExamAiReviewConfig {
+  provider: MockExamAiReviewProvider;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  timeoutMs: number;
+  systemPrompt: string;
+  userPromptTemplate: string;
+}
+
+export interface MockExamLaunchConfigTab {
+  key: "notice" | "rules" | "guide";
+  label: string;
+  html: string;
+}
+
+export interface MockExamLaunchConfig {
+  login: {
+    ticketLabel: string;
+    idCardLabel: string;
+    loginButtonText: string;
+    resetButtonText: string;
+    fullscreenTip: string;
+  };
+  notice: {
+    readSeconds: number;
+    beginPromptDelayMs: number;
+    beginPromptMessage: string;
+    countdownPrefix: string;
+    startButtonText: string;
+    startingButtonText: string;
+    agreementText: string;
+    agreePromptMessage: string;
+    examOverMessage: string;
+    confirmButtonText: string;
+    backButtonText: string;
+    candidateNameLabel: string;
+    candidateGenderLabel: string;
+    ticketLabel: string;
+    idCardLabel: string;
+    defaultCandidateName: string;
+    defaultCandidateGender: string;
+    avatarUrl: string;
+    avatarObjectKey: string;
+  };
+  tabs: MockExamLaunchConfigTab[];
+}
+
+export interface PortalFeatureConfig {
+  key: string;
+  title: string;
+  eyebrow: string;
+  description: string;
+  detail: string;
+  action: string;
+  tags: string[];
+}
+
+export interface PortalNavLink {
+  label: string;
+  href: string;
+}
+
+export interface PortalJourneyCard {
+  step: string;
+  title: string;
+  description: string;
+}
+
+export interface PortalValueCard {
+  title: string;
+  description: string;
+}
+
+export interface PortalMemberHomeAnnouncementItem {
+  title: string;
+  description: string;
+}
+
+export interface PortalMemberHomeHeroConfig {
+  badge: string;
+  title: string;
+  description: string;
+}
+
+export interface PortalMemberHomeOperationItem {
+  eyebrow: string;
+  title: string;
+  description: string;
+  path: string;
+}
+
+export interface PortalMemberHomeConfig {
+  hero: PortalMemberHomeHeroConfig;
+  bannerImageUrl: string;
+  bannerImageObjectKey: string;
+  announcement: {
+    title: string;
+    subtitle: string;
+    badge: string;
+    items: PortalMemberHomeAnnouncementItem[];
+  };
+  operations: {
+    title: string;
+    subtitle: string;
+    items: PortalMemberHomeOperationItem[];
+  };
+}
+
+export interface PortalExamHomeConfig {
+  eyebrow: string;
+  title: string;
+  objectiveModeLabel: string;
+  subjectiveModeLabel: string;
+  objectiveEmptyText: string;
+  subjectiveEmptyText: string;
+}
+
+export interface PortalAccountShortcutItem {
+  title: string;
+  description: string;
+  path: string;
+  accentText: string;
+}
+
+export interface PortalAccountCenterConfig {
+  eyebrow: string;
+  description: string;
+  shortcutTitle: string;
+  shortcuts: PortalAccountShortcutItem[];
+}
+
+export interface PortalStartOption {
+  title: string;
+  description: string;
+  path: string;
+}
+
+export interface PortalLegalDocument {
+  title: string;
+  slug: string;
+  content: string[];
+}
+
+export interface PortalContactStep {
+  step: string;
+  title: string;
+  detail: string;
+}
+
+export interface PortalConfig {
+  seo: {
+    title: string;
+    description: string;
+    keywords: string;
+    ogImageUrl: string;
+    ogImageObjectKey: string;
+  };
+  actions: {
+    authLoggedInLabel: string;
+    authLoggedOutLabel: string;
+    authLoggedInShortLabel: string;
+    browseModulesLabel: string;
+    consultNowLabel: string;
+    footerBrowseLabel: string;
+  };
+  navigation: {
+    links: PortalNavLink[];
+    quickEntryLabel: string;
+    footerNavTitle: string;
+    footerFeatureTitle: string;
+  };
+  hero: {
+    badge: string;
+    title: string;
+    highlight: string;
+    description: string;
+    quickTags: string[];
+  };
+  products: {
+    title: string;
+  };
+  memberHome: PortalMemberHomeConfig;
+  examHome: PortalExamHomeConfig;
+  accountCenter: PortalAccountCenterConfig;
+  journey: {
+    eyebrow: string;
+    title: string;
+    cards: PortalJourneyCard[];
+  };
+  experience: {
+    badge: string;
+    title: string;
+    cards: PortalValueCard[];
+  };
+  startPanel: {
+    eyebrow: string;
+    loggedInTitle: string;
+    loggedOutTitle: string;
+    description: string;
+  };
+  startOptions: {
+    eyebrow: string;
+    items: PortalStartOption[];
+  };
+  founder: {
+    imageUrl: string;
+    imageObjectKey: string;
+    sectionBadge: string;
+    perspectiveLabel: string;
+    name: string;
+    role: string;
+    intro: string;
+    statement: string;
+    methodLabel: string;
+    perspective: string;
+    tags: string[];
+  };
+  footer: {
+    description: string;
+    copyright: string;
+    legalDocuments: PortalLegalDocument[];
+  };
+  contact: {
+    badge: string;
+    title: string;
+    description: string;
+    buttonLabel: string;
+    buttonHint: string;
+    phone: string;
+    wechat: string;
+    url?: string;
+    steps: PortalContactStep[];
+  };
+  features: PortalFeatureConfig[];
 }
 
 export interface LogSummary {
@@ -134,6 +386,45 @@ export interface BrandingConfig {
   brandLogoUrl: string;
   customerServiceUrl: string;
   playerDiscImageUrl: string;
+  portalConfig: PortalConfig;
+}
+
+export interface UserHomeConfig {
+  memberHome: PortalMemberHomeConfig;
+  examHome: PortalExamHomeConfig;
+  accountCenter: PortalAccountCenterConfig;
+}
+
+export interface UserHomeOverviewRecentCourse {
+  courseId: string;
+  courseName: string;
+  audioId: string;
+  audioName: string;
+  tagName: string;
+  progressSeconds: number;
+  durationSeconds: number;
+  progressPercent: number;
+  completed: boolean;
+  lastUpdated: string;
+}
+
+export interface UserHomeOverviewRecentMockExam {
+  paperId: string;
+  paperTitle: string;
+  paperSubtitle: string;
+  recordId: string;
+  status: MockExamRecordStatus;
+  totalScore: number;
+  answeredCount: number;
+  questionCount: number;
+  canResume: boolean;
+  startedAt: string;
+  submittedAt: string;
+}
+
+export interface UserHomeOverview {
+  recentCourseProgress: UserHomeOverviewRecentCourse | null;
+  recentMockExam: UserHomeOverviewRecentMockExam | null;
 }
 
 export interface PagedResult<T> {
@@ -186,6 +477,99 @@ export interface AudioLibraryItem extends Audio {
   courseRefs: { courseId: string; courseName: string; tagId: string; tagName: string }[];
 }
 
+export type QuestionBankPaperType = "objective" | "subjective";
+
+export interface QuestionBankSummary {
+  totalFolders: number;
+  totalQuestions: number;
+  objectiveQuestions: number;
+  subjectiveQuestions: number;
+}
+
+export interface QuestionBankFolder {
+  id: string;
+  name: string;
+  paperType: QuestionBankPaperType;
+  questionCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QuestionBankOption {
+  id?: string;
+  key: string;
+  content: string;
+}
+
+export interface MockExamRubricPoint {
+  id?: string;
+  title: string;
+  score: number;
+  description?: string;
+  keywords?: string[];
+  hit?: boolean;
+  awardedScore?: number;
+  matchedText?: string;
+}
+
+export interface MockExamMissedPoint {
+  id?: string;
+  title: string;
+  description?: string;
+  score?: number;
+}
+
+export interface QuestionBankSubQuestion {
+  id?: string;
+  title: string;
+  placeholder: string;
+  abilityLabel?: string;
+  referenceAnswer?: string;
+  rubricGuidance?: string;
+  rubricPoints?: MockExamRubricPoint[];
+}
+
+export interface QuestionBankItem {
+  id: string;
+  folderId: string;
+  folderName: string;
+  paperType: QuestionBankPaperType;
+  questionType: MockExamQuestionType;
+  questionTypeLabel: string;
+  stem: string;
+  material: string;
+  analysis: string;
+  score: number;
+  sortOrder: number;
+  correctAnswerKeys: string[];
+  options: QuestionBankOption[];
+  sectionLabel: string;
+  sectionDescription: string;
+  subjectiveSubQuestions: QuestionBankSubQuestion[];
+  lessonAudioUrl?: string;
+  lessonAudioObjectKey?: string;
+  lessonAudioDurationSeconds?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QuestionBankItemPayload {
+  folderId: string;
+  questionType: MockExamQuestionType;
+  stem: string;
+  material?: string;
+  analysis?: string;
+  score: number;
+  correctAnswerKeys?: string[];
+  options?: QuestionBankOption[];
+  sectionLabel?: string;
+  sectionDescription?: string;
+  subjectiveSubQuestions?: QuestionBankSubQuestion[];
+  lessonAudioUrl?: string;
+  lessonAudioObjectKey?: string;
+  lessonAudioDurationSeconds?: number;
+}
+
 export type LawNodeType = "folder" | "record";
 
 export interface LawTreeNode {
@@ -205,8 +589,15 @@ export interface LawRecordMeta {
   topCategoryTitle: string;
   bookTitle: string;
   title: string;
+  displayTitle: string;
+  customTitle: string;
   pathLabels: string[];
   pathString: string;
+  isPublished: boolean;
+  isPinned: boolean;
+  manualSortOrder: number;
+  tags: string[];
+  operatorNote: string;
   updatedAt: string;
 }
 
@@ -242,9 +633,585 @@ export interface LawAdminCategoryOption {
 
 export interface LawAdminSummary {
   totalRecords: number;
+  publishedRecords: number;
+  hiddenRecords: number;
+  pinnedRecords: number;
   topCategoryCount: number;
   lastUpdated: string;
   topCategories: LawAdminCategoryOption[];
+}
+
+export interface LawAdminEntryUpdatePayload {
+  isPublished?: boolean;
+  isPinned?: boolean;
+  manualSortOrder?: number | string;
+  customTitle?: string;
+  tags?: string[] | string;
+  operatorNote?: string;
+}
+
+export type MockExamQuestionType = "single_choice" | "multiple_choice" | "uncertain_choice" | "subjective_case";
+export type MockExamRecordStatus = "in_progress" | "submitted";
+export type MockExamQuestionAnswerState = "unanswered" | "partial" | "answered";
+export type MockExamReviewWorkflowStatus = "not_required" | "ai_pending" | "ai_processing" | "manual_pending" | "published";
+
+export interface MockExamSection {
+  type: MockExamQuestionType;
+  label: string;
+  count: number;
+  totalScore: number;
+}
+
+export interface MockExamRecordSummary {
+  id: string;
+  status: MockExamRecordStatus;
+  attemptNo: number;
+  questionCount: number;
+  answeredCount: number;
+  correctCount: number;
+  totalScore: number;
+  allottedSeconds: number;
+  consumedSeconds: number;
+  remainingSeconds: number;
+  startedAt: string;
+  submittedAt: string;
+  reviewedAt: string;
+  reviewWorkflowStatus: MockExamReviewWorkflowStatus;
+  canResume: boolean;
+}
+
+export interface MockExamPaper {
+  id: string;
+  code: string;
+  title: string;
+  subtitle: string;
+  coverUrl: string;
+  coverObjectKey: string;
+  year: number;
+  phase: string;
+  durationMinutes: number;
+  maxAttempts: number;
+  reviewEnabled: boolean;
+  permissionRequired: boolean;
+  totalScore: number;
+  questionCount: number;
+  passScore: number;
+  description: string;
+  sections: MockExamSection[];
+  activeRecord: MockExamRecordSummary | null;
+  latestRecord: MockExamRecordSummary | null;
+}
+
+export interface MockExamQuestionOption {
+  id: string;
+  key: string;
+  content: string;
+}
+
+export interface MockExamSubjectiveSubQuestion {
+  id: string;
+  title: string;
+  placeholder: string;
+  answer: string;
+  wordCount: number;
+  maxScore?: number;
+  score?: number;
+  reviewComment?: string;
+  referenceAnswer?: string;
+  reviewSource?: "ai" | "rule" | "manual" | "system";
+  reviewProvider?: MockExamAiReviewProvider;
+  isReviewed?: boolean;
+  abilityLabel?: string;
+  abilityScoreRate?: number;
+  answerMarks?: MockExamSubjectiveAnswerMark[];
+  rubricGuidance?: string;
+  rubricPoints?: MockExamRubricPoint[];
+  missedPoints?: MockExamMissedPoint[];
+  skippedReview?: boolean;
+  skippedReviewReason?: string;
+}
+
+export interface MockExamSubjectiveAnswerMark {
+  id: string;
+  highlight: string;
+  comment: string;
+  status?: "correct" | "wrong" | "score";
+  score?: number;
+}
+
+export interface MockExamQuestion {
+  id: string;
+  sortOrder: number;
+  type: MockExamQuestionType;
+  typeLabel: string;
+  score: number;
+  material: string;
+  stem: string;
+  analysis: string;
+  options: MockExamQuestionOption[];
+  userAnswerKeys: string[];
+  correctAnswerKeys: string[];
+  isCorrect: boolean | null;
+  earnedScore: number;
+  answerState: MockExamQuestionAnswerState;
+  sectionLabel: string;
+  sectionDescription: string;
+  subjectiveSubQuestions: MockExamSubjectiveSubQuestion[];
+  reviewSource?: "ai" | "rule" | "manual" | "system";
+  reviewProvider?: MockExamAiReviewProvider;
+  reviewFeedbackStars?: number;
+  reviewFeedbackSubmittedAt?: string;
+  lessonAudioUrl?: string;
+  lessonAudioObjectKey?: string;
+  lessonAudioDurationSeconds?: number;
+  reviewVoiceUrl?: string;
+  reviewVoiceObjectKey?: string;
+  reviewVoiceDurationSeconds?: number;
+}
+
+export interface MockExamRecordDetail {
+  id: string;
+  status: MockExamRecordStatus;
+  attemptNo: number;
+  questionCount: number;
+  answeredCount: number;
+  correctCount: number;
+  totalScore: number;
+  allottedSeconds: number;
+  consumedSeconds: number;
+  remainingSeconds: number;
+  startedAt: string;
+  submittedAt: string;
+  reviewedAt: string;
+  publishedAt: string;
+  reviewWorkflowStatus: MockExamReviewWorkflowStatus;
+  paper: Omit<MockExamPaper, "activeRecord" | "latestRecord">;
+  summary: {
+    accuracyRate: number;
+    wrongCount: number;
+    unfinishedCount: number;
+    pendingReviewCount: number;
+    finalScorePending: boolean;
+    isPassed: boolean | null;
+  };
+  questions: MockExamQuestion[];
+  reviewEnabled: boolean;
+}
+
+export interface UserMockExamHistoryItem {
+  id: string;
+  status: MockExamRecordStatus;
+  attemptNo: number;
+  totalScore: number;
+  questionCount: number;
+  subjectiveQuestionCount: number;
+  reviewStatus: "published" | "ai_pending" | "ai_processing" | "manual_pending";
+  reviewEnabled: boolean;
+  submittedAt: string;
+  reviewedAt: string;
+  publishedAt: string;
+  paper: {
+    id: string;
+    code: string;
+    title: string;
+    coverUrl: string;
+    coverObjectKey: string;
+    phase: string;
+    year: number;
+    totalScore: number;
+    passScore: number;
+  };
+}
+
+export type AdminMockExamPaperType = "objective" | "subjective";
+export type AdminMockExamPaperStatus = "draft" | "published";
+export type AdminMockExamReviewStatus = "ai_pending" | "ai_processing" | "manual_pending" | "published";
+
+export interface AdminMockExamPaperSummary {
+  id: string;
+  code: string;
+  title: string;
+  subtitle: string;
+  coverUrl: string;
+  coverObjectKey: string;
+  year: number;
+  phase: string;
+  paperType: AdminMockExamPaperType;
+  status: AdminMockExamPaperStatus;
+  durationMinutes: number;
+  maxAttempts: number;
+  reviewEnabled: boolean;
+  permissionRequired: boolean;
+  totalScore: number;
+  questionCount: number;
+  passScore: number;
+  sortOrder: number;
+  sections: MockExamSection[];
+  canDelete?: boolean;
+  updatedAt: string;
+}
+
+export interface MockExamPermissionOption {
+  id: string;
+  title: string;
+  subtitle: string;
+  paperType: AdminMockExamPaperType;
+  paperTypeLabel: string;
+  year: number;
+  phase: string;
+  status: AdminMockExamPaperStatus;
+  reviewEnabled: boolean;
+}
+
+export interface AdminMockExamPaperListPayload {
+  list: AdminMockExamPaperSummary[];
+  summary: {
+    total: number;
+    published: number;
+    draft: number;
+    objective: number;
+    subjective: number;
+  };
+}
+
+export interface AdminMockExamPaperQuestion {
+  id: string;
+  sourceBankItemId: string;
+  sourceFolderName: string;
+  sortOrder: number;
+  questionType: MockExamQuestionType;
+  questionTypeLabel: string;
+  score: number;
+  stem: string;
+  material: string;
+  analysis: string;
+  correctAnswerKeys: string[];
+  options: QuestionBankOption[];
+  sectionLabel: string;
+  sectionDescription: string;
+  subjectiveSubQuestions: Array<QuestionBankSubQuestion & { sortOrder?: number }>;
+  updatedAt: string;
+}
+
+export interface AdminMockExamPaperDetail extends AdminMockExamPaperSummary {
+  description: string;
+  createdAt: string;
+  questions: AdminMockExamPaperQuestion[];
+}
+
+export interface AdminMockExamPaperPayload {
+  title: string;
+  subtitle?: string;
+  coverUrl?: string;
+  coverObjectKey?: string;
+  year?: number | string;
+  phase?: string;
+  paperType?: AdminMockExamPaperType;
+  durationMinutes?: number | string;
+  maxAttempts?: number | string;
+  reviewEnabled?: boolean;
+  permissionRequired?: boolean;
+  passScore?: number | string;
+  description?: string;
+  status?: AdminMockExamPaperStatus;
+  sortOrder?: number | string;
+  code?: string;
+}
+
+export interface AdminMockExamReviewSummary {
+  id: string;
+  attemptNo: number;
+  totalScore: number;
+  questionCount: number;
+  subjectiveQuestionCount: number;
+  submittedAt: string;
+  reviewedAt: string;
+  publishedAt: string;
+  reviewStatus: AdminMockExamReviewStatus;
+  user: {
+    id: string;
+    phone: string;
+  };
+  paper: {
+    id: string;
+    code: string;
+    title: string;
+    coverUrl: string;
+    coverObjectKey: string;
+    phase: string;
+    year: number;
+    totalScore: number;
+    passScore: number;
+  };
+}
+
+export interface AdminMockExamReviewListPayload {
+  list: AdminMockExamReviewSummary[];
+  pagination: {
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  };
+  summary: {
+    total: number;
+    aiPending: number;
+    aiProcessing: number;
+    manualPending: number;
+    published: number;
+  };
+}
+
+export interface AdminMockExamReviewPaperSummary extends AdminMockExamPaperSummary {
+  reviewSummary: {
+    total: number;
+    aiPending: number;
+    aiProcessing: number;
+    manualPending: number;
+    published: number;
+  };
+}
+
+export interface AdminMockExamReviewPaperListPayload {
+  list: AdminMockExamReviewPaperSummary[];
+  summary: {
+    totalPapers: number;
+    totalRecords: number;
+    aiPending: number;
+    aiProcessing: number;
+    manualPending: number;
+    published: number;
+  };
+}
+
+export interface AdminMockExamReviewDetail extends MockExamRecordDetail {
+  reviewStatus: AdminMockExamReviewStatus;
+  user: {
+    id: string;
+    phone: string;
+  };
+  scoring: {
+    objectiveScore: number;
+    subjectiveScore: number;
+    subjectiveQuestionCount: number;
+  };
+  reviewSource?: "ai" | "rule" | "manual" | "system";
+  reviewProvider?: MockExamAiReviewProvider;
+}
+
+export interface AdminMockExamReviewSubQuestionScoreInput {
+  subQuestionId: string;
+  score: number;
+  reviewComment?: string;
+  referenceAnswer?: string;
+  abilityLabel?: string;
+  rubricGuidance?: string;
+  rubricPoints?: MockExamRubricPoint[];
+  missedPoints?: MockExamMissedPoint[];
+  answerMarks?: MockExamSubjectiveAnswerMark[];
+}
+
+export interface AdminMockExamReviewQuestionScoreInput {
+  questionId: string;
+  score?: number;
+  subQuestions?: AdminMockExamReviewSubQuestionScoreInput[];
+  reviewVoiceUrl?: string;
+  reviewVoiceObjectKey?: string;
+  reviewVoiceDurationSeconds?: number;
+}
+
+export type TypingPracticeTextStatus = "draft" | "published";
+export type TypingPracticeDifficulty = "easy" | "medium" | "hard";
+export type TypingPracticeMode = "guided" | "sprint" | "memorize";
+
+export interface TypingPracticeDifficultyConfig {
+  difficulty: TypingPracticeDifficulty;
+  label: string;
+  initialLives: number;
+  baseStageTimeSeconds: number;
+  extraTimePer20Chars: number;
+  minStageTimeSeconds: number;
+  levelTimeReductionSeconds: number;
+  thiefSpeedBase: number;
+  thiefSpeedStepLevels: number;
+  scorePerChar: number;
+  errorPenalty: number;
+  captureBonus: number;
+  lifeBonus: number;
+  memorizePreviewSeconds: number;
+}
+
+export interface TypingPracticeSummary {
+  totalFolders: number;
+  totalTexts: number;
+  publishedTexts: number;
+  draftTexts: number;
+  totalRecords: number;
+}
+
+export interface TypingPracticeFolder {
+  id: string;
+  name: string;
+  sortOrder: number;
+  textCount: number;
+  publishedTextCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TypingPracticeText {
+  id: string;
+  folderId: string;
+  folderName: string;
+  title: string;
+  difficulty: TypingPracticeDifficulty;
+  difficultyLabel: string;
+  source: string;
+  tags: string[];
+  content: string;
+  note: string;
+  status: TypingPracticeTextStatus;
+  statusLabel: string;
+  sortOrder: number;
+  contentLength: number;
+  preview: string;
+  createdAt: string;
+  updatedAt: string;
+  difficultyConfig?: TypingPracticeDifficultyConfig;
+  playTicket?: string;
+}
+
+export interface TypingPracticeTextPayload {
+  folderId: string;
+  title: string;
+  difficulty: TypingPracticeDifficulty;
+  source?: string;
+  tags?: string[] | string;
+  content: string;
+  note?: string;
+  status: TypingPracticeTextStatus;
+  sortOrder?: number | string;
+}
+
+export interface TypingPracticeTextListPayload {
+  items: TypingPracticeText[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface TypingPracticeRecord {
+  id: string;
+  textId: string;
+  mode: TypingPracticeMode;
+  modeLabel: string;
+  title: string;
+  source: string;
+  targetLength: number;
+  typedLength: number;
+  correctLength: number;
+  errorCount: number;
+  backspaceCount: number;
+  comboMax: number;
+  accuracyRate: number;
+  completionRate: number;
+  cpm: number;
+  score: number;
+  durationSeconds: number;
+  timeLimitSeconds: number | null;
+  previewSeconds: number | null;
+  createdAt: string;
+  completedAt: string;
+  targetPreview: string;
+  typedPreview: string;
+  contentSnapshot: string;
+  typedContent: string;
+}
+
+export interface TypingPracticeRecordListPayload {
+  items: TypingPracticeRecord[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface TypingPracticeLeaderboardEntry {
+  rank: number;
+  userId: string;
+  userLabel: string;
+  bestScore: number;
+  bestCpm: number;
+  practiceCount: number;
+  avgAccuracyRate: number;
+  lastCompletedAt: string;
+}
+
+export interface TypingPracticeHomeRuleParagraph {
+  text: string;
+}
+
+export interface TypingPracticeHomeRuleCard {
+  title: string;
+  description: string;
+}
+
+export interface TypingPracticeHomeConfig {
+  hero: {
+    title: string;
+    englishTitle: string;
+    description: string;
+    topNotice: string;
+    policeImageUrl: string;
+    policeImageObjectKey: string;
+    thiefImageUrl: string;
+    thiefImageObjectKey: string;
+  };
+  modeHints: {
+    guided: string;
+    sprint: string;
+    memorize: string;
+  };
+  rules: {
+    paragraphs: TypingPracticeHomeRuleParagraph[];
+    cards: TypingPracticeHomeRuleCard[];
+  };
+}
+
+export interface TypingPracticeHomePayload {
+  homeConfig: TypingPracticeHomeConfig;
+  summary: {
+    totalFolders: number;
+    totalTexts: number;
+    practiceCount: number;
+    avgAccuracyRate: number;
+    avgCpm: number;
+    bestCpm: number;
+    bestScore: number;
+    totalTypedLength: number;
+  };
+  folders: TypingPracticeFolder[];
+  texts: TypingPracticeText[];
+  recentRecords: TypingPracticeRecord[];
+}
+
+export interface TypingPracticeRecordPayload {
+  textId?: string;
+  mode: TypingPracticeMode;
+  title: string;
+  sourceSnapshot?: string;
+  contentSnapshot: string;
+  typedContent: string;
+  playTicket?: string;
+  errorCount: number;
+  backspaceCount: number;
+  comboMax: number;
+  capturedStageCount?: number;
+  livesRemaining?: number;
+  durationSeconds: number;
+  timeLimitSeconds?: number;
+  previewSeconds?: number;
 }
 
 export type ShopProductType = "virtual" | "physical" | "hybrid";
@@ -252,6 +1219,7 @@ export type ShopProductStatus = "draft" | "on_sale" | "off_sale";
 export type ShopOrderStatus = "pending_payment" | "paid" | "partially_fulfilled" | "completed" | "cancelled" | "refunding" | "refunded";
 export type ShopPaymentStatus = "unpaid" | "paid" | "failed" | "refunded";
 export type ShopShipmentStatus = "pending" | "shipped" | "in_transit" | "signed" | "failed";
+export type ShopRefundStatus = "pending" | "approved" | "rejected" | "completed" | "failed";
 export type ShopPaymentChannel = "wechat_jsapi" | "wechat_h5" | "alipay_wap";
 export type ShopBannerLinkType = "product" | "category" | "custom";
 
@@ -279,6 +1247,35 @@ export interface ShopConfig {
   enableWechatJsapi: boolean;
   enableAlipayWap: boolean;
   runtimePaymentMode: string;
+  paymentRuntime: {
+    mode: string;
+    siteBaseUrl: string;
+    notifyBaseUrl: string;
+    baseReady: boolean;
+    baseMissing: string[];
+    refundSupported: boolean;
+    refundNotice: string;
+    channels: {
+      wechatH5: {
+        enabled: boolean;
+        ready: boolean;
+        missing: string[];
+        note: string;
+      };
+      wechatJsapi: {
+        enabled: boolean;
+        ready: boolean;
+        missing: string[];
+        note: string;
+      };
+      alipayWap: {
+        enabled: boolean;
+        ready: boolean;
+        missing: string[];
+        note: string;
+      };
+    };
+  };
   banners: ShopBanner[];
 }
 
@@ -367,6 +1364,7 @@ export interface ShopProductDetail extends ShopProduct {
   description: string;
   detailContent: string;
   images: ShopProductImage[];
+  detailImages: ShopProductImage[];
   skus: ShopSku[];
   boundCourses: ShopBoundCourse[];
 }
@@ -405,6 +1403,7 @@ export interface AdminShopProductDetail extends AdminShopProduct {
   description: string;
   detailContent: string;
   images: AdminShopProductImage[];
+  detailImages: AdminShopProductImage[];
   skus: ShopSku[];
   courseIds: string[];
   boundCourses: ShopBoundCourse[];
@@ -423,6 +1422,7 @@ export interface AdminShopProductPayload {
   sortOrder: number;
   courseIds: string[];
   images: AdminShopProductImageInput[];
+  detailImages: AdminShopProductImageInput[];
   skus: AdminShopSkuInput[];
 }
 
@@ -574,6 +1574,18 @@ export interface ShopDigitalFulfillment {
   updatedAt: string;
 }
 
+export interface ShopRefundRecord {
+  id: string;
+  orderId: string;
+  orderItemId: string;
+  status: ShopRefundStatus;
+  refundAmount: string;
+  reason: string;
+  resultMessage: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ShopOrder {
   id: string;
   orderNo: string;
@@ -608,6 +1620,7 @@ export interface ShopOrderDetail extends ShopOrder {
   payments: ShopPaymentRecord[];
   digitalFulfillments: ShopDigitalFulfillment[];
   shipments: ShopShipment[];
+  refunds: ShopRefundRecord[];
 }
 
 export interface ShopLogistics {
@@ -743,8 +1756,8 @@ const isAdminContext = () => typeof window !== "undefined" && window.location.pa
 
 const getToken = (mode: "user" | "admin" | "auto") => {
   if (mode === "user") return getUserToken();
-  if (mode === "admin") return localStorage.getItem("adminToken") ?? "";
-  return isAdminContext() ? localStorage.getItem("adminToken") ?? "" : getUserToken();
+  if (mode === "admin") return getAdminTokenForMode();
+  return typeof window !== "undefined" && isAdminConsolePath(window.location.pathname) ? getAdminTokenForMode() : getUserToken();
 };
 
 const clearUserSession = () => {
@@ -752,9 +1765,7 @@ const clearUserSession = () => {
 };
 
 const clearAdminSession = () => {
-  localStorage.removeItem("adminToken");
-  localStorage.removeItem("adminId");
-  localStorage.removeItem("adminAccount");
+  clearAdminSessionForMode(getAdminConsoleMode());
 };
 
 type AdminCacheEntry<T> = {
@@ -805,7 +1816,11 @@ const request = async <T>(path: string, options?: RequestInit & { auth?: "user" 
   if (!response.ok || !json || json.code !== 0) {
     const message = json?.message ?? "请求失败";
     if (response.status === 401) {
-      if ((options?.auth ?? "auto") === "admin" || path.startsWith("/api/admin")) clearAdminSession();
+      if ((options?.auth ?? "auto") === "admin" || path.startsWith("/api/admin")) {
+        clearAdminSessionForMode(
+          typeof window !== "undefined" ? getAdminConsoleModeFromPath(window.location.pathname) : "admin",
+        );
+      }
       else clearUserSession();
     }
     throw new ApiRequestError(message, {
@@ -823,6 +1838,22 @@ const postJson = <T>(path: string, body?: unknown, auth: "user" | "admin" | "aut
     auth,
     headers: {
       "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body ?? {}),
+  });
+
+const postJsonWithOptions = <T>(
+  path: string,
+  body: unknown,
+  options: RequestInit & { auth?: "user" | "admin" | "auto" } = {},
+) =>
+  request<T>(path, {
+    ...options,
+    method: "POST",
+    auth: options.auth ?? "auto",
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers ?? {}),
     },
     body: JSON.stringify(body ?? {}),
   });
@@ -932,7 +1963,7 @@ export const mockApi = {
   getCurrentUser: () => request<User>("/api/auth/user/me", { auth: "user" }),
 
   adminLogin: (account: string, password: string) =>
-    postJson<{ success: boolean; token: string; admin: { id: string; account: string; name: string } }>(
+    postJson<{ success: boolean; token: string; admin: { id: string; account: string; name: string; role: AdminRole } }>(
       "/api/auth/admin/login",
       { account, password },
       "admin",
@@ -974,6 +2005,218 @@ export const mockApi = {
     request<LawNodeContentPayload>(`/api/user/laws/content${buildQueryString({ nodeId })}`, { auth: "user" }),
   searchLaws: (keyword: string) =>
     request<LawSearchResult[]>(`/api/user/laws/search${buildQueryString({ keyword })}`, { auth: "user" }),
+
+  getMockExamPapers: () => request<MockExamPaper[]>("/api/user/mock-exams/papers", { auth: "user" }),
+  getMockExamLaunchConfig: () => request<MockExamLaunchConfig>("/api/user/mock-exams/launch-config", { auth: "user" }),
+  getUserMockExamHistory: () => request<UserMockExamHistoryItem[]>("/api/user/mock-exams/history", { auth: "user" }),
+  startMockExam: (paperId: string) => postJson<MockExamRecordDetail>(`/api/user/mock-exams/papers/${paperId}/start`, {}, "user"),
+  getMockExamRecord: (recordId: string) => request<MockExamRecordDetail>(`/api/user/mock-exams/records/${recordId}`, { auth: "user" }),
+  pauseMockExam: (recordId: string, options?: { keepalive?: boolean }) =>
+    postJsonWithOptions<MockExamRecordDetail>(`/api/user/mock-exams/records/${recordId}/pause`, {}, { auth: "user", keepalive: options?.keepalive }),
+  saveMockExamAnswer: (
+    recordId: string,
+    payload:
+      | { questionId: string; answerKeys: string[] }
+      | { questionId: string; subQuestionId: string; answerText: string },
+  ) =>
+    patchJson<MockExamRecordDetail>(`/api/user/mock-exams/records/${recordId}/answers`, payload, "user"),
+  submitMockExam: (recordId: string) => postJson<MockExamRecordDetail>(`/api/user/mock-exams/records/${recordId}/submit`, {}, "user"),
+  getAdminMockExamPapers: () => request<AdminMockExamPaperListPayload>("/api/admin/mock-exams/papers", { auth: "admin" }),
+  getAdminMockExamPaperDetail: (paperId: string) => request<AdminMockExamPaperDetail>(`/api/admin/mock-exams/papers/${paperId}`, { auth: "admin" }),
+  createAdminMockExamPaper: (payload: AdminMockExamPaperPayload) =>
+    postJson<AdminMockExamPaperDetail>("/api/admin/mock-exams/papers", payload, "admin"),
+  updateAdminMockExamPaper: (paperId: string, payload: AdminMockExamPaperPayload) =>
+    patchJson<AdminMockExamPaperDetail>(`/api/admin/mock-exams/papers/${paperId}`, payload, "admin"),
+  deleteAdminMockExamPaper: (paperId: string) =>
+    deleteRequest<{ success: boolean; paperId: string; title: string }>(`/api/admin/mock-exams/papers/${paperId}`, "admin"),
+  addAdminMockExamPaperQuestionsFromBank: (paperId: string, itemIds: string[]) =>
+    postJson<AdminMockExamPaperDetail>(`/api/admin/mock-exams/papers/${paperId}/questions/from-bank`, { itemIds }, "admin"),
+  removeAdminMockExamPaperQuestion: (paperId: string, questionId: string) =>
+    deleteRequest<AdminMockExamPaperDetail>(`/api/admin/mock-exams/papers/${paperId}/questions/${questionId}`, "admin"),
+  getQuestionBankSummary: () => request<QuestionBankSummary>("/api/admin/mock-exams/question-bank/summary", { auth: "admin" }),
+  getQuestionBankFolders: (paperType: QuestionBankPaperType) =>
+    request<QuestionBankFolder[]>(`/api/admin/mock-exams/question-bank/folders${buildQueryString({ paperType })}`, { auth: "admin" }),
+  createQuestionBankFolder: (name: string, paperType: QuestionBankPaperType) =>
+    postJson<QuestionBankFolder>("/api/admin/mock-exams/question-bank/folders", { name, paperType }, "admin"),
+  updateQuestionBankFolder: (folderId: string, name: string) =>
+    patchJson<QuestionBankFolder>(`/api/admin/mock-exams/question-bank/folders/${folderId}`, { name }, "admin"),
+  deleteQuestionBankFolder: (folderId: string) =>
+    deleteRequest<{ success: boolean }>(`/api/admin/mock-exams/question-bank/folders/${folderId}`, "admin"),
+  getQuestionBankItems: (params: {
+    paperType: QuestionBankPaperType;
+    folderId?: string;
+    keyword?: string;
+    questionType?: MockExamQuestionType | "all";
+    page?: number;
+    pageSize?: number;
+  }) =>
+    request<PagedResult<QuestionBankItem>>(
+      `/api/admin/mock-exams/question-bank/items${buildQueryString({
+        paperType: params.paperType,
+        folderId: params.folderId,
+        keyword: params.keyword,
+        questionType: params.questionType && params.questionType !== "all" ? params.questionType : undefined,
+        page: params.page,
+        pageSize: params.pageSize,
+      })}`,
+      { auth: "admin" },
+    ),
+  createQuestionBankItem: (payload: QuestionBankItemPayload) =>
+    postJson<QuestionBankItem>("/api/admin/mock-exams/question-bank/items", payload, "admin"),
+  updateQuestionBankItem: (itemId: string, payload: QuestionBankItemPayload) =>
+    patchJson<QuestionBankItem>(`/api/admin/mock-exams/question-bank/items/${itemId}`, payload, "admin"),
+  deleteQuestionBankItem: (itemId: string) =>
+    deleteRequest<{ success: boolean }>(`/api/admin/mock-exams/question-bank/items/${itemId}`, "admin"),
+  importQuestionBankItems: (file: File, folderId: string, paperType: QuestionBankPaperType) =>
+    uploadSingleFileWithFields<{ parsedCount: number; createdCount: number }>(
+      "/api/admin/mock-exams/question-bank/items/import",
+      file,
+      {
+        folderId,
+        paperType,
+      },
+      "admin",
+    ),
+  downloadQuestionBankTemplate: (paperType: QuestionBankPaperType) =>
+    requestBlob(`/api/admin/mock-exams/question-bank/template${buildQueryString({ paperType })}`, { auth: "admin" }),
+  createMockExamPaperFromQuestionBank: (payload: {
+    itemIds: string[];
+    paper: {
+      title: string;
+      subtitle?: string;
+      year?: number;
+      phase?: string;
+      durationMinutes?: number;
+      maxAttempts?: number;
+      reviewEnabled?: boolean;
+      passScore?: number;
+      description?: string;
+      status?: AdminMockExamPaperStatus;
+      sortOrder?: number;
+      code?: string;
+    };
+  }) =>
+    postJson<{ paperId: string; title: string; totalScore: number; questionCount: number }>(
+      "/api/admin/mock-exams/papers/create-from-bank",
+      payload,
+      "admin",
+    ),
+  getAdminMockExamReviews: (params?: { keyword?: string; reviewStatus?: "all" | AdminMockExamReviewStatus; paperId?: string; page?: number; pageSize?: number }) =>
+    request<AdminMockExamReviewListPayload>(
+      `/api/admin/mock-exams/reviews${buildQueryString({
+        keyword: params?.keyword,
+        reviewStatus: params?.reviewStatus,
+        paperId: params?.paperId,
+        page: params?.page,
+        pageSize: params?.pageSize,
+      })}`,
+      { auth: "admin" },
+    ),
+  getAdminMockExamReviewPapers: (params?: { keyword?: string }) =>
+    request<AdminMockExamReviewPaperListPayload>(
+      `/api/admin/mock-exams/reviews/papers${buildQueryString({
+        keyword: params?.keyword,
+      })}`,
+      { auth: "admin" },
+    ),
+  getAdminMockExamReviewDetail: (recordId: string) =>
+    request<AdminMockExamReviewDetail>(`/api/admin/mock-exams/reviews/${recordId}`, { auth: "admin" }),
+  getAdminMockExamAiReviewConfig: () =>
+    request<MockExamAiReviewConfig>("/api/admin/mock-exams/settings/ai-review", { auth: "admin" }),
+  updateAdminMockExamAiReviewConfig: (payload: MockExamAiReviewConfig) =>
+    patchJson<MockExamAiReviewConfig>("/api/admin/mock-exams/settings/ai-review", payload, "admin"),
+  getAdminMockExamLaunchConfig: () =>
+    request<MockExamLaunchConfig>("/api/admin/mock-exams/settings/launch", { auth: "admin" }),
+  updateAdminMockExamLaunchConfig: (payload: { config: MockExamLaunchConfig }) =>
+    patchJson<MockExamLaunchConfig>("/api/admin/mock-exams/settings/launch", payload, "admin"),
+  aiScoreAdminMockExamReview: (recordId: string) =>
+    postJson<AdminMockExamReviewDetail>(`/api/admin/mock-exams/reviews/${recordId}/ai-score`, {}, "admin"),
+  submitAdminMockExamReview: (recordId: string, items: AdminMockExamReviewQuestionScoreInput[]) =>
+    postJson<AdminMockExamReviewDetail>(`/api/admin/mock-exams/reviews/${recordId}/score`, { items }, "admin"),
+  publishAdminMockExamReview: (recordId: string) =>
+    postJson<AdminMockExamReviewDetail>(`/api/admin/mock-exams/reviews/${recordId}/publish`, {}, "admin"),
+  uploadQuestionBankLessonAudio: (file: File) =>
+    uploadSingleFile<{ objectKey: string; url: string; readableUrl?: string; durationSeconds?: number }>(
+      "/api/admin/mock-exams/question-bank/upload-lesson-audio",
+      file,
+      "admin",
+    ),
+  uploadMockExamReviewVoice: (file: File) =>
+    uploadSingleFile<{ objectKey: string; url: string; readableUrl?: string; durationSeconds?: number }>(
+      "/api/admin/mock-exams/reviews/upload-voice",
+      file,
+      "admin",
+    ),
+  submitMockExamReviewFeedback: (recordId: string, questionId: string, stars: number) =>
+    postJson<MockExamRecordDetail>(`/api/user/mock-exams/records/${recordId}/review-feedback`, { questionId, stars }, "user"),
+
+  getTypingPracticeHome: () => request<TypingPracticeHomePayload>("/api/user/typing-practice/home", { auth: "user" }),
+  getTypingPracticeText: (textId: string, params?: { mode?: TypingPracticeMode; timeLimitSeconds?: number }) =>
+    request<TypingPracticeText>(
+      `/api/user/typing-practice/texts/${textId}${buildQueryString({
+        mode: params?.mode,
+        limit: params?.timeLimitSeconds,
+      })}`,
+      { auth: "user" },
+    ),
+  createTypingPracticeRecord: (payload: TypingPracticeRecordPayload) =>
+    postJson<TypingPracticeRecord>("/api/user/typing-practice/records", payload, "user"),
+  getTypingPracticeRecords: (params?: { page?: number; pageSize?: number }) =>
+    request<TypingPracticeRecordListPayload>(
+      `/api/user/typing-practice/records${buildQueryString({
+        page: params?.page,
+        pageSize: params?.pageSize,
+      })}`,
+      { auth: "user" },
+    ),
+  getTypingPracticeLeaderboard: (params?: { limit?: number }) =>
+    request<TypingPracticeLeaderboardEntry[]>(
+      `/api/user/typing-practice/leaderboard${buildQueryString({
+        limit: params?.limit,
+      })}`,
+      { auth: "user" },
+    ),
+  getTypingPracticeRecord: (recordId: string) =>
+    request<TypingPracticeRecord>(`/api/user/typing-practice/records/${recordId}`, { auth: "user" }),
+
+  getAdminTypingPracticeSummary: () => request<TypingPracticeSummary>("/api/admin/typing-practice/summary", { auth: "admin" }),
+  getAdminTypingPracticeHomeConfig: () => request<TypingPracticeHomeConfig>("/api/admin/typing-practice/home-config", { auth: "admin" }),
+  updateAdminTypingPracticeHomeConfig: (payload: { config: TypingPracticeHomeConfig }) =>
+    patchJson<TypingPracticeHomeConfig>("/api/admin/typing-practice/home-config", payload, "admin"),
+  getAdminTypingPracticeDifficultyConfigs: () =>
+    request<TypingPracticeDifficultyConfig[]>("/api/admin/typing-practice/difficulty-configs", { auth: "admin" }),
+  updateAdminTypingPracticeDifficultyConfigs: (payload: { items: TypingPracticeDifficultyConfig[] }) =>
+    patchJson<TypingPracticeDifficultyConfig[]>("/api/admin/typing-practice/difficulty-configs", payload, "admin"),
+  getAdminTypingPracticeFolders: () => request<TypingPracticeFolder[]>("/api/admin/typing-practice/folders", { auth: "admin" }),
+  createAdminTypingPracticeFolder: (payload: { name: string; sortOrder?: number | string }) =>
+    postJson<TypingPracticeFolder>("/api/admin/typing-practice/folders", payload, "admin"),
+  updateAdminTypingPracticeFolder: (folderId: string, payload: { name: string; sortOrder?: number | string }) =>
+    patchJson<TypingPracticeFolder>(`/api/admin/typing-practice/folders/${folderId}`, payload, "admin"),
+  deleteAdminTypingPracticeFolder: (folderId: string) =>
+    deleteRequest<{ success: boolean }>(`/api/admin/typing-practice/folders/${folderId}`, "admin"),
+  getAdminTypingPracticeTexts: (params?: {
+    folderId?: string;
+    keyword?: string;
+    status?: TypingPracticeTextStatus | "all";
+    page?: number;
+    pageSize?: number;
+  }) =>
+    request<TypingPracticeTextListPayload>(
+      `/api/admin/typing-practice/texts${buildQueryString({
+        folderId: params?.folderId && params.folderId !== "all" ? params.folderId : undefined,
+        keyword: params?.keyword,
+        status: params?.status && params.status !== "all" ? params.status : undefined,
+        page: params?.page,
+        pageSize: params?.pageSize,
+      })}`,
+      { auth: "admin" },
+    ),
+  createAdminTypingPracticeText: (payload: TypingPracticeTextPayload) =>
+    postJson<TypingPracticeText>("/api/admin/typing-practice/texts", payload, "admin"),
+  updateAdminTypingPracticeText: (textId: string, payload: TypingPracticeTextPayload) =>
+    patchJson<TypingPracticeText>(`/api/admin/typing-practice/texts/${textId}`, payload, "admin"),
+  deleteAdminTypingPracticeText: (textId: string) =>
+    deleteRequest<{ success: boolean }>(`/api/admin/typing-practice/texts/${textId}`, "admin"),
 
   getShopHome: () => request<ShopHomePayload>("/api/user/shop/home", { auth: "user" }),
   getShopCategories: () => request<ShopCategory[]>("/api/user/shop/categories", { auth: "user" }),
@@ -1067,6 +2310,8 @@ export const mockApi = {
       { auth: "user" },
     ),
   cancelShopOrder: (orderId: string) => postJson<ShopOrder>(`/api/user/shop/orders/${orderId}/cancel`, {}, "user"),
+  requestShopOrderRefund: (orderId: string, payload: { reason: string }) =>
+    postJson<ShopOrderDetail>(`/api/user/shop/orders/${orderId}/refunds`, payload, "user"),
   confirmShopOrderReceipt: (orderId: string) => postJson<ShopLogistics>(`/api/user/shop/orders/${orderId}/confirm-receipt`, {}, "user"),
 
   getAdminShopConfig: () => request<ShopConfig>("/api/admin/shop/config", { auth: "admin" }),
@@ -1137,6 +2382,12 @@ export const mockApi = {
     ),
   getAdminShopOrderDetail: (orderId: string) => request<ShopOrderDetail>(`/api/admin/shop/orders/${orderId}`, { auth: "admin" }),
   closeAdminShopOrder: (orderId: string, reason: string) => postJson<ShopOrderDetail>(`/api/admin/shop/orders/${orderId}/close`, { reason }, "admin"),
+  approveAdminShopRefund: (refundId: string, payload?: { note?: string }) =>
+    postJson<ShopOrderDetail>(`/api/admin/shop/refunds/${refundId}/approve`, payload ?? {}, "admin"),
+  rejectAdminShopRefund: (refundId: string, payload: { reason: string }) =>
+    postJson<ShopOrderDetail>(`/api/admin/shop/refunds/${refundId}/reject`, payload, "admin"),
+  completeAdminShopRefund: (refundId: string, payload?: { note?: string }) =>
+    postJson<ShopOrderDetail>(`/api/admin/shop/refunds/${refundId}/complete`, payload ?? {}, "admin"),
   getAdminShopShipments: (params?: {
     orderNo?: string;
     phone?: string;
@@ -1203,9 +2454,11 @@ export const mockApi = {
     ),
   getUserSummary: () => request<UserSummary>("/api/admin/users/summary", { auth: "admin" }),
   getAllAdmins: () => request<AdminAccount[]>("/api/admin/admins", { auth: "admin" }),
-  createAdminAccount: (payload: { account: string; name: string; password: string }) =>
+  getAllMockExamPermissionPapers: () =>
+    request<MockExamPermissionOption[]>("/api/admin/mock-exam-papers", { auth: "admin" }),
+  createAdminAccount: (payload: { account: string; name: string; password: string; role: AdminRole }) =>
     postJson<AdminAccount>("/api/admin/admins", payload, "admin"),
-  updateAdminAccount: (adminId: string, payload: { account: string; name: string }) =>
+  updateAdminAccount: (adminId: string, payload: { account: string; name: string; role: AdminRole }) =>
     patchJson<AdminAccount>(`/api/admin/admins/${adminId}`, payload, "admin"),
   updateAdminPassword: (adminId: string, password: string) =>
     patchJson<{ success: boolean }>(`/api/admin/admins/${adminId}/password`, { password }, "admin"),
@@ -1231,23 +2484,37 @@ export const mockApi = {
   removeDevice: (deviceId: string) => deleteRequest<{ success: boolean }>(`/api/admin/devices/${deviceId}`, "admin"),
   clearUserDevices: (userId: string) => deleteRequest<{ success: boolean }>(`/api/admin/users/${userId}/devices`, "admin"),
 
-  createUser: (phone: string, courseIds: string[]) =>
-    postJson<{ isNew: boolean; userId: string; phone: string }>("/api/admin/users", { phone, courseIds }, "admin"),
-  batchCreateUsers: (phones: string[], courseIds: string[]) =>
-    postJson<{ createdCount: number; appendedCount: number; failed: string[] }>("/api/admin/users/batch-import", { phones, courseIds }, "admin"),
-  batchCreateUsersByExcel: (file: File, courseIds: string[]) =>
+  createUser: (phone: string, courseIds: string[], mockExamPaperIds: string[] = []) =>
+    postJson<{ isNew: boolean; userId: string; phone: string }>("/api/admin/users", { phone, courseIds, mockExamPaperIds }, "admin"),
+  batchCreateUsers: (phones: string[], courseIds: string[], mockExamPaperIds: string[] = []) =>
+    postJson<{ createdCount: number; appendedCount: number; failed: string[] }>(
+      "/api/admin/users/batch-import",
+      { phones, courseIds, mockExamPaperIds },
+      "admin",
+    ),
+  batchCreateUsersByExcel: (file: File, courseIds: string[], mockExamPaperIds: string[] = []) =>
     uploadSingleFileWithFields<{ createdCount: number; appendedCount: number; failed: string[]; parsedCount: number }>(
       "/api/admin/users/batch-import-excel",
       file,
-      { courseIds },
+      { courseIds, mockExamPaperIds },
       "admin",
     ),
-  updateUserPermissions: (userId: string, addCourses: string[], removeCourses: string[]) =>
-    patchJson<{ success: boolean }>(`/api/admin/users/${userId}/permissions`, { addCourses, removeCourses }, "admin"),
+  updateUserPermissions: (
+    userId: string,
+    addCourses: string[],
+    removeCourses: string[],
+    addMockExamPapers: string[] = [],
+    removeMockExamPapers: string[] = [],
+  ) =>
+    patchJson<{ success: boolean }>(
+      `/api/admin/users/${userId}/permissions`,
+      { addCourses, removeCourses, addMockExamPapers, removeMockExamPapers },
+      "admin",
+    ),
   updateUserPassword: (userId: string, password: string) =>
     patchJson<{ success: boolean }>(`/api/admin/users/${userId}/password`, { password }, "admin"),
-  batchAddUserPermissions: (userIds: string[], courseIds: string[]) =>
-    postJson<{ success: boolean }>("/api/admin/users/batch-permissions", { userIds, courseIds }, "admin"),
+  batchAddUserPermissions: (userIds: string[], courseIds: string[], mockExamPaperIds: string[] = []) =>
+    postJson<{ success: boolean }>("/api/admin/users/batch-permissions", { userIds, courseIds, mockExamPaperIds }, "admin"),
   toggleUserStatus: (userId: string, status: UserStatus) =>
     patchJson<{ success: boolean }>(`/api/admin/users/${userId}/status`, { status }, "admin"),
   batchToggleUserStatus: (userIds: string[], status: UserStatus) =>
@@ -1262,22 +2529,35 @@ export const mockApi = {
     uploadSingleFile<{ objectKey: string; url: string }>("/api/admin/uploads/audio-handout", file, "admin"),
 
   uploadSystemImage: (file: File) =>
-    uploadSingleFile<{ objectKey: string; url: string }>("/api/admin/uploads/system-image", file, "admin"),
+    uploadSingleFile<{ objectKey: string; url: string; readableUrl?: string }>("/api/admin/uploads/system-image", file, "admin"),
+  uploadMockExamPaperCover: (file: File) =>
+    uploadSingleFile<{ objectKey: string; url: string; readableUrl?: string }>("/api/admin/uploads/system-image", file, "admin"),
 
   extractScriptFile: (file: File) =>
     uploadSingleFile<{ text: string }>("/api/admin/uploads/script-file", file, "admin"),
 
   getAdminLawSummary: () => request<LawAdminSummary>("/api/admin/laws/summary", { auth: "admin" }),
-  getAdminLawEntries: (params?: { keyword?: string; topCategoryId?: string; page?: number; pageSize?: number }) =>
+  getAdminLawEntries: (params?: {
+    keyword?: string;
+    topCategoryId?: string;
+    visibility?: "all" | "published" | "hidden";
+    pinnedOnly?: boolean;
+    page?: number;
+    pageSize?: number;
+  }) =>
     request<PagedResult<LawRecordMeta>>(
       `/api/admin/laws/entries${buildQueryString({
         keyword: params?.keyword,
         topCategoryId: params?.topCategoryId && params.topCategoryId !== "all" ? params.topCategoryId : undefined,
+        visibility: params?.visibility && params.visibility !== "all" ? params.visibility : undefined,
+        pinnedOnly: params?.pinnedOnly ? "true" : undefined,
         page: params?.page,
         pageSize: params?.pageSize,
       })}`,
       { auth: "admin" },
     ),
+  updateAdminLawEntry: (sourceLawId: number | string, payload: LawAdminEntryUpdatePayload) =>
+    patchJson<LawRecordMeta>(`/api/admin/laws/entries/${sourceLawId}`, payload, "admin"),
   syncAdminLaws: () =>
     postJson<{ source: string; sourceLabel: string; totalRecords: number; topCategoryCount: number; syncedAt: string }>(
       "/api/admin/laws/sync",
@@ -1426,6 +2706,8 @@ export const mockApi = {
   },
 
   getBrandingConfig: () => request<BrandingConfig>("/api/auth/branding", { auth: "auto" }),
+  getUserHomeConfig: () => request<UserHomeConfig>("/api/auth/user-home-config", { auth: "user" }),
+  getUserHomeOverview: () => request<UserHomeOverview>("/api/user/home-overview", { auth: "user" }),
   downloadAudioHandout: (courseId: string, audioId: string) =>
     requestBlob(`/api/user/courses/${courseId}/audios/${audioId}/handout/download`, { auth: "user" }),
   getSystemConfig: () => request<SystemConfig>("/api/admin/system-config", { auth: "admin" }),

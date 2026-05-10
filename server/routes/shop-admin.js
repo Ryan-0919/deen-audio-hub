@@ -2,14 +2,17 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { config as runtimeConfig } from "../lib/config.js";
 import { ok, fail } from "../lib/response.js";
-import { requireAdminAuth } from "../middleware/auth.js";
+import { requireAdminAuth, requireAdminRoles } from "../middleware/auth.js";
 import { writeAdminAuditLog } from "../lib/audit.js";
 import { cleanupObjectIfReplaced, cleanupObjectIfUnused } from "../lib/assets.js";
+import { buildShopPaymentRuntimeDiagnostics } from "../lib/shop-payment-runtime.js";
+import { approveShopRefund, completeShopRefund, rejectShopRefund } from "../lib/shop-refund.js";
 import {
   SHOP_BANNER_LINK_TYPE_VALUES,
   SHOP_SHIPMENT_STATUS_VALUES,
   buildShipmentQuantityMaps,
   hasPendingShipmentItems,
+  parseProductImageSnapshot,
   parseStringArraySnapshot,
   recalculateShopOrderStatus,
   serializeAdminShopProductDetail,
@@ -24,6 +27,7 @@ import {
 export const shopAdminRouter = Router();
 
 shopAdminRouter.use(requireAdminAuth);
+shopAdminRouter.use(requireAdminRoles("super_admin", "operations_admin"));
 
 const shipmentStatusSet = new Set(SHOP_SHIPMENT_STATUS_VALUES);
 const paymentStatusSet = new Set(["unpaid", "paid", "failed", "refunded"]);
@@ -290,6 +294,17 @@ const normalizeImageInputs = (value) =>
     }))
     .filter((item) => item.imageUrl);
 
+const serializeImageSnapshot = (images = []) =>
+  images.length > 0
+    ? JSON.stringify(
+        images.map((item, index) => ({
+          imageUrl: item.imageUrl,
+          imageObjectKey: item.imageObjectKey || null,
+          sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : index,
+        })),
+      )
+    : null;
+
 const normalizeProductPayload = (body = {}) => {
   const categoryId = `${body?.categoryId ?? ""}`.trim();
   const name = `${body?.name ?? ""}`.trim();
@@ -304,6 +319,7 @@ const normalizeProductPayload = (body = {}) => {
   const courseIds = toStringArray(body?.courseIds);
   const skus = normalizeSkuInputs(body?.skus);
   const images = normalizeImageInputs(body?.images);
+  const detailImages = normalizeImageInputs(body?.detailImages);
 
   if (!categoryId) {
     throw createHttpError("请选择商品分类", 400);
@@ -340,6 +356,7 @@ const normalizeProductPayload = (body = {}) => {
     status,
     description: description || null,
     detailContent: detailContent || null,
+    detailImages,
     requiresShipping: type !== "virtual",
     sortOrder,
     courseIds,
@@ -545,10 +562,15 @@ const ensureShopConfigReferencesExist = async (payload) => {
 
 shopAdminRouter.get("/config", async (_req, res) => {
   const configRecord = await getShopConfigDetail();
+  const paymentRuntime = buildShopPaymentRuntimeDiagnostics({
+    runtimeConfig,
+    shopConfig: configRecord,
+  });
   return ok(
     res,
     serializeShopConfig(configRecord, {
       runtimePaymentMode: runtimeConfig.shopPaymentMode,
+      paymentRuntime,
     }),
   );
 });
@@ -641,6 +663,10 @@ shopAdminRouter.patch("/config", async (req, res) => {
       res,
       serializeShopConfig(updated, {
         runtimePaymentMode: runtimeConfig.shopPaymentMode,
+        paymentRuntime: buildShopPaymentRuntimeDiagnostics({
+          runtimeConfig,
+          shopConfig: updated,
+        }),
       }),
       "商城配置已更新",
     );
@@ -872,6 +898,7 @@ shopAdminRouter.post("/products", async (req, res) => {
           status: payload.status,
           description: payload.description,
           detailContent: payload.detailContent,
+          detailImages: serializeImageSnapshot(payload.detailImages),
           requiresShipping: payload.requiresShipping,
           sortOrder: payload.sortOrder,
           images: {
@@ -938,26 +965,28 @@ shopAdminRouter.patch("/products/:productId", async (req, res) => {
     const payload = normalizeProductPayload(req.body);
     await ensureProductRelationsExist(payload);
 
-    const imageCleanupPairs = [];
-    const removedImageObjectKeys = [];
+      const imageCleanupPairs = [];
+      const removedImageObjectKeys = [];
+      const existingDetailImages = parseProductImageSnapshot(existing.detailImages);
 
-    const product = await prisma.$transaction(async (tx) => {
-      await tx.shopProduct.update({
-        where: { id: productId },
-        data: {
+      const product = await prisma.$transaction(async (tx) => {
+        await tx.shopProduct.update({
+          where: { id: productId },
+          data: {
           categoryId: payload.categoryId,
           name: payload.name,
           subtitle: payload.subtitle,
           coverUrl: payload.coverUrl,
           coverObjectKey: payload.coverObjectKey,
-          type: payload.type,
-          status: payload.status,
-          description: payload.description,
-          detailContent: payload.detailContent,
-          requiresShipping: payload.requiresShipping,
-          sortOrder: payload.sortOrder,
-        },
-      });
+            type: payload.type,
+            status: payload.status,
+            description: payload.description,
+            detailContent: payload.detailContent,
+            detailImages: serializeImageSnapshot(payload.detailImages),
+            requiresShipping: payload.requiresShipping,
+            sortOrder: payload.sortOrder,
+          },
+        });
 
       await tx.shopProductCourse.deleteMany({
         where: { productId },
@@ -1006,18 +1035,25 @@ shopAdminRouter.patch("/products/:productId", async (req, res) => {
       }
 
       const removedImages = existing.images.filter((item) => !retainedImageIds.has(item.id));
-      if (removedImages.length > 0) {
-        await tx.shopProductImage.deleteMany({
-          where: {
-            id: {
-              in: removedImages.map((item) => item.id),
+        if (removedImages.length > 0) {
+          await tx.shopProductImage.deleteMany({
+            where: {
+              id: {
+                in: removedImages.map((item) => item.id),
             },
           },
-        });
-        removedImageObjectKeys.push(...removedImages.map((item) => item.imageObjectKey ?? "").filter(Boolean));
-      }
+          });
+          removedImageObjectKeys.push(...removedImages.map((item) => item.imageObjectKey ?? "").filter(Boolean));
+        }
 
-      const existingSkuMap = new Map(existing.skus.map((item) => [item.id, item]));
+        const nextDetailObjectKeySet = new Set(payload.detailImages.map((item) => item.imageObjectKey).filter(Boolean));
+        removedImageObjectKeys.push(
+          ...existingDetailImages
+            .map((item) => item.imageObjectKey ?? "")
+            .filter((objectKey) => objectKey && !nextDetailObjectKeySet.has(objectKey)),
+        );
+
+        const existingSkuMap = new Map(existing.skus.map((item) => [item.id, item]));
       const retainedSkuIds = new Set();
 
       for (const sku of payload.skus) {
@@ -1399,6 +1435,109 @@ shopAdminRouter.post("/orders/:orderId/close", async (req, res) => {
   });
 
   return ok(res, serializeShopOrder(updated, { includeRelations: true }), "订单已关闭");
+});
+
+shopAdminRouter.post("/refunds/:refundId/approve", async (req, res) => {
+  const refundId = `${req.params.refundId ?? ""}`.trim();
+  const note = `${req.body?.note ?? ""}`.trim();
+
+  if (!refundId) {
+    return fail(res, "缺少退款参数", 400);
+  }
+
+  try {
+    const order = await approveShopRefund({
+      db: prisma,
+      refundId,
+      note,
+    });
+
+    const targetRefund = (order.refunds ?? []).find((item) => item.id === refundId);
+    recordAdminAction(req, {
+      action: "shop.refund.approve",
+      entityType: "shopRefund",
+      entityId: refundId,
+      entityName: order.orderNo,
+      detail: {
+        orderId: order.id,
+        orderNo: order.orderNo,
+        refundAmount: targetRefund?.refundAmount?.toString?.() ?? "",
+        note,
+      },
+    });
+
+    return ok(res, serializeShopOrder(order, { includeRelations: true }), "退款申请已通过");
+  } catch (error) {
+    return fail(res, error.message || "审批退款失败", error.statusCode || 400);
+  }
+});
+
+shopAdminRouter.post("/refunds/:refundId/reject", async (req, res) => {
+  const refundId = `${req.params.refundId ?? ""}`.trim();
+  const reason = `${req.body?.reason ?? ""}`.trim();
+
+  if (!refundId) {
+    return fail(res, "缺少退款参数", 400);
+  }
+
+  try {
+    const order = await rejectShopRefund({
+      db: prisma,
+      refundId,
+      reason,
+    });
+
+    recordAdminAction(req, {
+      action: "shop.refund.reject",
+      entityType: "shopRefund",
+      entityId: refundId,
+      entityName: order.orderNo,
+      detail: {
+        orderId: order.id,
+        orderNo: order.orderNo,
+        reason,
+      },
+    });
+
+    return ok(res, serializeShopOrder(order, { includeRelations: true }), "退款申请已驳回");
+  } catch (error) {
+    return fail(res, error.message || "驳回退款失败", error.statusCode || 400);
+  }
+});
+
+shopAdminRouter.post("/refunds/:refundId/complete", async (req, res) => {
+  const refundId = `${req.params.refundId ?? ""}`.trim();
+  const note = `${req.body?.note ?? ""}`.trim();
+
+  if (!refundId) {
+    return fail(res, "缺少退款参数", 400);
+  }
+
+  try {
+    const order = await completeShopRefund({
+      db: prisma,
+      refundId,
+      note,
+    });
+
+    const targetRefund = (order.refunds ?? []).find((item) => item.id === refundId);
+    recordAdminAction(req, {
+      action: "shop.refund.complete",
+      entityType: "shopRefund",
+      entityId: refundId,
+      entityName: order.orderNo,
+      detail: {
+        orderId: order.id,
+        orderNo: order.orderNo,
+        refundAmount: targetRefund?.refundAmount?.toString?.() ?? "",
+        note,
+      },
+    });
+
+    return ok(res, serializeShopOrder(order, { includeRelations: true }), "退款已完成");
+  } catch (error) {
+    return fail(res, error.message || "完成退款失败", error.statusCode || 400);
+  }
 });
 
 const shipmentStartedStatusSet = new Set(["shipped", "in_transit", "signed"]);

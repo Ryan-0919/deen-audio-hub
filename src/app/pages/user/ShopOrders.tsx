@@ -1,9 +1,11 @@
-import { ArrowLeft, ArrowRight, PackageCheck, ReceiptText } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { ArrowLeft, ArrowRight, PackageCheck, ReceiptText, Clock } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { cn } from "../../components/ui/utils";
 import { type ShopOrder, mockApi } from "../../lib/mockData";
 import {
   formatShopCountdown,
@@ -30,13 +32,13 @@ const isOrderStatusFilter = (value: string): value is OrderStatusFilter => statu
 const hasOrderShippingItems = (order: ShopOrder) => order.items.some((item) => item.requiresShipping);
 
 const orderStatusMeta: Record<string, { label: string; className: string }> = {
-  pending_payment: { label: "待支付", className: "bg-amber-50 text-amber-700" },
-  paid: { label: "已支付", className: "bg-blue-50 text-blue-700" },
-  partially_fulfilled: { label: "履约中", className: "bg-indigo-50 text-indigo-700" },
-  completed: { label: "已完成", className: "bg-emerald-50 text-emerald-700" },
-  cancelled: { label: "已取消", className: "bg-slate-100 text-slate-600" },
-  refunding: { label: "退款中", className: "bg-rose-50 text-rose-700" },
-  refunded: { label: "已退款", className: "bg-rose-50 text-rose-700" },
+  pending_payment: { label: "待支付", className: "bg-orange-50/50 text-[#ff6a3d]" },
+  paid: { label: "已支付", className: "bg-blue-50/50 text-blue-600" },
+  partially_fulfilled: { label: "履约中", className: "bg-indigo-50/50 text-indigo-600" },
+  completed: { label: "已完成", className: "bg-green-50/50 text-green-600" },
+  cancelled: { label: "已取消", className: "bg-slate-100 text-slate-500" },
+  refunding: { label: "退款中", className: "bg-rose-50/50 text-rose-600" },
+  refunded: { label: "已退款", className: "bg-slate-100 text-slate-500" },
 };
 
 const paymentStatusLabelMap: Record<string, string> = {
@@ -174,32 +176,36 @@ export function ShopOrders() {
   const hasMore = orders.length < total;
 
   return (
-    <div className="min-h-screen bg-[#f6f8fb]">
-      <div className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-sm items-center px-4">
+    <div className="min-h-screen bg-[#f5f7fb] pb-20 font-sans selection:bg-slate-900 selection:text-white">
+      {/* Premium Header */}
+      <div className="sticky top-0 z-30 border-b border-slate-200/50 bg-white/80 backdrop-blur-xl transition-all">
+        <div className="mx-auto flex h-14 max-w-7xl items-center px-4 md:h-[72px] md:px-6 xl:px-8">
           <button
             type="button"
             onClick={() => navigate("/user/me")}
-            className="flex size-10 items-center justify-center rounded-full text-slate-700 transition hover:bg-slate-100"
+            className="group flex size-10 items-center justify-center rounded-full bg-white text-slate-700 shadow-sm ring-1 ring-black/[0.04] transition-all hover:bg-slate-50 hover:shadow-md"
           >
-            <ArrowLeft className="size-5" />
+            <ArrowLeft className="size-5 transition-transform group-hover:-translate-x-0.5" />
           </button>
-          <h1 className="flex-1 text-center text-base font-semibold text-slate-900">我的订单</h1>
+          <h1 className="flex-1 text-center text-[17px] font-bold tracking-tight text-slate-900 md:text-lg">我的订单</h1>
           <div className="w-10" />
         </div>
       </div>
 
-      <div className="mx-auto max-w-sm px-4 py-4">
-        <div className="overflow-x-auto">
-          <div className="flex min-w-max gap-2">
+      <div className="mx-auto max-w-5xl px-4 py-6 md:px-6 md:py-8 xl:px-8">
+        <div className="mb-8 rounded-[32px] bg-white p-2 shadow-sm ring-1 ring-black/[0.03] overflow-x-auto hide-scrollbar">
+          <div className="flex min-w-max items-center gap-1">
             {statusTabs.map((tab) => (
               <button
                 key={tab.value}
                 type="button"
                 onClick={() => updateStatus(tab.value)}
-                className={`rounded-full border px-4 py-2 text-sm transition-colors ${
-                  status === tab.value ? "border-blue-600 bg-blue-600 text-white" : "border-slate-200 bg-white text-slate-600"
-                }`}
+                className={cn(
+                  "rounded-full px-6 py-2.5 text-[14px] font-bold tracking-wider transition-all",
+                  status === tab.value 
+                    ? "bg-slate-900 text-white shadow-md shadow-slate-900/20" 
+                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                )}
               >
                 {tab.label}
               </button>
@@ -208,147 +214,155 @@ export function ShopOrders() {
         </div>
 
         {loading ? (
-          <div className="mt-4 rounded-3xl border border-slate-200 bg-white px-6 py-14 text-center text-sm text-slate-500">
-            订单加载中...
-          </div>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-10 text-center text-[13px] font-bold uppercase tracking-[0.2em] text-slate-400">
+            Loading Orders...
+          </motion.div>
         ) : orders.length === 0 ? (
-          <div className="mt-4 rounded-3xl border border-slate-200 bg-white px-8 py-14 text-center">
-            <div className="mx-auto flex size-14 items-center justify-center rounded-full bg-slate-100 text-slate-500">
-              <ReceiptText className="size-6" />
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} 
+            className="mx-auto mt-8 max-w-md rounded-[40px] bg-white p-12 text-center shadow-xl shadow-slate-200/40 ring-1 ring-black/[0.03]"
+          >
+            <div className="mx-auto flex size-20 items-center justify-center rounded-full bg-slate-50 mb-6">
+              <ReceiptText className="size-10 text-slate-300" />
             </div>
-            <h2 className="mt-4 text-lg font-medium text-slate-900">还没有订单</h2>
-            <p className="mt-2 text-sm leading-7 text-slate-500">
-              先去商城选购想买的内容，支付后这里会统一展示。
-            </p>
-            <Button type="button" className="mt-5 rounded-full bg-slate-900 text-white hover:bg-slate-800" onClick={() => navigate("/user/shop")}>
+            <h2 className="text-xl font-bold tracking-tight text-slate-900">还没有相关订单</h2>
+            <p className="mt-3 text-sm font-medium leading-relaxed text-slate-500">所有的购物记录都会在这里安全保存。</p>
+            <Button type="button" className="mt-8 h-12 rounded-full bg-slate-900 px-8 text-sm font-bold tracking-wider text-white shadow-lg shadow-slate-900/20 hover:bg-slate-800 hover:-translate-y-0.5 transition-all" onClick={() => navigate("/user/shop")}>
               去逛商城
             </Button>
-          </div>
+          </motion.div>
         ) : (
-          <div className="mt-4 space-y-3">
-            {orders.map((order) => {
-              const isExpired = isShopOrderExpired(order, nowTs);
-              const canCancel = isPendingPaymentOrder(order);
-              const canConfirmReceipt =
-                hasOrderShippingItems(order) && (order.shipmentStatus === "shipped" || order.shipmentStatus === "in_transit");
-              const canContinuePay = isPendingPaymentOrder(order) && !isExpired;
-              const currentStatus = isExpired
-                ? { label: "支付超时", className: "bg-rose-50 text-rose-700" }
-                : orderStatusMeta[order.status] ?? { label: order.status, className: "bg-slate-100 text-slate-600" };
+          <div className="space-y-6">
+            <AnimatePresence mode="popLayout">
+              {orders.map((order, i) => {
+                const isExpired = isShopOrderExpired(order, nowTs);
+                const canCancel = isPendingPaymentOrder(order);
+                const canConfirmReceipt =
+                  hasOrderShippingItems(order) && (order.shipmentStatus === "shipped" || order.shipmentStatus === "in_transit");
+                const canContinuePay = isPendingPaymentOrder(order) && !isExpired;
+                const currentStatus = isExpired
+                  ? { label: "支付超时", className: "bg-rose-50/50 text-rose-600" }
+                  : orderStatusMeta[order.status] ?? { label: order.status, className: "bg-slate-100 text-slate-500" };
 
-              return (
-                <div key={order.id} className="rounded-3xl border border-slate-200 bg-white p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm text-slate-500">订单号</p>
-                      <p className="mt-1 truncate font-semibold text-slate-900">{order.orderNo}</p>
+                return (
+                  <motion.div 
+                    key={order.id}
+                    layout
+                    initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: i * 0.05 }}
+                    className="overflow-hidden rounded-[32px] bg-white shadow-sm ring-1 ring-black/[0.03] transition-all hover:shadow-lg hover:shadow-slate-200/50"
+                  >
+                    <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 md:px-6">
+                      <div className="flex items-center gap-3">
+                         <Badge variant="secondary" className={cn("rounded-md px-2 py-0.5 text-[11px] font-bold tracking-wider", currentStatus.className)}>
+                          {currentStatus.label}
+                        </Badge>
+                        <p className="hidden text-[12px] font-medium text-slate-500 md:block">{order.createdAt}</p>
+                      </div>
+                      <p className="text-[12px] font-medium text-slate-400 select-all">{order.orderNo}</p>
                     </div>
-                    <Badge variant="secondary" className={currentStatus.className}>
-                      {currentStatus.label}
-                    </Badge>
-                  </div>
 
-                  <div className="mt-4 space-y-3">
-                    {order.items.map((item) => (
-                      <div key={item.id} className="flex gap-3 rounded-2xl bg-slate-50 p-3">
-                        <img src={item.coverUrl} alt={item.productName} className="h-16 w-16 rounded-2xl object-cover" />
-                        <div className="min-w-0 flex-1">
-                          <p className="line-clamp-2 text-sm font-medium text-slate-900">{item.productName}</p>
-                          <p className="mt-1 text-xs text-slate-500">
-                            数量 {item.quantity} · 单价 {formatShopMoney(item.price)}
-                          </p>
+                    <div className="flex flex-col md:flex-row">
+                      <div className="flex-1 p-5 md:p-6 md:border-r border-slate-100">
+                        <div className="space-y-4">
+                          {order.items.map((item) => (
+                            <div key={item.id} className="group flex gap-4">
+                              <img src={item.coverUrl} alt={item.productName} className="h-20 w-20 rounded-[20px] object-cover ring-1 ring-black/[0.04] transition-transform group-hover:scale-105" />
+                              <div className="min-w-0 flex-1 flex flex-col justify-center">
+                                <p className="line-clamp-2 text-[14px] font-bold leading-snug text-slate-900">{item.productName}</p>
+                                <div className="mt-2 flex items-center justify-between text-[13px]">
+                                  <span className="font-medium text-slate-500">数量 × {item.quantity}</span>
+                                  <span className="font-bold text-slate-900">{formatShopMoney(item.price)}</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {isPendingPaymentOrder(order) && (
+                          <div className={cn("mt-5 flex items-center gap-2 rounded-[20px] px-4 py-3 text-[13px] font-medium", isExpired ? "bg-rose-50/50 text-rose-600" : "bg-orange-50/50 text-[#ff6a3d]")}>
+                            <Clock className="size-4" />
+                            {isExpired ? (
+                              <span>该订单支付已超时，系统即将关闭。</span>
+                            ) : (
+                              <span>请在 {formatShopCountdown(getShopOrderRemainingMs(order, nowTs))} 内完成支付。</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col justify-between bg-slate-50/50 p-5 md:w-64 md:p-6">
+                        <div className="text-right">
+                          <p className="text-[12px] font-bold text-slate-400">应付金额</p>
+                          <p className="mt-1 text-[28px] font-bold tracking-tight text-slate-900 leading-none">{formatShopMoney(order.payAmount)}</p>
+                          <div className="mt-3 flex flex-col gap-1 text-[11px] font-medium text-slate-400">
+                            <p>支付状态：{paymentStatusLabelMap[order.paymentStatus] ?? order.paymentStatus}</p>
+                            <p>发货状态：{getShipmentStatusLabel(order)}</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-6 flex flex-col gap-2">
+                          {canContinuePay ? (
+                            <Button
+                              type="button"
+                              className="w-full h-11 rounded-full bg-[#ff6a3d] text-[13px] font-bold tracking-wider text-white shadow-md shadow-orange-500/20 hover:-translate-y-0.5 hover:bg-[#f65a28] transition-all disabled:opacity-50"
+                              disabled={actionOrderId === order.id}
+                              onClick={() => navigate(`/user/shop/orders/${order.id}`)}
+                            >
+                              PAY NOW
+                            </Button>
+                          ) : (
+                             <Button type="button" variant="outline" className="w-full h-11 rounded-full border-slate-200 bg-white text-[13px] font-bold text-slate-700 hover:bg-slate-50" onClick={() => navigate(`/user/shop/orders/${order.id}`)}>
+                               VIEW DETAILS
+                             </Button>
+                          )}
+
+                          <div className="flex gap-2">
+                             {canCancel && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                className="flex-1 h-11 rounded-full text-[13px] font-bold text-slate-500 hover:bg-slate-100"
+                                disabled={actionOrderId === order.id}
+                                onClick={() => void cancelOrder(order.id)}
+                              >
+                                Cancel
+                              </Button>
+                            )}
+
+                            {canConfirmReceipt && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="flex-1 h-11 rounded-full border-blue-200 bg-blue-50 text-[13px] font-bold text-blue-700 hover:bg-blue-100"
+                                disabled={actionOrderId === order.id}
+                                onClick={() => void confirmReceipt(order.id)}
+                              >
+                                <PackageCheck className="mr-1.5 size-4" />
+                                确认收货
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-
-                  {isPendingPaymentOrder(order) ? (
-                    <div className={`mt-4 rounded-2xl px-3 py-3 text-sm ${isExpired ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-700"}`}>
-                      {isExpired ? (
-                        <p>该订单支付已超时，请重新下单或等待系统自动关闭。</p>
-                      ) : (
-                        <>
-                          <p>请在 {order.payExpireAt} 前完成支付。</p>
-                          <p className="mt-1 font-medium">剩余时间：{formatShopCountdown(getShopOrderRemainingMs(order, nowTs))}</p>
-                        </>
-                      )}
                     </div>
-                  ) : null}
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
 
-                  <div className="mt-4 flex items-center justify-between text-sm text-slate-500">
-                    <div className="min-w-0">
-                      <p>创建时间 {order.createdAt}</p>
-                      <p className="mt-1">
-                        支付状态：{paymentStatusLabelMap[order.paymentStatus] ?? order.paymentStatus} · 发货状态：
-                        {getShipmentStatusLabel(order)}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs">应付金额</p>
-                      <p className="mt-1 text-lg font-semibold text-slate-900">{formatShopMoney(order.payAmount)}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 flex flex-wrap justify-end gap-2">
-                    <Button type="button" variant="outline" size="sm" onClick={() => navigate(`/user/shop/orders/${order.id}`)}>
-                      查看详情
-                      <ArrowRight className="ml-2 size-4" />
-                    </Button>
-
-                    {canCancel ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={actionOrderId === order.id}
-                        onClick={() => void cancelOrder(order.id)}
-                      >
-                        取消订单
-                      </Button>
-                    ) : null}
-
-                    {canConfirmReceipt ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={actionOrderId === order.id}
-                        onClick={() => void confirmReceipt(order.id)}
-                      >
-                        <PackageCheck className="mr-2 size-4" />
-                        确认收货
-                      </Button>
-                    ) : null}
-
-                    {canContinuePay ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="bg-slate-900 text-white hover:bg-slate-800"
-                        disabled={actionOrderId === order.id}
-                        onClick={() => navigate(`/user/shop/orders/${order.id}`)}
-                      >
-                        继续支付
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-
-            {hasMore ? (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full rounded-full border-slate-200 bg-white"
-                disabled={loadingMore}
-                onClick={() => void loadOrders(page + 1, { append: true })}
-              >
-                {loadingMore ? "加载中..." : `加载更多订单 (${orders.length}/${total})`}
-              </Button>
-            ) : null}
-
-            {total > 0 ? <p className="text-center text-xs text-slate-400">已显示 {orders.length} / {total} 笔订单</p> : null}
+            {hasMore && (
+              <div className="pt-4 flex justify-center">
+                 <Button
+                  type="button"
+                  variant="outline"
+                  className="h-12 w-full max-w-sm rounded-full border-slate-200 bg-white font-bold tracking-wider text-slate-600 hover:bg-slate-50"
+                  disabled={loadingMore}
+                  onClick={() => void loadOrders(page + 1, { append: true })}
+                >
+                  {loadingMore ? "LOADING..." : `LOAD MORE (${orders.length}/${total})`}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>

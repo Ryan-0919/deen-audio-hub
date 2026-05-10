@@ -1,0 +1,16 @@
+[Unit]
+Description=denlaw api service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/srv/denlaw/app
+ExecStart=/usr/bin/node server/index.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+EnvironmentFile=/srv/denlaw/shared/.env.production
+User=root
+
+[Install]
+WantedBy=multi-user.target

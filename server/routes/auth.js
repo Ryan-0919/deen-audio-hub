@@ -14,6 +14,7 @@ import {
 import { requireUserAuth } from "../middleware/auth.js";
 import { getReadableObjectUrl } from "../lib/upload.js";
 import { getDevicesToEvictForNewLogin } from "../lib/device-limit.js";
+import { normalizePortalConfig } from "../../src/shared/portal-config.js";
 
 const DEVICE_LIMIT = 5;
 const USER_LOGIN_RATE_LIMIT_ERROR_CODE = 10041;
@@ -26,6 +27,30 @@ authRouter.get("/branding", async (_req, res) => {
     where: { id: 1 },
   });
 
+  let portalConfig;
+  try {
+    portalConfig = normalizePortalConfig(config?.portalConfigJson ? JSON.parse(config.portalConfigJson) : null, {
+      customerServiceUrl: config?.customerServiceUrl ?? "",
+    });
+  } catch {
+    portalConfig = normalizePortalConfig(null, {
+      customerServiceUrl: config?.customerServiceUrl ?? "",
+    });
+  }
+
+  portalConfig.seo.ogImageUrl = getReadableObjectUrl({
+    objectKey: portalConfig.seo.ogImageObjectKey ?? "",
+    fallbackUrl: portalConfig.seo.ogImageUrl ?? "",
+  });
+  portalConfig.memberHome.bannerImageUrl = getReadableObjectUrl({
+    objectKey: portalConfig.memberHome.bannerImageObjectKey ?? "",
+    fallbackUrl: portalConfig.memberHome.bannerImageUrl ?? "",
+  });
+  portalConfig.founder.imageUrl = getReadableObjectUrl({
+    objectKey: portalConfig.founder.imageObjectKey ?? "",
+    fallbackUrl: portalConfig.founder.imageUrl ?? "",
+  });
+
   return ok(res, {
     brandLogoUrl: getReadableObjectUrl({
       objectKey: config?.brandLogoObjectKey ?? "",
@@ -36,6 +61,35 @@ authRouter.get("/branding", async (_req, res) => {
       objectKey: config?.playerDiscImageObjectKey ?? "",
       fallbackUrl: config?.playerDiscImageUrl ?? "",
     }),
+    portalConfig,
+  });
+});
+
+authRouter.get("/user-home-config", requireUserAuth, async (_req, res) => {
+  const config = await prisma.systemConfig.findUnique({
+    where: { id: 1 },
+  });
+
+  let portalConfig;
+  try {
+    portalConfig = normalizePortalConfig(config?.portalConfigJson ? JSON.parse(config.portalConfigJson) : null, {
+      customerServiceUrl: config?.customerServiceUrl ?? "",
+    });
+  } catch {
+    portalConfig = normalizePortalConfig(null, {
+      customerServiceUrl: config?.customerServiceUrl ?? "",
+    });
+  }
+
+  portalConfig.memberHome.bannerImageUrl = getReadableObjectUrl({
+    objectKey: portalConfig.memberHome.bannerImageObjectKey ?? "",
+    fallbackUrl: portalConfig.memberHome.bannerImageUrl ?? "",
+  });
+
+  return ok(res, {
+    memberHome: portalConfig.memberHome,
+    examHome: portalConfig.examHome,
+    accountCenter: portalConfig.accountCenter,
   });
 });
 
@@ -236,6 +290,7 @@ authRouter.post("/admin/login", async (req, res) => {
     adminId: admin.id,
     account: admin.account,
     name: admin.name,
+    adminRole: admin.role ?? "super_admin",
   });
   resetAdminLoginAttempts({ ip, account });
 
@@ -246,6 +301,7 @@ authRouter.post("/admin/login", async (req, res) => {
       id: admin.id,
       account: admin.account,
       name: admin.name,
+      role: admin.role ?? "super_admin",
     },
   });
 });

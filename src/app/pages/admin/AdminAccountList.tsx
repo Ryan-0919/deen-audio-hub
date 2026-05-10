@@ -6,8 +6,20 @@ import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
+import { getAdminSessionKeys } from "../../lib/admin-session";
 import { AdminAccount, mockApi } from "../../lib/mockData";
+
+const ADMIN_ROLE_OPTIONS = [
+  { value: "super_admin", label: "超级管理员" },
+  { value: "operations_admin", label: "总后台管理员" },
+  { value: "user_admin", label: "用户权限管理员" },
+  { value: "review_admin", label: "批改管理员" },
+] as const;
+
+const formatAdminRoleLabel = (role: AdminAccount["role"]) =>
+  ADMIN_ROLE_OPTIONS.find((item) => item.value === role)?.label ?? "总后台管理员";
 
 export function AdminAccountList() {
   const [admins, setAdmins] = useState<AdminAccount[]>([]);
@@ -17,6 +29,7 @@ export function AdminAccountList() {
   const [editingAdmin, setEditingAdmin] = useState<AdminAccount | null>(null);
   const [account, setAccount] = useState("");
   const [name, setName] = useState("");
+  const [role, setRole] = useState<AdminAccount["role"]>("operations_admin");
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -50,6 +63,7 @@ export function AdminAccountList() {
     setEditingAdmin(null);
     setAccount("");
     setName("");
+    setRole("operations_admin");
     setPassword("");
   };
 
@@ -62,6 +76,7 @@ export function AdminAccountList() {
     setEditingAdmin(admin);
     setAccount(admin.account);
     setName(admin.name);
+    setRole(admin.role);
     setPassword("");
     setShowEditDialog(true);
   };
@@ -89,15 +104,18 @@ export function AdminAccountList() {
         ? await mockApi.updateAdminAccount(editingAdmin.id, {
             account: account.trim(),
             name: name.trim(),
+            role,
           })
         : await mockApi.createAdminAccount({
             account: account.trim(),
             name: name.trim(),
             password: password.trim(),
+            role,
           });
 
       if (result.id === currentAdminId) {
         localStorage.setItem("adminAccount", result.account);
+        localStorage.setItem(getAdminSessionKeys("admin").role, result.role);
       }
 
       toast.success(editingAdmin ? "管理员信息已更新" : "管理员账号已创建");
@@ -186,6 +204,7 @@ export function AdminAccountList() {
                   <TableRow>
                     <TableHead>管理员姓名</TableHead>
                     <TableHead>登录账号</TableHead>
+                    <TableHead>角色</TableHead>
                     <TableHead>创建时间</TableHead>
                     <TableHead>最近更新</TableHead>
                     <TableHead>备注</TableHead>
@@ -197,6 +216,7 @@ export function AdminAccountList() {
                     <TableRow key={admin.id}>
                       <TableCell className="font-medium text-slate-900">{admin.name}</TableCell>
                       <TableCell>{admin.account}</TableCell>
+                      <TableCell>{formatAdminRoleLabel(admin.role)}</TableCell>
                       <TableCell>{admin.createdAt}</TableCell>
                       <TableCell>{admin.updatedAt}</TableCell>
                       <TableCell>
@@ -228,7 +248,7 @@ export function AdminAccountList() {
                   ))}
                   {admins.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} className="py-16 text-center text-slate-500">
+                      <TableCell colSpan={7} className="py-16 text-center text-slate-500">
                         暂无管理员账号
                       </TableCell>
                     </TableRow>
@@ -262,6 +282,22 @@ export function AdminAccountList() {
             <div className="space-y-2">
               <Label htmlFor="admin-account">登录账号</Label>
               <Input id="admin-account" value={account} onChange={(event) => setAccount(event.target.value)} placeholder="请输入后台登录账号" />
+            </div>
+
+            <div className="space-y-2">
+              <Label>权限角色</Label>
+              <Select value={role} onValueChange={(value: AdminAccount["role"]) => setRole(value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="请选择角色" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ADMIN_ROLE_OPTIONS.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {!editingAdmin && (

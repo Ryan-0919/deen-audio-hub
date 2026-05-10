@@ -24,6 +24,53 @@ enum AudioProcessStatus {
   failed
 }
 
+enum MockExamPaperStatus {
+  draft
+  published
+}
+
+enum MockExamQuestionType {
+  single_choice
+  multiple_choice
+  uncertain_choice
+  subjective_case
+}
+
+enum QuestionBankPaperType {
+  objective
+  subjective
+}
+
+enum MockExamRecordStatus {
+  in_progress
+  submitted
+}
+
+enum MockExamReviewWorkflowStatus {
+  not_required
+  ai_pending
+  ai_processing
+  manual_pending
+  published
+}
+
+enum TypingPracticeTextStatus {
+  draft
+  published
+}
+
+enum TypingPracticeDifficulty {
+  easy
+  medium
+  hard
+}
+
+enum TypingPracticeMode {
+  guided
+  sprint
+  memorize
+}
+
 enum ShopProductType {
   virtual
   physical
@@ -86,6 +133,7 @@ model Admin {
   account      String   @unique @db.VarChar(50)
   passwordHash String   @db.VarChar(255)
   name         String   @db.VarChar(100)
+  role         String   @default("super_admin") @db.VarChar(50)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   auditLogs    AuditLog[]
@@ -107,6 +155,9 @@ model User {
   cartItems      ShopCartItem[]
   shopOrders     ShopOrder[]
   digitalFulfillments ShopDigitalFulfillment[]
+  mockExamRecords MockExamRecord[]
+  mockExamPermissions UserMockExamPermission[]
+  typingPracticeRecords TypingPracticeRecord[]
 }
 
 model UserDevice {
@@ -248,6 +299,11 @@ model SystemConfig {
   brandLogoObjectKey String?  @db.VarChar(255)
   playerDiscImageUrl String?  @db.VarChar(500)
   customerServiceUrl String?  @db.VarChar(500)
+  portalConfigJson   String?  @db.LongText
+  mockExamAiReviewConfigJson String? @db.LongText
+  mockExamLaunchConfigJson String? @db.LongText
+  typingPracticeDifficultyConfigJson String? @db.LongText
+  typingPracticeHomeConfigJson String? @db.LongText
   playerDiscImageObjectKey String? @db.VarChar(255)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -319,6 +375,279 @@ model LawEntry {
   @@index([updatedAt])
 }
 
+model LawEntryOperation {
+  id             String   @id @default(cuid())
+  sourceLawId    Int      @unique
+  isPublished    Boolean  @default(true)
+  isPinned       Boolean  @default(false)
+  manualSortOrder Int     @default(0)
+  tagsJson       String?  @db.LongText
+  operatorNote   String?  @db.LongText
+  customTitle    String?  @db.VarChar(255)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([isPublished, updatedAt])
+  @@index([isPinned, manualSortOrder])
+}
+
+model MockExamPaper {
+  id              String                @id @default(cuid())
+  code            String                @unique @db.VarChar(64)
+  title           String                @db.VarChar(191)
+  subtitle        String?               @db.VarChar(255)
+  coverUrl        String?               @db.VarChar(500)
+  coverObjectKey  String?               @db.VarChar(255)
+  paperType       QuestionBankPaperType?
+  year            Int?
+  phase           String?               @db.VarChar(50)
+  durationMinutes Int                   @default(180)
+  maxAttempts     Int                   @default(0)
+  reviewEnabled   Boolean               @default(true)
+  permissionRequired Boolean            @default(false)
+  totalScore      Int                   @default(0)
+  questionCount   Int                   @default(0)
+  passScore       Int                   @default(0)
+  description     String?               @db.LongText
+  status          MockExamPaperStatus   @default(published)
+  sortOrder       Int                   @default(0)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  questions       MockExamQuestion[]
+  records         MockExamRecord[]
+  permissions     UserMockExamPermission[]
+
+  @@index([status, sortOrder])
+  @@index([year, sortOrder])
+}
+
+model UserMockExamPermission {
+  id        String       @id @default(cuid())
+  userId    String
+  paperId   String
+  createdAt DateTime     @default(now())
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paper     MockExamPaper @relation(fields: [paperId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, paperId])
+  @@index([paperId])
+}
+
+model QuestionBankFolder {
+  id        String                @id @default(cuid())
+  name      String                @db.VarChar(100)
+  paperType QuestionBankPaperType
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+
+  items     QuestionBankItem[]
+
+  @@unique([paperType, name])
+  @@index([paperType, updatedAt])
+}
+
+model QuestionBankItem {
+  id                String                   @id @default(cuid())
+  folderId          String
+  type              MockExamQuestionType
+  stem              String                   @db.LongText
+  material          String?                  @db.LongText
+  analysis          String?                  @db.LongText
+  lessonAudioUrl    String?                  @db.LongText
+  lessonAudioObjectKey String?               @db.VarChar(255)
+  lessonAudioDurationSeconds Int             @default(0)
+  score             Int                      @default(2)
+  sortOrder         Int                      @default(0)
+  correctAnswerJson String                   @db.LongText
+  questionMetaJson  String?                  @db.LongText
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  folder            QuestionBankFolder       @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  options           QuestionBankItemOption[]
+  sourceQuestions   MockExamQuestion[]       @relation("QuestionBankSource")
+
+  @@index([folderId, sortOrder])
+  @@index([type, updatedAt])
+}
+
+model QuestionBankItemOption {
+  id        String           @id @default(cuid())
+  itemId    String
+  optionKey String           @db.VarChar(10)
+  content   String           @db.LongText
+  sortOrder Int              @default(0)
+
+  item      QuestionBankItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId, sortOrder])
+}
+
+model MockExamQuestion {
+  id                String               @id @default(cuid())
+  paperId           String
+  sourceBankItemId  String?
+  isActive          Boolean              @default(true)
+  type              MockExamQuestionType
+  stem              String               @db.LongText
+  material          String?              @db.LongText
+  analysis          String?              @db.LongText
+  lessonAudioUrl    String?              @db.LongText
+  lessonAudioObjectKey String?           @db.VarChar(255)
+  lessonAudioDurationSeconds Int         @default(0)
+  score             Int                  @default(2)
+  sortOrder         Int                  @default(0)
+  correctAnswerJson String               @db.LongText
+  questionMetaJson  String?              @db.LongText
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  paper             MockExamPaper        @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  sourceBankItem    QuestionBankItem?    @relation("QuestionBankSource", fields: [sourceBankItemId], references: [id], onDelete: SetNull)
+  options           MockExamQuestionOption[]
+  answers           MockExamAnswer[]
+
+  @@index([paperId, sortOrder])
+  @@index([paperId, isActive, sortOrder])
+  @@index([sourceBankItemId])
+  @@index([type, sortOrder])
+}
+
+model MockExamQuestionOption {
+  id         String           @id @default(cuid())
+  questionId String
+  optionKey  String           @db.VarChar(10)
+  content    String           @db.LongText
+  sortOrder  Int              @default(0)
+
+  question   MockExamQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId, sortOrder])
+}
+
+model MockExamRecord {
+  id             String               @id @default(cuid())
+  paperId        String
+  userId         String
+  activeKey      String?              @unique @db.VarChar(191)
+  paperSnapshotJson String?           @db.LongText
+  status         MockExamRecordStatus @default(in_progress)
+  reviewWorkflowStatus MockExamReviewWorkflowStatus @default(not_required)
+  isPaused       Boolean              @default(false)
+  attemptNo      Int                  @default(1)
+  questionCount  Int                  @default(0)
+  allottedSeconds Int                 @default(0)
+  consumedSeconds Int                 @default(0)
+  totalScore     Int                  @default(0)
+  correctCount   Int                  @default(0)
+  answeredCount  Int                  @default(0)
+  startedAt      DateTime             @default(now())
+  submittedAt    DateTime?
+  reviewedAt     DateTime?
+  aiReviewStartedAt DateTime?
+  aiReviewFinishedAt DateTime?
+  publishedAt    DateTime?
+  lastAiReviewError String?           @db.LongText
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  paper          MockExamPaper        @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers        MockExamAnswer[]
+
+  @@index([userId, status, updatedAt])
+  @@index([paperId, userId, createdAt])
+  @@index([paperId, reviewWorkflowStatus, submittedAt])
+  @@index([userId, reviewWorkflowStatus, updatedAt])
+}
+
+model MockExamAnswer {
+  id          String           @id @default(cuid())
+  recordId    String
+  questionId  String
+  answerJson  String?          @db.LongText
+  reviewJson  String?          @db.LongText
+  isCorrect   Boolean?
+  score       Int              @default(0)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  record      MockExamRecord   @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  question    MockExamQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([recordId, questionId])
+  @@index([recordId, updatedAt])
+}
+
+model TypingPracticeFolder {
+  id        String               @id @default(cuid())
+  name      String               @unique @db.VarChar(100)
+  sortOrder Int                  @default(0)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  texts     TypingPracticeText[]
+
+  @@index([sortOrder, updatedAt])
+}
+
+model TypingPracticeText {
+  id            String                     @id @default(cuid())
+  folderId      String
+  title         String                     @db.VarChar(191)
+  difficulty    TypingPracticeDifficulty   @default(medium)
+  source        String?                    @db.VarChar(255)
+  tagsJson      String?                    @db.LongText
+  content       String                     @db.LongText
+  note          String?                    @db.LongText
+  status        TypingPracticeTextStatus   @default(published)
+  sortOrder     Int                        @default(0)
+  contentLength Int                        @default(0)
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
+
+  folder        TypingPracticeFolder       @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  records       TypingPracticeRecord[]
+
+  @@index([folderId, sortOrder])
+  @@index([status, updatedAt])
+  @@index([difficulty, updatedAt])
+}
+
+model TypingPracticeRecord {
+  id              String               @id @default(cuid())
+  userId          String
+  textId          String?
+  mode            TypingPracticeMode
+  titleSnapshot   String               @db.VarChar(191)
+  sourceSnapshot  String?              @db.VarChar(255)
+  contentSnapshot String               @db.LongText
+  typedContent    String?              @db.LongText
+  targetLength    Int                  @default(0)
+  typedLength     Int                  @default(0)
+  correctLength   Int                  @default(0)
+  errorCount      Int                  @default(0)
+  backspaceCount  Int                  @default(0)
+  comboMax        Int                  @default(0)
+  accuracyRate    Int                  @default(0)
+  completionRate  Int                  @default(0)
+  cpm             Int                  @default(0)
+  score           Int                  @default(0)
+  durationSeconds Int                  @default(0)
+  timeLimitSeconds Int?
+  previewSeconds  Int?
+  createdAt       DateTime             @default(now())
+  completedAt     DateTime             @default(now())
+
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  text            TypingPracticeText?  @relation(fields: [textId], references: [id], onDelete: SetNull)
+
+  @@index([userId, completedAt])
+  @@index([mode, completedAt])
+  @@index([textId, completedAt])
+}
+
 model ShopConfig {
   id                  Int         @id @default(1)
   shopNotice          String?     @db.LongText
@@ -376,6 +705,7 @@ model ShopProduct {
   status           ShopProductStatus  @default(draft)
   description      String?            @db.LongText
   detailContent    String?            @db.LongText
+  detailImages     String?            @db.LongText
   requiresShipping Boolean            @default(false)
   sortOrder        Int                @default(0)
   salesCount       Int                @default(0)

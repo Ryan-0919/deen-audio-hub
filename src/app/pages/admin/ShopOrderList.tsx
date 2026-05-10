@@ -16,6 +16,7 @@ import {
   ShopOrder,
   ShopOrderDetail,
   ShopPaymentStatus,
+  ShopRefundStatus,
   ShopShipmentStatus,
   mockApi,
 } from "../../lib/mockData";
@@ -58,6 +59,14 @@ const shipmentStatusMeta: Record<Exclude<ShipmentStatusFilter, "all">, { label: 
   in_transit: { label: "运输中", className: "bg-indigo-100 text-indigo-700" },
   signed: { label: "已签收", className: "bg-emerald-100 text-emerald-700" },
   failed: { label: "物流异常", className: "bg-rose-100 text-rose-700" },
+};
+
+const refundStatusMeta: Record<ShopRefundStatus, { label: string; className: string }> = {
+  pending: { label: "待审核", className: "bg-amber-100 text-amber-700" },
+  approved: { label: "待退款", className: "bg-blue-100 text-blue-700" },
+  rejected: { label: "已驳回", className: "bg-slate-100 text-slate-700" },
+  completed: { label: "已退款", className: "bg-emerald-100 text-emerald-700" },
+  failed: { label: "退款失败", className: "bg-rose-100 text-rose-700" },
 };
 
 const getOrderShipmentMeta = (order: Pick<ShopOrder, "items" | "hasPendingShipmentItems" | "shipmentStatus">) => {
@@ -125,6 +134,10 @@ export function ShopOrderList() {
   const [shipmentStatus, setShipmentStatus] = useState<ShopShipmentStatus>("shipped");
   const [shipmentRemark, setShipmentRemark] = useState("");
   const [shipmentItems, setShipmentItems] = useState<ShipmentQuantityState>({});
+  const [refundActionOpen, setRefundActionOpen] = useState(false);
+  const [refundActionMode, setRefundActionMode] = useState<"approve" | "reject" | "complete">("approve");
+  const [refundActionRemark, setRefundActionRemark] = useState("");
+  const [refundSaving, setRefundSaving] = useState(false);
   const deferredOrderNo = useDeferredValue(orderNo.trim());
   const deferredPhone = useDeferredValue(phone.trim());
   const deferredKeyword = useDeferredValue(keyword.trim());
@@ -198,6 +211,10 @@ export function ShopOrderList() {
         remainingQuantity: Math.max(item.quantity - (shippedMap.get(item.id) ?? 0), 0),
       }));
   }, [selectedOrder]);
+  const activeRefund = useMemo(
+    () => selectedOrder?.refunds.find((item) => item.status === "pending" || item.status === "approved") ?? null,
+    [selectedOrder],
+  );
 
   const openShipmentDialog = () => {
     if (!selectedOrder) return;
@@ -251,6 +268,53 @@ export function ShopOrderList() {
       toast.error(error instanceof Error ? error.message : "创建发货单失败");
     } finally {
       setShipmentSaving(false);
+    }
+  };
+
+  const openRefundActionDialog = (mode: "approve" | "reject" | "complete") => {
+    if (!activeRefund) return;
+    setRefundActionMode(mode);
+    setRefundActionRemark("");
+    setRefundActionOpen(true);
+  };
+
+  const handleRefundAction = async () => {
+    if (!selectedOrder || !activeRefund) return;
+
+    const trimmedRemark = refundActionRemark.trim();
+    if (refundActionMode === "reject" && !trimmedRemark) {
+      toast.error("请先填写驳回原因");
+      return;
+    }
+
+    setRefundSaving(true);
+    try {
+      let detail: ShopOrderDetail;
+      if (refundActionMode === "approve") {
+        detail = await mockApi.approveAdminShopRefund(activeRefund.id, trimmedRemark ? { note: trimmedRemark } : {});
+      } else if (refundActionMode === "reject") {
+        detail = await mockApi.rejectAdminShopRefund(activeRefund.id, { reason: trimmedRemark });
+      } else {
+        detail = await mockApi.completeAdminShopRefund(activeRefund.id, trimmedRemark ? { note: trimmedRemark } : {});
+      }
+
+      setSelectedOrder(detail);
+      setRefundActionOpen(false);
+      setRefundActionRemark("");
+      toast.success(refundActionMode === "approve" ? "退款申请已通过" : refundActionMode === "reject" ? "退款申请已驳回" : "退款已完成");
+      await loadOrders({ keepLoading: false });
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : refundActionMode === "approve"
+            ? "审批退款失败"
+            : refundActionMode === "reject"
+              ? "驳回退款失败"
+              : "完成退款失败",
+      );
+    } finally {
+      setRefundSaving(false);
     }
   };
 
@@ -308,6 +372,9 @@ export function ShopOrderList() {
             <div className="mb-4 flex flex-wrap gap-3">
               {selectedOrder.status === "pending_payment" && selectedOrder.paymentStatus === "unpaid" ? <Button variant="destructive" onClick={() => setCloseOpen(true)}><XCircle className="mr-2 size-4" />关闭订单</Button> : null}
               {selectedOrder.paymentStatus === "paid" && shippableItems.some((item) => item.remainingQuantity > 0) ? <Button onClick={openShipmentDialog}><PackagePlus className="mr-2 size-4" />创建发货单</Button> : null}
+              {activeRefund?.status === "pending" ? <Button variant="outline" onClick={() => openRefundActionDialog("approve")}>通过退款</Button> : null}
+              {activeRefund?.status === "pending" || activeRefund?.status === "approved" ? <Button variant="outline" onClick={() => openRefundActionDialog("reject")}>驳回退款</Button> : null}
+              {activeRefund?.status === "approved" ? <Button onClick={() => openRefundActionDialog("complete")}>完成退款</Button> : null}
               <Button variant="outline" onClick={() => void loadOrderDetail(selectedOrder.id)}><Truck className="mr-2 size-4" />刷新详情</Button>
             </div>
             <div className="grid gap-4 md:grid-cols-4">
@@ -330,12 +397,71 @@ export function ShopOrderList() {
               <Card className="rounded-2xl border-slate-200 shadow-none"><CardContent className="p-5"><p className="mb-3 font-medium text-slate-900">支付记录</p><div className="space-y-2 text-sm text-slate-600">{selectedOrder.payments.length === 0 ? <p>暂无支付记录</p> : selectedOrder.payments.map((payment) => <div key={payment.id} className="rounded-xl bg-slate-50 px-3 py-2"><p>{payment.channel} / {paymentStatusMeta[payment.status].label}</p><p>金额 ￥{payment.payAmount}</p><p>流水号 {payment.transactionNo || "-"}</p><p>支付时间 {payment.paidAt || "-"}</p></div>)}</div></CardContent></Card>
               <Card className="rounded-2xl border-slate-200 shadow-none"><CardContent className="p-5"><p className="mb-3 font-medium text-slate-900">发货记录</p><div className="space-y-2 text-sm text-slate-600">{selectedOrder.shipments.length === 0 ? <p>暂无发货记录</p> : selectedOrder.shipments.map((shipment) => <div key={shipment.id} className="rounded-xl bg-slate-50 px-3 py-2"><p>{shipment.company || "未填写物流公司"} / {shipment.trackingNo || "未填写单号"}</p><p>状态 {shipmentStatusMeta[shipment.status].label}</p><p>时间 {shipment.shippedAt || "-"}</p><p>轨迹 {shipment.latestTrack?.content || "暂无轨迹"}</p></div>)}</div></CardContent></Card>
             </div>
+            <div className="mt-6">
+              <Card className="rounded-2xl border-slate-200 shadow-none">
+                <CardContent className="p-5">
+                  <p className="mb-3 font-medium text-slate-900">退款记录</p>
+                  <div className="space-y-2 text-sm text-slate-600">
+                    {selectedOrder.refunds.length === 0 ? (
+                      <p>暂无退款记录</p>
+                    ) : (
+                      selectedOrder.refunds.map((refund) => (
+                        <div key={refund.id} className="rounded-xl bg-slate-50 px-3 py-2">
+                          <div className="flex items-center justify-between gap-3">
+                            <p>退款金额 ￥{refund.refundAmount}</p>
+                            <Badge variant="secondary" className={refundStatusMeta[refund.status].className}>
+                              {refundStatusMeta[refund.status].label}
+                            </Badge>
+                          </div>
+                          {refund.reason ? <p className="mt-2">原因 {refund.reason}</p> : null}
+                          {refund.resultMessage ? <p className="mt-1 text-xs leading-6 text-slate-500">{refund.resultMessage}</p> : null}
+                          <p className="mt-1 text-xs text-slate-500">创建时间 {refund.createdAt}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </>}
         </DialogContent>
       </Dialog>
 
       <Dialog open={closeOpen} onOpenChange={setCloseOpen}>
         <DialogContent><DialogHeader><DialogTitle>关闭订单</DialogTitle><DialogDescription>仅待支付订单可手动关闭。</DialogDescription></DialogHeader><div className="space-y-2 py-4"><Label htmlFor="close-order-reason">关闭原因</Label><Textarea id="close-order-reason" rows={4} value={closeReason} onChange={(event) => setCloseReason(event.target.value)} placeholder="可选，用于记录本次关单原因" /></div><DialogFooter><Button variant="outline" onClick={() => setCloseOpen(false)} disabled={closeSaving}>取消</Button><Button variant="destructive" onClick={() => void handleCloseOrder()} disabled={closeSaving}>{closeSaving ? "关闭中..." : "确认关闭"}</Button></DialogFooter></DialogContent>
+      </Dialog>
+
+      <Dialog open={refundActionOpen} onOpenChange={setRefundActionOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{refundActionMode === "approve" ? "通过退款" : refundActionMode === "reject" ? "驳回退款" : "完成退款"}</DialogTitle>
+            <DialogDescription>
+              {refundActionMode === "approve"
+                ? "确认已经审核通过这笔退款申请。"
+                : refundActionMode === "reject"
+                  ? "请填写驳回原因，前台会展示给用户。"
+                  : "真实支付模式下，请先在支付平台退款，再回来点完成。"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-4">
+            <Label htmlFor="refund-action-remark">{refundActionMode === "reject" ? "驳回原因" : "处理备注"}</Label>
+            <Textarea
+              id="refund-action-remark"
+              rows={4}
+              value={refundActionRemark}
+              onChange={(event) => setRefundActionRemark(event.target.value)}
+              placeholder={refundActionMode === "reject" ? "请输入驳回原因" : "可选，记录本次退款处理说明"}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRefundActionOpen(false)} disabled={refundSaving}>
+              取消
+            </Button>
+            <Button onClick={() => void handleRefundAction()} disabled={refundSaving}>
+              {refundSaving ? "处理中..." : refundActionMode === "approve" ? "确认通过" : refundActionMode === "reject" ? "确认驳回" : "确认完成"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
 
       <Dialog open={shipmentOpen} onOpenChange={setShipmentOpen}>

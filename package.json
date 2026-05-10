@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "dev": "vite",
-    "dev:client": "vite",
+    "dev": "vite --host 0.0.0.0 --port 5173 --strictPort",
+    "dev:client": "vite --host 0.0.0.0 --port 5173 --strictPort",
     "dev:server": "node --watch server/index.js",
     "laws:sync": "node server/scripts/import-laws.js",
     "postinstall": "npx prisma generate",

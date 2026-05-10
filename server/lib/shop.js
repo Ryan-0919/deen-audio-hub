@@ -43,6 +43,25 @@ export const parseStringArraySnapshot = (value) => {
   }
 };
 
+export const parseProductImageSnapshot = (value) => {
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map((item, index) => ({
+        imageUrl: `${item?.imageUrl ?? ""}`.trim(),
+        imageObjectKey: `${item?.imageObjectKey ?? ""}`.trim(),
+        sortOrder: Number.isFinite(Number(item?.sortOrder)) ? Number(item.sortOrder) : index,
+      }))
+      .filter((item) => item.imageUrl);
+  } catch (_error) {
+    return [];
+  }
+};
+
 export const generateShopOrderNo = () => {
   const now = new Date();
   const pad = (value, size = 2) => String(value).padStart(size, "0");
@@ -249,6 +268,18 @@ export const serializeShopDigitalFulfillment = (item) => ({
   updatedAt: formatDateTime(item.updatedAt),
 });
 
+export const serializeShopRefundRecord = (refund) => ({
+  id: refund.id,
+  orderId: refund.orderId,
+  orderItemId: refund.orderItemId ?? "",
+  status: refund.status,
+  refundAmount: toMoneyText(refund.refundAmount),
+  reason: refund.reason ? normalizeDisplayText(refund.reason) : "",
+  resultMessage: refund.resultMessage ? normalizeDisplayText(refund.resultMessage) : "",
+  createdAt: formatDateTime(refund.createdAt),
+  updatedAt: formatDateTime(refund.updatedAt),
+});
+
 export const serializeShopOrderItem = (item) => ({
   id: item.id,
   orderId: item.orderId,
@@ -308,6 +339,37 @@ export const serializeShopConfig = (config, options = {}) => ({
   enableWechatJsapi: Boolean(config?.enableWechatJsapi),
   enableAlipayWap: Boolean(config?.enableAlipayWap),
   runtimePaymentMode: options.runtimePaymentMode ?? "",
+  paymentRuntime:
+    options.paymentRuntime ??
+    {
+      mode: options.runtimePaymentMode ?? "",
+      siteBaseUrl: "",
+      notifyBaseUrl: "",
+      baseReady: false,
+      baseMissing: [],
+      refundSupported: false,
+      refundNotice: "",
+      channels: {
+        wechatH5: {
+          enabled: Boolean(config?.enableWechatH5),
+          ready: false,
+          missing: [],
+          note: "",
+        },
+        wechatJsapi: {
+          enabled: Boolean(config?.enableWechatJsapi),
+          ready: false,
+          missing: [],
+          note: "",
+        },
+        alipayWap: {
+          enabled: Boolean(config?.enableAlipayWap),
+          ready: false,
+          missing: [],
+          note: "",
+        },
+      },
+    },
   banners: (config?.banners ?? []).map(serializeShopBanner),
 });
 
@@ -415,6 +477,14 @@ export const serializeShopProductDetail = (product) => ({
     }),
     sortOrder: image.sortOrder,
   })),
+  detailImages: parseProductImageSnapshot(product.detailImages).map((image, index) => ({
+    id: `detail-${index + 1}`,
+    imageUrl: resolveReadableAssetUrl({
+      objectKey: image.imageObjectKey ?? "",
+      fallbackUrl: image.imageUrl,
+    }),
+    sortOrder: image.sortOrder,
+  })),
   skus: getSortedShopSkus(product).map(serializeShopSku),
   boundCourses: (product.courses ?? []).map((item) => ({
     id: item.course?.id ?? item.courseId,
@@ -501,6 +571,16 @@ export const serializeAdminShopProductDetail = (product) => ({
     imageObjectKey: image.imageObjectKey ?? "",
     sortOrder: image.sortOrder,
   })),
+  detailImages: parseProductImageSnapshot(product.detailImages).map((image, index) => ({
+    id: `detail-${index + 1}`,
+    imageUrl: image.imageUrl,
+    imagePreviewUrl: resolveReadableAssetUrl({
+      objectKey: image.imageObjectKey ?? "",
+      fallbackUrl: image.imageUrl,
+    }),
+    imageObjectKey: image.imageObjectKey ?? "",
+    sortOrder: Number.isFinite(Number(image.sortOrder)) ? Number(image.sortOrder) : index,
+  })),
   skus: getSortedShopSkus(product).map(serializeShopSku),
   courseIds: (product.courses ?? []).map((item) => item.courseId),
   boundCourses: (product.courses ?? []).map((item) => ({
@@ -543,6 +623,7 @@ export const serializeShopOrder = (order, options = {}) => {
   const items = (order.items ?? []).map(serializeShopOrderItem);
   const payments = (order.payments ?? []).map(serializeShopPaymentRecord);
   const digitalFulfillments = (order.digitalFulfillments ?? []).map(serializeShopDigitalFulfillment);
+  const refunds = (order.refunds ?? []).map(serializeShopRefundRecord);
 
   return {
     id: order.id,
@@ -577,6 +658,7 @@ export const serializeShopOrder = (order, options = {}) => {
           payments,
           digitalFulfillments,
           shipments,
+          refunds,
         }
       : {}),
   };
@@ -600,6 +682,11 @@ export const shopOrderDetailInclude = {
     },
   },
   digitalFulfillments: {
+    orderBy: {
+      createdAt: "desc",
+    },
+  },
+  refunds: {
     orderBy: {
       createdAt: "desc",
     },

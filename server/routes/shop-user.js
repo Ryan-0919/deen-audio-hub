@@ -1,9 +1,11 @@
 import { Prisma } from "@prisma/client";
 import { Router } from "express";
 import { config } from "../lib/config.js";
+import { buildShopPaymentRuntimeDiagnostics } from "../lib/shop-payment-runtime.js";
 import { prisma } from "../lib/prisma.js";
 import { ok, fail } from "../lib/response.js";
 import { ensureShopPaymentChannelEnabled, startShopOrderPayment, syncShopOrderPaymentStatus } from "../lib/shop-payment.js";
+import { requestShopOrderRefund } from "../lib/shop-refund.js";
 import { requireUserAuth } from "../middleware/auth.js";
 import { getClientIp } from "../lib/request.js";
 import { formatDateTime } from "../lib/time.js";
@@ -655,7 +657,26 @@ shopUserRouter.get("/home", async (_req, res) => {
     }),
   ]);
 
-  const serializedConfig = serializeShopConfig(shopConfig);
+  const paymentRuntime = buildShopPaymentRuntimeDiagnostics({
+    runtimeConfig: config,
+    shopConfig,
+  });
+  const serializedConfig = serializeShopConfig(shopConfig, {
+    runtimePaymentMode: config.shopPaymentMode,
+    paymentRuntime,
+  });
+  const publicPaymentChannels =
+    config.shopPaymentMode === "gateway"
+      ? {
+          enableWechatH5: serializedConfig.enableWechatH5 && paymentRuntime.channels.wechatH5.ready,
+          enableWechatJsapi: serializedConfig.enableWechatJsapi && paymentRuntime.channels.wechatJsapi.ready,
+          enableAlipayWap: serializedConfig.enableAlipayWap && paymentRuntime.channels.alipayWap.ready,
+        }
+      : {
+          enableWechatH5: serializedConfig.enableWechatH5,
+          enableWechatJsapi: serializedConfig.enableWechatJsapi,
+          enableAlipayWap: serializedConfig.enableAlipayWap,
+        };
   const featuredProductIds = parseStringArraySnapshot(shopConfig?.featuredProductIds);
   const featuredCategoryIds = parseStringArraySnapshot(shopConfig?.featuredCategoryIds);
 
@@ -692,9 +713,9 @@ shopUserRouter.get("/home", async (_req, res) => {
     shopNotice: serializedConfig.shopNotice,
     customerServiceUrl: serializedConfig.customerServiceUrl,
     paymentGuide: serializedConfig.paymentGuide,
-    enableWechatH5: serializedConfig.enableWechatH5,
-    enableWechatJsapi: serializedConfig.enableWechatJsapi,
-    enableAlipayWap: serializedConfig.enableAlipayWap,
+    enableWechatH5: publicPaymentChannels.enableWechatH5,
+    enableWechatJsapi: publicPaymentChannels.enableWechatJsapi,
+    enableAlipayWap: publicPaymentChannels.enableAlipayWap,
     featuredCategories: featuredCategories.map(serializeShopCategory),
     featuredProducts: featuredProducts.map(serializeShopProductListItem),
     courseProducts: courseProducts.map(serializeShopProductListItem),
@@ -1436,6 +1457,28 @@ shopUserRouter.post("/orders/:orderId/cancel", async (req, res) => {
 
   const updated = await getOrderWithShipments(orderId, req.auth.userId);
   return ok(res, serializeShopOrder(updated, { includeRelations: true }), "订单已取消");
+});
+
+shopUserRouter.post("/orders/:orderId/refunds", async (req, res) => {
+  const orderId = `${req.params.orderId ?? ""}`.trim();
+  const reason = `${req.body?.reason ?? ""}`.trim();
+
+  if (!orderId) {
+    return fail(res, "缺少订单参数", 400);
+  }
+
+  try {
+    const order = await requestShopOrderRefund({
+      db: prisma,
+      orderId,
+      userId: req.auth.userId,
+      reason,
+    });
+
+    return ok(res, serializeShopOrder(order, { includeRelations: true }), "退款申请已提交");
+  } catch (error) {
+    return fail(res, error.message || "提交退款申请失败", error.statusCode || 400);
+  }
 });
 
 shopUserRouter.get("/orders/:orderId/logistics", async (req, res) => {

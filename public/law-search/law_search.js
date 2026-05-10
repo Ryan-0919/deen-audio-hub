@@ -50,6 +50,7 @@ const SEARCH_ICON_URL =
 const MAX_ICON_URL = "https://oss.zhumavip.com/images/lawPage/ic-fangda.png";
 const RESTORE_ICON_URL = "https://oss.zhumavip.com/images/lawPage/ic-zuixiaohua.png";
 const MOBILE_MEDIA_QUERY = "(max-width: 768px)";
+const CLIPBOARD_KEYS = new Set(["c", "x"]);
 
 const state = {
   tree: [],
@@ -76,6 +77,7 @@ const root = document.getElementById("law-page-root");
 document.addEventListener("DOMContentLoaded", init);
 
 function init() {
+  clearLegacyLawSearchCache();
   renderShell();
   bindStaticEvents();
   loadList();
@@ -97,6 +99,23 @@ function bindStaticEvents() {
       executeSearch(state.searchValue);
     }
   });
+
+  const blockClipboardEvent = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  document.addEventListener("copy", blockClipboardEvent, true);
+  document.addEventListener("cut", blockClipboardEvent, true);
+  document.addEventListener("keydown", (event) => {
+    if (!(event.ctrlKey || event.metaKey)) {
+      return;
+    }
+    if (!CLIPBOARD_KEYS.has(String(event.key || "").toLowerCase())) {
+      return;
+    }
+    blockClipboardEvent(event);
+  }, true);
 
   getEl("search-button").addEventListener("click", () => {
     executeSearch(state.searchValue);
@@ -160,6 +179,10 @@ function bindStaticEvents() {
   window.addEventListener("resize", () => {
     renderLayout();
   });
+  window.addEventListener("law-dialog-bridge-change", () => {
+    syncDialogFullscreenState();
+    renderLayout();
+  });
 
   getEl("tree-root").addEventListener("click", handleTreeClick);
   getEl("tree-root").addEventListener("dblclick", handleTreeDoubleClick);
@@ -169,23 +192,12 @@ async function loadList() {
   setLoading(true);
 
   try {
-    const cached = readJsonStorage(OVERVIEW_CACHE_KEY);
-    if (cached && Array.isArray(cached.tree) && cached.tree.length > 0) {
-      state.tree = normalizeTree(cloneData(cached.tree));
-      finalizeListLoad(cached.initialNodeId || "");
-      return;
-    }
-
     const overview = await apiGet("overview");
     if (!overview || !Array.isArray(overview.tree)) {
       throw new Error("法条目录数据异常");
     }
 
     state.tree = normalizeTree(cloneData(overview.tree));
-    writeJsonStorage(OVERVIEW_CACHE_KEY, {
-      tree: state.tree,
-      initialNodeId: overview.initialNodeId || "",
-    });
     finalizeListLoad(overview.initialNodeId || "");
   } catch (error) {
     renderRightPlaceholder(error.message || "加载失败");
@@ -269,6 +281,7 @@ function renderShell() {
 }
 
 function renderTopIcons() {
+  syncDialogFullscreenState();
   const icon = getEl("toggle-fullscreen");
   icon.style.display = isMobileLayout() ? "none" : "block";
   icon.src = state.isFullscreen ? RESTORE_ICON_URL : MAX_ICON_URL;
@@ -277,12 +290,19 @@ function renderTopIcons() {
     if (isMobileLayout()) {
       return;
     }
+    const bridge = getDialogBridge();
+    if (bridge) {
+      state.isFullscreen = Boolean(bridge.toggleFullscreen());
+      renderLayout();
+      return;
+    }
     state.isFullscreen = !state.isFullscreen;
     renderLayout();
   };
 }
 
 function renderLayout() {
+  syncDialogFullscreenState();
   const box = getEl("law-box");
   const mobile = isMobileLayout();
 
@@ -317,6 +337,23 @@ function renderLayout() {
   getEl("law-left-expanded").hidden = mobile ? false : state.isLeftCollapsed;
   getEl("law-left-collapsed").hidden = mobile ? true : !state.isLeftCollapsed;
   getEl("law-left").style.width = mobile ? "100%" : `${state.leftWidth}px`;
+}
+
+function getDialogBridge() {
+  const bridge = window.__lawDialogBridge;
+  if (!bridge || typeof bridge.toggleFullscreen !== "function" || typeof bridge.getIsFullscreen !== "function") {
+    return null;
+  }
+  return bridge;
+}
+
+function syncDialogFullscreenState() {
+  const bridge = getDialogBridge();
+  if (!bridge) {
+    return false;
+  }
+  state.isFullscreen = Boolean(bridge.getIsFullscreen());
+  return true;
 }
 
 function handleTreeClick(event) {
@@ -578,6 +615,10 @@ async function loadSections(requestId, focusId) {
     if (token !== state.pendingRequestId) {
       return;
     }
+    if (String(error && error.message ? error.message : "").includes("HTTP 404")) {
+      await reloadLawOverviewAfterMissingNode(requestId, focusId, token);
+      return;
+    }
     renderRightPlaceholder(error.message || "加载失败");
   } finally {
     if (token === state.pendingRequestId) {
@@ -593,13 +634,6 @@ async function getSections(requestId) {
 
   if (state.detailCache.has(requestId)) {
     return cloneData(state.detailCache.get(requestId));
-  }
-
-  const storageKey = `${CONTENT_CACHE_KEY_PREFIX}${encodeURIComponent(requestId)}`;
-  const cached = readJsonStorage(storageKey);
-  if (Array.isArray(cached)) {
-    state.detailCache.set(requestId, cached);
-    return cloneData(cached);
   }
 
   let pending = state.pendingDetailLoads.get(requestId);
@@ -619,7 +653,6 @@ async function getSections(requestId) {
       id: buildRecordNodeId(section.id),
     }));
     state.detailCache.set(requestId, normalized);
-    writeJsonStorage(storageKey, normalized);
     return cloneData(normalized);
   } finally {
     state.pendingDetailLoads.delete(requestId);
@@ -742,6 +775,62 @@ function escapeHtml(value) {
 
 function cloneData(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+async function reloadLawOverviewAfterMissingNode(requestId, focusId, token) {
+  try {
+    const overview = await apiGet("overview");
+    if (!overview || !Array.isArray(overview.tree)) {
+      throw new Error("法条目录数据异常");
+    }
+
+    state.tree = normalizeTree(cloneData(overview.tree));
+    state.nodeMap = buildNodeMap(state.tree);
+    state.listLoaded = true;
+
+    const fallbackNode = state.nodeMap.get(focusId) || state.nodeMap.get(requestId) || state.nodeMap.get(overview.initialNodeId) || state.tree[0];
+    if (!fallbackNode) {
+      renderRightPlaceholder("法律法规汇编");
+      return;
+    }
+
+    state.selectedId = fallbackNode.id;
+    renderTree();
+
+    if (fallbackNode.id !== requestId) {
+      const sections = await getSections(fallbackNode.id);
+      if (token !== state.pendingRequestId) {
+        return;
+      }
+      state.renderedSections = sections;
+      renderSections(sections, fallbackNode.id);
+      scrollTreeNode(fallbackNode.id);
+      return;
+    }
+
+    renderRightPlaceholder("该法条已更新，请重新点击左侧目录");
+  } catch (refreshError) {
+    renderRightPlaceholder(refreshError.message || "加载失败");
+  }
+}
+
+function clearLegacyLawSearchCache() {
+  try {
+    const keys = [];
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (!key) {
+        continue;
+      }
+      if (key === OVERVIEW_CACHE_KEY || key.startsWith(CONTENT_CACHE_KEY_PREFIX)) {
+        keys.push(key);
+      }
+    }
+
+    keys.forEach((key) => window.localStorage.removeItem(key));
+  } catch (error) {
+    // Ignore storage failures.
+  }
 }
 
 function readJsonStorage(key) {

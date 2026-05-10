@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 import { verifyToken } from "../lib/auth.js";
+import { hasAdminRoleAccess } from "../lib/admin-role.js";
 import { fail } from "../lib/response.js";
 
 const INVALID_DEVICE_ERROR_CODE = 10032;
@@ -27,11 +28,26 @@ export const requireAdminAuth = async (req, res, next) => {
       return fail(res, "\u7ba1\u7406\u5458\u8d26\u53f7\u4e0d\u5b58\u5728", 401);
     }
 
-    req.auth = { role: "admin", adminId: admin.id, admin };
+    req.auth = {
+      role: "admin",
+      adminId: admin.id,
+      adminRole: admin.role ?? payload.adminRole ?? "super_admin",
+      admin,
+    };
     next();
   } catch (_error) {
     return fail(res, "\u540e\u53f0\u767b\u5f55\u72b6\u6001\u5df2\u5931\u6548\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55", 401);
   }
+};
+
+export const requireAdminRoles = (...allowedRoles) => (req, res, next) => {
+  const adminRole = req.auth?.adminRole ?? req.auth?.admin?.role ?? "";
+  if (hasAdminRoleAccess(adminRole, allowedRoles)) {
+    next();
+    return;
+  }
+
+  return fail(res, "\u5f53\u524d\u8d26\u53f7\u65e0\u6743\u9650\u8bbf\u95ee\u8be5\u540e\u53f0\u529f\u80fd", 403);
 };
 
 export const requireUserAuth = async (req, res, next) => {

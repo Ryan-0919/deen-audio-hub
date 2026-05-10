@@ -1,18 +1,114 @@
-import { LogOut, ShieldCheck, Smartphone, UserRound } from "lucide-react";
-import { useState } from "react";
+import {
+  ClipboardCheck,
+  LogOut,
+  Sparkles,
+  UserRound,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { motion } from "motion/react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { AppLogo } from "../../components/branding/AppLogo";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { mockApi } from "../../lib/mockData";
-import { clearUserSession, getUserDeviceKey, getUserId, getUserPhone } from "../../lib/user-session";
+import { cn } from "../../components/ui/utils";
+import { type UserHomeConfig, mockApi } from "../../lib/mockData";
+import { clearUserSession, getUserDeviceKey, getUserDisplayName, getUserId } from "../../lib/user-session";
+
+type ShortcutItem = {
+  title: string;
+  description: string;
+  path: string;
+  icon: LucideIcon;
+  iconClassName: string;
+  glowClassName: string;
+  accentText: string;
+};
+
+const EMPTY_HOME_CONFIG: UserHomeConfig = {
+  memberHome: {
+    hero: {
+      badge: "快捷入口",
+      title: "欢迎使用得宝",
+      description: "课程学习、机考训练、法条检索和打字练习统一收口，直接进入今天的学习节奏。",
+    },
+    bannerImageUrl: "",
+    bannerImageObjectKey: "",
+    announcement: {
+      title: "学习公告",
+      subtitle: "Announcement",
+      badge: "最新",
+      items: [],
+    },
+    operations: {
+      title: "快捷入口",
+      subtitle: "DE EN FA KAO",
+      items: [],
+    },
+  },
+  examHome: {
+    eyebrow: "Mock Exam",
+    title: "我的试卷",
+    objectiveModeLabel: "客观题专场",
+    subjectiveModeLabel: "主观题专场",
+    objectiveEmptyText: "当前还没有可进入的客观题试卷，请先在后台发布试卷。",
+    subjectiveEmptyText: "当前还没有可进入的主观题试卷，请先在后台发布试卷。",
+  },
+  accountCenter: {
+    eyebrow: "Account Center",
+    description: "这里统一放课程学习外的个人操作入口。你可以查看主观题批改记录，也可以随时安全退出当前设备。",
+    shortcutTitle: "DE EN FA KAO",
+    shortcuts: [
+      {
+        title: "我的考试",
+        description: "查看已批改完成的主观题考试记录与结果。",
+        path: "/user/my-exams",
+        accentText: "进入批改记录",
+      },
+    ],
+  },
+};
+
+const fallbackShortcutItems: ShortcutItem[] = [
+  {
+    title: "我的考试",
+    description: "查看已批改完成的主观题考试记录与结果。",
+    path: "/user/my-exams",
+    icon: ClipboardCheck,
+    iconClassName: "text-[#8fd6ff]",
+    glowClassName: "from-[#38a6ff]/28 via-[#1f6fff]/16 to-transparent",
+    accentText: "进入批改记录",
+  },
+];
 
 export function UserMe() {
   const navigate = useNavigate();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [homeConfig, setHomeConfig] = useState<UserHomeConfig>(EMPTY_HOME_CONFIG);
 
-  const displayPhone = getUserPhone() || "已登录用户";
+  const displayName = getUserDisplayName() || "已登录用户";
   const deviceKey = getUserDeviceKey();
+
+  useEffect(() => {
+    void mockApi
+      .getUserHomeConfig()
+      .then((config) => setHomeConfig(config))
+      .catch(() => setHomeConfig(EMPTY_HOME_CONFIG));
+  }, []);
+
+  const shortcutItems = useMemo(
+    () =>
+      (homeConfig.accountCenter.shortcuts.length ? homeConfig.accountCenter.shortcuts : EMPTY_HOME_CONFIG.accountCenter.shortcuts).map((item, index) => ({
+        title: item.title,
+        description: item.description,
+        path: item.path,
+        accentText: item.accentText,
+        icon: fallbackShortcutItems[index]?.icon ?? ClipboardCheck,
+        iconClassName: fallbackShortcutItems[index]?.iconClassName ?? "text-[#8fd6ff]",
+        glowClassName: fallbackShortcutItems[index]?.glowClassName ?? "from-[#38a6ff]/28 via-[#1f6fff]/16 to-transparent",
+      })),
+    [homeConfig.accountCenter.shortcuts],
+  );
 
   const handleLogout = async () => {
     if (loggingOut) return;
@@ -33,92 +129,101 @@ export function UserMe() {
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,#ffffff_0%,#f4f5f7_48%,#eceff3_100%)]">
-      <div className="sticky top-0 z-20 border-b border-white/70 bg-white/72 backdrop-blur-xl md:hidden">
-        <div className="mx-auto flex h-14 max-w-sm items-center px-4">
-          <div className="flex w-[72px] justify-start">
-            <AppLogo compact />
-          </div>
-          <h1 className="flex-1 text-center text-base font-semibold tracking-[0.02em] text-slate-900">我的</h1>
-          <div className="flex w-[72px] justify-end">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => void handleLogout()}
-              disabled={loggingOut}
-              className="rounded-full px-3 text-slate-600 hover:bg-black/[0.04]"
-            >
-              <LogOut className="size-4" />
-              {loggingOut ? "退出中..." : "退出"}
-            </Button>
-          </div>
-        </div>
-      </div>
+    <div className="relative min-h-screen overflow-hidden bg-[#040816] pb-24 text-white selection:bg-[#dff8ff] selection:text-[#061120]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,166,255,0.18),transparent_24%),radial-gradient(circle_at_82%_16%,rgba(120,255,235,0.12),transparent_18%),linear-gradient(180deg,#07111d_0%,#040816_48%,#0a1629_100%)]" />
+      <div className="pointer-events-none absolute left-1/2 top-[320px] h-[420px] w-[920px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.12),transparent_62%)] blur-3xl" />
 
-      <div className="mx-auto max-w-6xl px-4 py-5 md:px-6 md:py-8 xl:px-8">
-        <div className="mt-0 grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_320px]">
-          <section className="overflow-hidden rounded-[34px] border border-white/80 bg-white/78 shadow-[0_22px_60px_rgba(15,23,42,0.08)] backdrop-blur-2xl">
-            <div className="px-5 pb-5 pt-6 md:px-7 md:pb-7 md:pt-7">
-              <div className="flex items-start gap-4 md:gap-5">
-                <div className="flex size-16 shrink-0 items-center justify-center rounded-[26px] bg-[linear-gradient(180deg,#111827_0%,#374151_100%)] text-white shadow-[0_14px_30px_rgba(15,23,42,0.22)] md:size-20">
-                  <UserRound className="size-8 md:size-10" />
+      <div className="relative mx-auto max-w-[1320px] px-4 pb-10 pt-4 md:px-8 md:pt-8 xl:px-10">
+        <div className="mb-5 flex items-center justify-between md:hidden">
+          <AppLogo compact className="text-white" />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void handleLogout()}
+            disabled={loggingOut}
+            className="rounded-full border border-white/10 bg-white/[0.05] px-3 text-white hover:bg-white/[0.10] hover:text-white"
+          >
+            <LogOut className="size-4" />
+            {loggingOut ? "退出中..." : "退出"}
+          </Button>
+        </div>
+
+        <motion.section
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, ease: "easeOut" }}
+          className="relative z-10"
+        >
+          <div className="space-y-5">
+            <div className="space-y-5">
+              <div className="overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] p-4 shadow-[0_24px_90px_rgba(0,0,0,0.20)] backdrop-blur-[20px] md:rounded-[30px] md:p-6">
+                <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-white/38">
+                  <Sparkles className="size-3.5 text-[#8fd6ff]" />
+                  {homeConfig.accountCenter.eyebrow || "Account Center"}
                 </div>
 
-                <div className="min-w-0 flex-1 pt-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="truncate text-[22px] font-semibold tracking-[-0.02em] text-slate-900 md:text-[30px]">{displayPhone}</p>
-                    <Badge variant="secondary" className="rounded-full bg-emerald-50 text-emerald-700">
-                      已登录
-                    </Badge>
+                <div className="mt-5 flex flex-col gap-4 md:flex-row md:items-start">
+                  <div className="flex size-16 shrink-0 items-center justify-center rounded-[24px] border border-white/10 bg-white/[0.06] text-white shadow-[0_18px_50px_rgba(0,0,0,0.2)] md:size-20 md:rounded-[28px]">
+                    <UserRound className="size-9 md:size-10" />
                   </div>
-                  <p className="mt-3 text-sm leading-6 text-slate-500 md:max-w-2xl md:text-base md:leading-8">
-                    商城暂未开放，当前页面仅保留账号与设备信息。
-                  </p>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <h1 className="truncate text-[24px] font-semibold tracking-[-0.05em] text-white md:text-[36px]">{displayName}</h1>
+                      <Badge className="rounded-full border-0 bg-emerald-400/14 text-emerald-200 shadow-none">已登录</Badge>
+                    </div>
+
+                    <p className="mt-3 max-w-3xl text-sm leading-7 text-white/58 md:text-[15px]">
+                      {homeConfig.accountCenter.description || "这里统一放课程学习外的个人操作入口。你可以查看主观题批改记录，也可以随时安全退出当前设备。"}
+                    </p>
+                  </div>
                 </div>
               </div>
+
+              <div className="overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] p-4 shadow-[0_24px_90px_rgba(0,0,0,0.20)] backdrop-blur-[20px] md:rounded-[28px] md:p-5">
+                <div className="mb-4">
+                  <div className="text-[11px] uppercase tracking-[0.28em] text-white/36">{homeConfig.accountCenter.shortcutTitle || "DE EN FA KAO"}</div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {shortcutItems.map((item, index) => {
+                    const Icon = item.icon;
+                    return (
+                      <motion.button
+                        key={item.path}
+                        type="button"
+                        onClick={() => navigate(item.path)}
+                        initial={{ opacity: 0, y: 16 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.4, delay: 0.08 + index * 0.05 }}
+                        className="group relative overflow-hidden rounded-[22px] border border-white/10 bg-black/16 p-4 text-left backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-white/18 hover:bg-black/20"
+                      >
+                        <div className={cn("pointer-events-none absolute inset-0 bg-gradient-to-br", item.glowClassName)} />
+                        <div className="relative z-10 flex h-full flex-col">
+                          <div className="flex size-11 items-center justify-center rounded-[18px] border border-white/10 bg-white/[0.06]">
+                            <Icon className={cn("size-5", item.iconClassName)} />
+                          </div>
+                          <h3 className="mt-4 text-[18px] font-semibold tracking-[-0.04em] text-white md:text-[20px]">{item.title}</h3>
+                          <p className="mt-2 text-[13px] leading-6 text-white/58">{item.description}</p>
+                          <div className={cn("mt-auto pt-4 text-[13px] font-medium", item.iconClassName)}>{item.accentText}</div>
+                        </div>
+                      </motion.button>
+                    );
+                  })}
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                onClick={() => void handleLogout()}
+                disabled={loggingOut}
+                className="hidden h-12 rounded-2xl border border-white/10 bg-white/[0.05] px-6 text-white hover:bg-white/[0.10] hover:text-white md:inline-flex"
+              >
+                <LogOut className="mr-2 size-4" />
+                {loggingOut ? "退出中..." : "退出登录"}
+              </Button>
             </div>
-          </section>
-
-          <div className="space-y-4">
-            <section className="overflow-hidden rounded-[30px] border border-white/80 bg-white/78 shadow-[0_16px_50px_rgba(15,23,42,0.06)] backdrop-blur-xl">
-              <div className="px-5 py-5 md:px-6 md:py-6">
-                <div className="flex items-center gap-3">
-                  <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
-                    <Smartphone className="size-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-slate-900">当前设备</p>
-                    <p className="mt-1 break-all text-xs leading-5 text-slate-500">{deviceKey || "未记录设备标识"}</p>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section className="overflow-hidden rounded-[30px] border border-white/80 bg-white/78 shadow-[0_16px_50px_rgba(15,23,42,0.06)] backdrop-blur-xl">
-              <div className="px-5 py-5 md:px-6 md:py-6">
-                <div className="flex items-center gap-3">
-                  <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
-                    <ShieldCheck className="size-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-slate-900">安全说明</p>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">退出登录后会清除当前设备本地会话，下次访问需要重新校验身份。</p>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <Button
-              variant="outline"
-              onClick={() => void handleLogout()}
-              disabled={loggingOut}
-              className="hidden h-12 w-full rounded-2xl border-slate-200 bg-white text-slate-700 hover:bg-slate-50 md:inline-flex"
-            >
-              <LogOut className="mr-2 size-4" />
-              {loggingOut ? "退出中..." : "退出登录"}
-            </Button>
           </div>
-        </div>
+        </motion.section>
       </div>
     </div>
   );

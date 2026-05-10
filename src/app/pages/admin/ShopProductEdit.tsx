@@ -39,6 +39,7 @@ type ProductFormState = {
   sortOrder: string;
   courseIds: string[];
   images: FormImage[];
+  detailImages: FormImage[];
   skus: FormSku[];
 };
 
@@ -89,6 +90,7 @@ const createEmptyForm = (): ProductFormState => ({
   sortOrder: "0",
   courseIds: [],
   images: [],
+  detailImages: [],
   skus: [createFormSku()],
 });
 
@@ -106,6 +108,7 @@ const mapDetailToForm = (detail: AdminShopProductDetail): ProductFormState => ({
   sortOrder: `${detail.sortOrder}`,
   courseIds: detail.courseIds,
   images: detail.images.map((image, index) => createFormImage({ ...image, sortOrder: image.sortOrder ?? index })),
+  detailImages: (detail.detailImages ?? []).map((image, index) => createFormImage({ ...image, sortOrder: image.sortOrder ?? index })),
   skus: detail.skus.length > 0 ? detail.skus.map((sku, index) => createFormSku({ ...sku, sortOrder: index })) : [createFormSku()],
 });
 
@@ -122,6 +125,12 @@ const buildPayload = (form: ProductFormState): AdminShopProductPayload => ({
   sortOrder: Number.parseInt(form.sortOrder, 10) || 0,
   courseIds: form.type === "physical" ? [] : form.courseIds,
   images: form.images.map((image, index) => ({
+    id: image.id,
+    imageUrl: image.imageUrl,
+    imageObjectKey: image.imageObjectKey,
+    sortOrder: index,
+  })),
+  detailImages: form.detailImages.map((image, index) => ({
     id: image.id,
     imageUrl: image.imageUrl,
     imageObjectKey: image.imageObjectKey,
@@ -146,6 +155,7 @@ export function ShopProductEdit() {
   const isEdit = Boolean(productId);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
+  const detailImageInputRef = useRef<HTMLInputElement | null>(null);
 
   const [categories, setCategories] = useState<ShopCategory[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -154,6 +164,7 @@ export function ShopProductEdit() {
   const [saving, setSaving] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
   const [galleryUploading, setGalleryUploading] = useState(false);
+  const [detailImagesUploading, setDetailImagesUploading] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -228,6 +239,33 @@ export function ShopProductEdit() {
     }
   };
 
+  const handleDetailImagesUpload = async (files: File[]) => {
+    if (files.length === 0) return;
+    setDetailImagesUploading(true);
+    try {
+      const uploadedList = await Promise.all(files.map((file) => mockApi.uploadShopImage(file)));
+      setForm((current) => ({
+        ...current,
+        detailImages: [
+          ...current.detailImages,
+          ...uploadedList.map((uploaded, index) =>
+            createFormImage({
+              imageUrl: uploaded.url,
+              imagePreviewUrl: uploaded.readableUrl ?? uploaded.url,
+              imageObjectKey: uploaded.objectKey,
+              sortOrder: current.detailImages.length + index,
+            }),
+          ),
+        ],
+      }));
+      toast.success(`已上传 ${uploadedList.length} 张详情长图`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "详情长图上传失败");
+    } finally {
+      setDetailImagesUploading(false);
+    }
+  };
+
   const removeSku = (localId: string) => {
     setForm((current) => {
       if (current.skus.length === 1) {
@@ -278,11 +316,12 @@ export function ShopProductEdit() {
             <p className="mt-2 text-sm text-slate-500">支持虚拟、实物、组合三类商品。</p>
           </div>
         </div>
-        <Button onClick={() => void handleSubmit()} disabled={saving || coverUploading || galleryUploading}>{saving ? "保存中..." : isEdit ? "保存商品" : "创建商品"}</Button>
+        <Button onClick={() => void handleSubmit()} disabled={saving || coverUploading || galleryUploading || detailImagesUploading}>{saving ? "保存中..." : isEdit ? "保存商品" : "创建商品"}</Button>
       </div>
 
       <input ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => { void handleCoverUpload(event.target.files?.[0]); event.currentTarget.value = ""; }} />
       <input ref={galleryInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => { void handleGalleryUpload(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} />
+      <input ref={detailImageInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => { void handleDetailImagesUpload(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-6">
@@ -315,6 +354,44 @@ export function ShopProductEdit() {
           </section>
 
           <section className="rounded-3xl border border-slate-200 bg-white p-8">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">详情页长图</h2>
+                <p className="mt-2 text-sm text-slate-500">展示在商品详情页最底部，和顶部商品图库分开展示。</p>
+              </div>
+              <Button variant="outline" onClick={() => detailImageInputRef.current?.click()} disabled={detailImagesUploading}>
+                <Upload className="mr-2 size-4" />
+                {detailImagesUploading ? "上传中..." : "上传详情长图"}
+              </Button>
+            </div>
+            {form.detailImages.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">暂无详情长图</div>
+            ) : (
+              <div className="space-y-4">
+                {form.detailImages.map((image, index) => (
+                  <div key={image.localId} className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
+                    <img src={image.previewUrl || image.imageUrl} alt={`详情长图 ${index + 1}`} className="block w-full object-contain" />
+                    <div className="flex items-center justify-between gap-3 px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-900">第 {index + 1} 张长图</p>
+                        <p className="truncate text-xs text-slate-400">{image.imageObjectKey || "本地记录"}</p>
+                      </div>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setForm((current) => ({ ...current, detailImages: current.detailImages.filter((item) => item.localId !== image.localId) }))}
+                      >
+                        <Trash2 className="mr-2 size-4" />
+                        删除
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-3xl border border-slate-200 bg-white p-8">
             <div className="mb-4 flex items-center justify-between"><div><h2 className="text-xl font-semibold text-slate-900">绑定课程</h2><p className="mt-2 text-sm text-slate-500">虚拟商品与组合商品支付成功后可直接开通课程权限。</p></div><Badge variant="secondary" className="bg-blue-50 text-blue-700">已选 {selectedCourses.length} 门</Badge></div>
             {form.type === "physical" ? <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">当前为实物商品，不能绑定课程。</div> : <ScrollArea className="h-72 rounded-2xl border border-slate-200"><div className="space-y-3 p-4">{courses.map((course) => <label key={course.id} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700"><Checkbox checked={form.courseIds.includes(course.id)} onCheckedChange={(checked) => setForm((current) => ({ ...current, courseIds: checked === true ? Array.from(new Set([...current.courseIds, course.id])) : current.courseIds.filter((id) => id !== course.id) }))} /><div className="min-w-0"><p className="font-medium text-slate-900">{course.name}</p><p className="mt-1 line-clamp-2 text-sm text-slate-500">{course.description}</p></div></label>)}</div></ScrollArea>}
           </section>
@@ -334,11 +411,12 @@ export function ShopProductEdit() {
               <div className="flex items-center justify-between"><span>绑定课程</span><span>{form.type === "physical" ? "不支持" : `${selectedCourses.length} 门`}</span></div>
               <div className="flex items-center justify-between"><span>SKU 数量</span><span>{form.skus.length} 个</span></div>
               <div className="flex items-center justify-between"><span>商品图数量</span><span>{form.images.length} 张</span></div>
+              <div className="flex items-center justify-between"><span>详情长图数量</span><span>{form.detailImages.length} 张</span></div>
             </div>
           </section>
           <div className="flex justify-end gap-3">
             <Button type="button" variant="outline" onClick={() => navigate("/admin/shop/products")}>返回</Button>
-            <Button type="button" onClick={() => void handleSubmit()} disabled={saving || coverUploading || galleryUploading}>{saving ? "保存中..." : isEdit ? "保存商品" : "创建商品"}</Button>
+            <Button type="button" onClick={() => void handleSubmit()} disabled={saving || coverUploading || galleryUploading || detailImagesUploading}>{saving ? "保存中..." : isEdit ? "保存商品" : "创建商品"}</Button>
           </div>
         </div>
       </div>

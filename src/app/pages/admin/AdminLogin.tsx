@@ -6,6 +6,7 @@ import { AppLogo } from "../../components/branding/AppLogo";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { clearAdminSessionForMode, getAdminHomePathForRole, setAdminSessionForMode } from "../../lib/admin-session";
 import { ApiRequestError, mockApi } from "../../lib/mockData";
 
 export function AdminLogin() {
@@ -25,11 +26,15 @@ export function AdminLogin() {
     setLoading(true);
     try {
       const result = await mockApi.adminLogin(account.trim(), password.trim());
-      localStorage.setItem("adminToken", result.token);
-      localStorage.setItem("adminId", result.admin.id);
-      localStorage.setItem("adminAccount", result.admin.account);
+      clearAdminSessionForMode("review");
+      setAdminSessionForMode("admin", result);
       toast.success("登录成功");
-      navigate("/admin/users");
+      if (result.admin.role === "review_admin") {
+        toast.error("当前账号仅允许进入批改后台");
+        navigate("/adminpg/login");
+        return;
+      }
+      navigate(getAdminHomePathForRole(result.admin.role));
     } catch (error) {
       const message =
         error instanceof ApiRequestError && error.code === 10042

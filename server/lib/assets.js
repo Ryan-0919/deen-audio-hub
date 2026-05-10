@@ -1,11 +1,40 @@
 import { prisma } from "./prisma.js";
 import { deleteObject } from "./upload.js";
 
+const getPortalShareImageObjectKey = (systemConfig) => {
+  if (!systemConfig?.portalConfigJson) return "";
+
+  try {
+    const parsed = JSON.parse(systemConfig.portalConfigJson);
+    return `${parsed?.seo?.ogImageObjectKey ?? ""}`.trim();
+  } catch {
+    return "";
+  }
+};
+
+const getPortalFounderImageObjectKey = (systemConfig) => {
+  if (!systemConfig?.portalConfigJson) return "";
+
+  try {
+    const parsed = JSON.parse(systemConfig.portalConfigJson);
+    return `${parsed?.founder?.imageObjectKey ?? ""}`.trim();
+  } catch {
+    return "";
+  }
+};
+
 const hasSystemImageReference = (systemConfig, objectKey) =>
   Boolean(
     objectKey &&
       systemConfig &&
-      [systemConfig.brandLogoObjectKey, systemConfig.playerDiscImageObjectKey].some((value) => value && value === objectKey),
+      [
+        systemConfig.brandLogoObjectKey,
+        systemConfig.playerDiscImageObjectKey,
+        getPortalShareImageObjectKey(systemConfig),
+        getPortalFounderImageObjectKey(systemConfig),
+      ].some(
+        (value) => value && value === objectKey,
+      ),
   );
 
 export const cleanupObjectIfUnused = async (objectKey = "") => {
@@ -40,6 +69,7 @@ export const cleanupObjectIfUnused = async (objectKey = "") => {
       select: {
         brandLogoObjectKey: true,
         playerDiscImageObjectKey: true,
+        portalConfigJson: true,
       },
     }),
     ]);

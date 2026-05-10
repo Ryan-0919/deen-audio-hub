@@ -1,35 +1,106 @@
-import { BookOpen, History, ImageIcon, LogOut, Music2, Scale, Settings, ShieldCheck, Users } from "lucide-react";
+import {
+  BookOpen,
+  FileText,
+  FolderOpen,
+  History,
+  ImageIcon,
+  Keyboard,
+  LogOut,
+  Music2,
+  PackageSearch,
+  Scale,
+  Settings,
+  ShieldCheck,
+  Users,
+  Bot,
+} from "lucide-react";
 import { Link, Navigate, Outlet, useLocation } from "react-router";
 import { AppLogo } from "../components/branding/AppLogo";
 import { Button } from "../components/ui/button";
+import { clearAdminSessionForMode, getAdminAccountForMode, getAdminHomePathForRole, getAdminRoleForMode, getAdminTokenForMode } from "../lib/admin-session";
 import { cn } from "../components/ui/utils";
 
-const navigation = [
-  { name: "管理员账号", href: "/admin/admins", icon: ShieldCheck },
-  { name: "用户管理", href: "/admin/users", icon: Users },
-  { name: "课程管理", href: "/admin/courses", icon: BookOpen },
-  { name: "音频库", href: "/admin/library", icon: Music2 },
-  { name: "法条检索", href: "/admin/laws", icon: Scale },
-  { name: "系统日志", href: "/admin/logs", icon: History },
-  { name: "系统配置", href: "/admin/settings", icon: Settings },
-  { name: "系统图片配置", href: "/admin/image-settings", icon: ImageIcon },
+const navigationGroups = [
+  {
+    title: "基础管理",
+    items: [
+      { name: "管理员账号", href: "/admin/admins", icon: ShieldCheck },
+      { name: "用户管理", href: "/admin/users", icon: Users },
+      { name: "课程管理", href: "/admin/courses", icon: BookOpen },
+      { name: "音频库", href: "/admin/library", icon: Music2 },
+      { name: "法条检索", href: "/admin/laws", icon: Scale },
+    ],
+  },
+  {
+    title: "机考系统",
+    items: [
+      { name: "机考题库", href: "/admin/mock-exams/question-bank", icon: FolderOpen },
+      { name: "机考试卷", href: "/admin/mock-exams/papers", icon: FileText },
+      { name: "启动页设置", href: "/admin/mock-exams/launch-settings", icon: Settings },
+      { name: "AI批改设置", href: "/admin/mock-exams/ai-review-settings", icon: Bot },
+      { name: "打字练习", href: "/admin/typing-practice", icon: Keyboard },
+    ],
+  },
+  {
+    title: "门户设置",
+    items: [
+      { name: "门户内容设置", href: "/admin/settings", icon: Settings },
+      { name: "门户图片设置", href: "/admin/image-settings", icon: ImageIcon },
+    ],
+  },
+  {
+    title: "系统",
+    items: [{ name: "系统日志", href: "/admin/logs", icon: History }],
+  },
 ];
+
+const navigationItems = navigationGroups.flatMap((group) => group.items);
+
+const filterNavigationByRole = (role: string) => {
+  if (role === "user_admin") {
+    return navigationGroups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) => item.href === "/admin/users"),
+      }))
+      .filter((group) => group.items.length > 0);
+  }
+
+  return navigationGroups;
+};
 
 export function AdminLayout() {
   const location = useLocation();
-  const token = localStorage.getItem("adminToken");
+  const token = getAdminTokenForMode("admin");
+  const role = getAdminRoleForMode("admin");
 
   if (!token) {
     return <Navigate to="/admin/login" replace />;
   }
 
-  const currentNav = navigation.find((item) => location.pathname.startsWith(item.href));
-  const account = localStorage.getItem("adminAccount") ?? "运营管理员";
+  if (role === "review_admin") {
+    return <Navigate to="/adminpg/login" replace />;
+  }
+
+  const visibleNavigationGroups = filterNavigationByRole(role);
+  const visibleNavigationItems = visibleNavigationGroups.flatMap((group) => group.items);
+
+  if (visibleNavigationItems.length === 0) {
+    return <Navigate to="/admin/login" replace />;
+  }
+
+  const currentNav = [...visibleNavigationItems]
+    .sort((left, right) => right.href.length - left.href.length)
+    .find((item) => location.pathname.startsWith(item.href));
+
+  if (!currentNav && !location.pathname.startsWith("/admin/login")) {
+    return <Navigate to={getAdminHomePathForRole(role)} replace />;
+  }
+
+  const account = getAdminAccountForMode("admin") || "运营管理员";
 
   const handleLogout = () => {
-    localStorage.removeItem("adminToken");
-    localStorage.removeItem("adminId");
-    localStorage.removeItem("adminAccount");
+    clearAdminSessionForMode("admin");
     window.location.href = "/admin/login";
   };
 
@@ -39,34 +110,42 @@ export function AdminLayout() {
         <div className="border-b border-slate-200 px-6 py-6">
           <AppLogo />
           <h1 className="mt-4 text-xl font-semibold text-slate-900">后台管理</h1>
-          <p className="mt-2 text-sm text-slate-500">课程、音频、法条与系统配置工作台</p>
+          <p className="mt-2 text-sm text-slate-500">课程、题库、试卷、门户与系统运营工作台</p>
         </div>
 
-        <nav className="flex-1 space-y-1 px-4 py-4">
-          {navigation.map((item) => {
-            const Icon = item.icon;
-            const isActive = location.pathname.startsWith(item.href);
+        <nav className="flex-1 space-y-5 overflow-y-auto px-4 py-4">
+          {visibleNavigationGroups.map((group) => (
+            <div key={group.title} className="space-y-1">
+              <div className="px-4 pb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{group.title}</div>
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = location.pathname.startsWith(item.href);
 
-            return (
-              <Link
-                key={item.href}
-                to={item.href}
-                className={cn(
-                  "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors",
-                  isActive ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
-                )}
-              >
-                <Icon className="size-5" />
-                <span>{item.name}</span>
-              </Link>
-            );
-          })}
+                return (
+                  <Link
+                    key={item.href}
+                    to={item.href}
+                    className={cn(
+                      "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors",
+                      isActive ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
+                    )}
+                  >
+                    <Icon className="size-5" />
+                    <span>{item.name}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         <div className="border-t border-slate-200 p-4">
           <div className="mb-3 rounded-2xl bg-slate-50 px-4 py-3">
             <p className="text-xs text-slate-500">当前账号</p>
-            <p className="mt-1 text-sm font-medium text-slate-900">{account}</p>
+            <p className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-900">
+              <PackageSearch className="size-4 text-slate-500" />
+              {account}
+            </p>
           </div>
           <Button variant="outline" className="w-full justify-start" onClick={handleLogout}>
             <LogOut className="mr-2 size-4" />

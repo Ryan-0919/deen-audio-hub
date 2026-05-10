@@ -22,7 +22,7 @@ export function AppLogo({ compact = false, className, logoUrlOverride = "" }: Ap
           setLogoUrl(data.brandLogoUrl ?? "");
           setImageFailed(false);
         }
-      } catch (error) {
+      } catch {
         if (active) {
           setLogoUrl("");
           setImageFailed(false);
@@ -41,23 +41,35 @@ export function AppLogo({ compact = false, className, logoUrlOverride = "" }: Ap
   const showImage = Boolean(resolvedLogoUrl) && !imageFailed;
 
   return (
-    <div className={cn("flex items-center gap-2", className)}>
-      <div className="relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm">
-        {showImage ? (
-          <img src={resolvedLogoUrl} alt="公司 logo" className="size-full object-contain p-1.5" onError={() => setImageFailed(true)} />
-        ) : (
-          <>
+    <div className={cn("flex items-center", showImage ? "gap-0" : "gap-2", className)}>
+      {showImage ? (
+        <div
+          className={cn(
+            "relative shrink-0 overflow-hidden aspect-[1540/520]",
+            compact ? "h-9" : "h-11",
+          )}
+        >
+          <img
+            src={resolvedLogoUrl}
+            alt="得恩法考 logo"
+            className="h-full w-full object-cover object-center"
+            onError={() => setImageFailed(true)}
+          />
+        </div>
+      ) : (
+        <>
+          <div className="relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm">
             <div className="absolute inset-[5px] rounded-xl bg-blue-50" />
             <span className="relative pl-[0.18em] text-[10px] font-semibold tracking-[0.18em] text-blue-700">DEN</span>
-          </>
-        )}
-      </div>
+          </div>
 
-      {!compact && (
-        <div className="min-w-0 leading-none">
-          <p className="truncate text-sm font-semibold text-slate-900">得恩法考</p>
-          <p className="mt-1 truncate text-[11px] text-slate-400">音频课程</p>
-        </div>
+          {!compact && (
+            <div className="min-w-0 leading-none">
+              <p className="truncate text-sm font-semibold text-slate-900">得恩法考</p>
+              <p className="mt-1 truncate text-[11px] text-slate-400"></p>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

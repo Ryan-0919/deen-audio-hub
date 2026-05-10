@@ -1,0 +1,20 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1600" height="900" fill="#0F172A"/>
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <circle cx="1328" cy="156" r="254" fill="#60A5FA" fill-opacity="0.26"/>
+  <circle cx="1222" cy="644" r="340" fill="#2563EB" fill-opacity="0.2"/>
+  <circle cx="236" cy="760" r="288" fill="#22D3EE" fill-opacity="0.18"/>
+  <rect x="102" y="102" width="1396" height="696" rx="42" fill="white" fill-opacity="0.06" stroke="white" stroke-opacity="0.12"/>
+  <text x="126" y="228" fill="white" fill-opacity="0.76" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="34" font-weight="700">DEBAO MOCK EXAM</text>
+  <text x="126" y="360" fill="white" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="110" font-weight="700">客观题机考试卷</text>
+  <text x="126" y="442" fill="white" fill-opacity="0.7" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="36" font-weight="400">Objective Exam Paper</text>
+  <rect x="126" y="548" width="208" height="62" rx="31" fill="white" fill-opacity="0.14"/>
+  <text x="166" y="589" fill="white" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="28" font-weight="600">默认封面</text>
+  <defs>
+    <linearGradient id="bg" x1="136" y1="78" x2="1450" y2="868" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F172A"/>
+      <stop offset="0.52" stop-color="#1D4ED8"/>
+      <stop offset="1" stop-color="#38BDF8"/>
+    </linearGradient>
+  </defs>
+</svg>

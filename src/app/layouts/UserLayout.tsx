@@ -1,28 +1,21 @@
-import { BookMarked, Scale, UserRound } from "lucide-react";
+import { BookMarked, UserRound } from "lucide-react";
 import { NavLink, Navigate, Outlet, useLocation } from "react-router";
 import { AppLogo } from "../components/branding/AppLogo";
 import { cn } from "../components/ui/utils";
-import { getUserPhone, getUserToken } from "../lib/user-session";
+import { getUserDisplayName, getUserToken } from "../lib/user-session";
 
 const navigation = [
   {
-    label: "课程",
+    label: "首页",
     to: "/user/courses",
     icon: BookMarked,
-    isActive: (pathname: string) =>
-      pathname.startsWith("/user/courses") || pathname.startsWith("/user/course/") || pathname.startsWith("/user/player/"),
-  },
-  {
-    label: "法条",
-    to: "/user/laws",
-    icon: Scale,
-    isActive: (pathname: string) => pathname.startsWith("/user/laws"),
+    isActive: (pathname: string) => pathname === "/user/courses" || pathname.startsWith("/user/player/"),
   },
   {
     label: "我的",
     to: "/user/me",
     icon: UserRound,
-    isActive: (pathname: string) => pathname.startsWith("/user/me"),
+    isActive: (pathname: string) => pathname.startsWith("/user/me") || pathname.startsWith("/user/my-exams"),
   },
 ];
 
@@ -31,59 +24,51 @@ export function UserLayout() {
   const location = useLocation();
 
   if (!token) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/login" replace />;
   }
 
-  const hideNavigation = location.pathname.startsWith("/user/player/");
-  const displayPhone = getUserPhone() || "已登录用户";
+  const isImmersiveMode =
+    location.pathname.startsWith("/user/player/") ||
+    location.pathname.startsWith("/user/mock-exams/papers/") ||
+    location.pathname.startsWith("/user/mock-exams/records/");
+
+  const isHome =
+    location.pathname === "/user/courses" ||
+    location.pathname === "/user/my-courses" ||
+    location.pathname.startsWith("/user/course/");
+  const isDarkShell =
+    isHome ||
+    location.pathname.startsWith("/user/player/") ||
+    location.pathname === "/user/mock-exams" ||
+    location.pathname.startsWith("/user/my-exams") ||
+    location.pathname.startsWith("/user/me") ||
+    location.pathname.startsWith("/user/typing-practice");
+  const displayName = getUserDisplayName() || "已登录用户";
 
   return (
-    <div className="min-h-screen bg-[#f6f8fb] text-slate-900">
-      {!hideNavigation ? (
-        <header className="sticky top-0 z-40 hidden border-b border-slate-200/80 bg-white/92 backdrop-blur md:block">
-          <div className="mx-auto flex h-[72px] max-w-7xl items-center gap-6 px-6 xl:px-8">
-            <AppLogo />
-
-            <nav className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50/80 p-1">
-              {navigation.map((item) => {
-                const Icon = item.icon;
-                const active = item.isActive(location.pathname);
-
-                return (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    className={cn(
-                      "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors",
-                      active ? "bg-slate-900 text-white shadow-sm" : "text-slate-600 hover:text-slate-900",
-                    )}
-                  >
-                    <Icon className="size-4" />
-                    <span>{item.label}</span>
-                  </NavLink>
-                );
-              })}
-            </nav>
-
-            <div className="ml-auto inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-500">
-              <span className="max-w-[220px] truncate">{displayPhone}</span>
-            </div>
-          </div>
-        </header>
-      ) : null}
-
-      <div
+    <div
+      className={cn(
+        "min-h-screen text-slate-900 selection:bg-slate-900 selection:text-white",
+        isDarkShell ? "bg-[#040816]" : "bg-[#f4f5f7]",
+      )}
+    >
+      <header
         className={cn(
-          !hideNavigation && "pb-20 md:pb-0",
-          hideNavigation ? "min-h-screen" : "min-h-[calc(100vh-80px)] md:min-h-[calc(100vh-72px)]",
+          "sticky top-0 z-40 hidden md:block",
+          isDarkShell
+            ? "border-b border-white/8 bg-[#050b16]/72 backdrop-blur-2xl"
+            : "border-b border-slate-200/50 bg-white/80 backdrop-blur-xl",
         )}
       >
-        <Outlet />
-      </div>
+        <div className="mx-auto flex h-[76px] max-w-7xl items-center gap-6 px-6 xl:px-8">
+          <AppLogo className={isDarkShell ? "text-white" : ""} />
 
-      {!hideNavigation ? (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/80 bg-white/95 backdrop-blur md:hidden">
-          <div className="mx-auto grid h-16 max-w-sm grid-cols-3 px-2">
+          <nav
+            className={cn(
+              "flex items-center gap-1 rounded-full p-1",
+              isDarkShell ? "border border-white/10 bg-white/[0.05]" : "border border-slate-200/60 bg-slate-100/50",
+            )}
+          >
             {navigation.map((item) => {
               const Icon = item.icon;
               const active = item.isActive(location.pathname);
@@ -93,18 +78,80 @@ export function UserLayout() {
                   key={item.to}
                   to={item.to}
                   className={cn(
-                    "flex flex-col items-center justify-center gap-1 rounded-2xl text-xs font-medium transition-colors",
-                    active ? "text-blue-700" : "text-slate-500 hover:text-slate-900",
+                    "inline-flex items-center gap-2 rounded-full px-5 py-2 text-[14px] font-bold tracking-tight transition-all",
+                    active
+                      ? isDarkShell
+                        ? "bg-white text-slate-950 shadow-[0_14px_34px_rgba(255,255,255,0.14)]"
+                        : "bg-slate-900 text-white shadow-lg shadow-black/10"
+                      : isDarkShell
+                        ? "text-white/54 hover:bg-white/[0.08] hover:text-white"
+                        : "text-slate-500 hover:bg-white hover:text-slate-900",
                   )}
                 >
-                  <Icon className={cn("size-5", active && "text-blue-700")} />
+                  <Icon className="size-4" />
                   <span>{item.label}</span>
+                </NavLink>
+              );
+            })}
+          </nav>
+
+          <div
+            className={cn(
+              "ml-auto inline-flex items-center rounded-full px-4 py-2 text-[13px] font-bold tracking-tight shadow-sm",
+              isDarkShell
+                ? "border border-white/10 bg-white/[0.05] text-white/72"
+                : "border border-slate-200/60 bg-white/80 text-slate-500",
+            )}
+          >
+            <span className="max-w-[220px] truncate">{displayName}</span>
+          </div>
+        </div>
+      </header>
+
+      <main className={cn("relative", !isImmersiveMode && "pb-24 md:pb-0")}>
+        <Outlet />
+      </main>
+
+      {!isImmersiveMode && (
+        <div
+          className={cn(
+            "fixed inset-x-0 bottom-0 z-40 pb-safe md:hidden",
+            isDarkShell
+              ? "border-t border-white/10 bg-[#07101b]/82 backdrop-blur-2xl"
+              : "border-t border-slate-200/50 bg-white/80 backdrop-blur-xl",
+          )}
+        >
+          <div className="mx-auto grid h-16 max-w-md grid-cols-2 px-4">
+            {navigation.map((item) => {
+              const Icon = item.icon;
+              const active = item.isActive(location.pathname);
+
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={cn(
+                    "flex flex-col items-center justify-center gap-1 transition-all active:scale-95",
+                    active ? (isDarkShell ? "text-white" : "text-slate-900") : isDarkShell ? "text-white/40" : "text-slate-400",
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "flex items-center justify-center rounded-full px-4 py-1 transition-all",
+                      active && (isDarkShell ? "bg-white/10" : "bg-slate-900/5"),
+                    )}
+                  >
+                    <Icon className={cn("size-6 transition-transform", active && "scale-110")} />
+                  </div>
+                  <span className={cn("text-[10px] font-bold uppercase tracking-widest", active ? "opacity-100" : "opacity-60")}>
+                    {item.label}
+                  </span>
                 </NavLink>
               );
             })}
           </div>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

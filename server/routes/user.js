@@ -7,6 +7,7 @@ import { formatDateTime } from "../lib/time.js";
 import { requireUserAuth } from "../middleware/auth.js";
 import { syncScheduledCourses } from "../lib/scheduler.js";
 import { getReadableObjectUrl } from "../lib/upload.js";
+import { serializeMockExamPaperSummary } from "../lib/mock-exam.js";
 
 export const userRouter = Router();
 
@@ -213,6 +214,131 @@ userRouter.get("/courses", async (req, res) => {
     .map((course) => serializeCourse(course, course.courseAudios.length));
 
   return ok(res, list);
+});
+
+userRouter.get("/home-overview", async (req, res) => {
+  await syncScheduledCourses();
+
+  const recentProgress = await prisma.userProgress.findFirst({
+    where: {
+      userId: req.auth.userId,
+    },
+    orderBy: {
+      lastUpdated: "desc",
+    },
+    include: {
+      audio: true,
+    },
+  });
+
+  let recentCourseProgress = null;
+  if (recentProgress?.audio) {
+    const course = await prisma.course.findFirst({
+      where: {
+        id: recentProgress.courseId,
+      },
+      include: {
+        permissions: {
+          where: {
+            userId: req.auth.userId,
+          },
+        },
+        tags: {
+          orderBy: {
+            order: "asc",
+          },
+        },
+        courseAudios: {
+          where: {
+            audioId: recentProgress.audioId,
+          },
+          include: {
+            tag: true,
+          },
+          take: 1,
+        },
+      },
+    });
+
+    if (course?.status === "open" && (course.permissions?.length ?? 0) > 0) {
+      const tagName = course.courseAudios[0]?.tag?.name ?? course.tags[0]?.name ?? "";
+      const durationSeconds = Math.max(0, Number(recentProgress.audio.duration ?? 0));
+      const progressSeconds = Math.max(0, Number(recentProgress.progress ?? 0));
+
+      recentCourseProgress = {
+        courseId: course.id,
+        courseName: course.name,
+        audioId: recentProgress.audioId,
+        audioName: recentProgress.audio.name,
+        tagName,
+        progressSeconds,
+        durationSeconds,
+        progressPercent: durationSeconds > 0 ? Math.min(100, Math.round((progressSeconds / durationSeconds) * 100)) : 0,
+        completed: Boolean(recentProgress.completed),
+        lastUpdated: formatDateTime(recentProgress.lastUpdated),
+      };
+    }
+  }
+
+  const recentRecordRaw = await prisma.mockExamRecord.findFirst({
+    where: {
+      userId: req.auth.userId,
+    },
+    orderBy: [
+      { updatedAt: "desc" },
+      { createdAt: "desc" },
+    ],
+    include: {
+      paper: {
+        include: {
+          questions: {
+            where: {
+              isActive: true,
+            },
+            select: {
+              id: true,
+              type: true,
+              score: true,
+            },
+            orderBy: {
+              sortOrder: "asc",
+            },
+          },
+        },
+      },
+    },
+  });
+
+  let recentMockExam = null;
+  if (recentRecordRaw?.paper) {
+    const summary = serializeMockExamPaperSummary({
+      paper: recentRecordRaw.paper,
+      activeRecord: recentRecordRaw.status === "in_progress" ? recentRecordRaw : null,
+      latestRecord: recentRecordRaw.status === "submitted" ? recentRecordRaw : null,
+    });
+    const targetRecord = summary.activeRecord ?? summary.latestRecord;
+
+    if (targetRecord) {
+      recentMockExam = {
+        paperId: recentRecordRaw.paper.id,
+        paperTitle: recentRecordRaw.paper.title,
+        paperSubtitle: recentRecordRaw.paper.subtitle ?? "",
+        recordId: targetRecord.id,
+        status: targetRecord.status,
+        totalScore: targetRecord.totalScore,
+        answeredCount: targetRecord.answeredCount,
+        questionCount: targetRecord.questionCount,
+        canResume: targetRecord.canResume,
+        startedAt: targetRecord.startedAt,
+        submittedAt: targetRecord.submittedAt,
+      };
+    }
+  }
+
+  return ok(res, {
+    recentCourseProgress,
+    recentMockExam,
+  });
 });
 
 userRouter.get("/courses/:courseId/detail", async (req, res) => {

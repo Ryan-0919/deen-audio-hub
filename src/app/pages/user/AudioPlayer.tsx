@@ -6,6 +6,7 @@ import { Button } from "../../components/ui/button";
 import { Slider } from "../../components/ui/slider";
 import { cn } from "../../components/ui/utils";
 import { Audio, Course, Tag, mockApi } from "../../lib/mockData";
+import { saveRecentCourseSnapshot } from "../../lib/recent-course";
 import { getUserId } from "../../lib/user-session";
 
 const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 2];
@@ -90,6 +91,29 @@ export function AudioPlayer() {
   }, [currentTime]);
 
   useEffect(() => {
+    const userId = getUserId();
+    if (!userId || !courseId || !audioId || !course || !audio || !tag) return;
+
+    const durationSeconds = Math.max(0, Math.floor(Number(duration || audio.duration || 0)));
+    const progressSeconds = Math.max(0, Math.floor(Number(currentTime || 0)));
+    const progressPercent =
+      durationSeconds > 0 ? Math.min(100, Math.round((progressSeconds / durationSeconds) * 100)) : 0;
+
+    saveRecentCourseSnapshot(userId, {
+      courseId,
+      courseName: course.name,
+      audioId,
+      audioName: audio.name,
+      tagName: tag.name,
+      progressSeconds,
+      durationSeconds,
+      progressPercent,
+      completed,
+      lastUpdated: new Date().toISOString(),
+    });
+  }, [audio, audioId, completed, course, courseId, currentTime, duration, tag]);
+
+  useEffect(() => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem("userPlaybackRate", `${playbackRate}`);
     }
@@ -122,7 +146,7 @@ export function AudioPlayer() {
     const load = async () => {
       const userId = getUserId();
       if (!userId) {
-        navigate("/");
+        navigate("/login");
         return;
       }
 
@@ -365,116 +389,137 @@ export function AudioPlayer() {
   const currentPrevAudio = prevAudio ?? (loopMode === "sequence" ? lastAudio : undefined);
   const currentNextAudio = nextAudio ?? (loopMode === "sequence" ? firstAudio : undefined);
   const playerStatus = completed ? "已学完" : isPlaying ? "播放中" : currentTime > 0 ? "暂停中" : "未播放";
+  const progressPercent = duration > 0 ? Math.min(100, Math.round((currentTime / duration) * 100)) : 0;
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f6f8fb] px-4 py-6 md:px-6 md:py-8">
-        <div className="mx-auto max-w-7xl rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500">音频加载中...</div>
+      <div className="relative min-h-screen overflow-hidden bg-[#040816] px-5 py-12 text-white md:px-8">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,166,255,0.18),transparent_24%),radial-gradient(circle_at_82%_16%,rgba(120,255,235,0.12),transparent_18%),linear-gradient(180deg,#07111d_0%,#040816_48%,#0a1629_100%)]" />
+        <div className="relative mx-auto flex max-w-[1320px] items-center justify-center rounded-[30px] border border-white/10 bg-white/[0.04] px-8 py-24 text-sm uppercase tracking-[0.28em] text-white/58 backdrop-blur-xl">
+          音频加载中...
+        </div>
       </div>
     );
   }
 
   if (!audio || !course || !tag) {
     return (
-      <div className="min-h-screen bg-[#f6f8fb] px-4 py-6 md:px-6 md:py-8">
-        <div className="mx-auto max-w-7xl rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500">音频不存在</div>
+      <div className="relative min-h-screen overflow-hidden bg-[#040816] px-5 py-12 text-white md:px-8">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,166,255,0.18),transparent_24%),radial-gradient(circle_at_82%_16%,rgba(120,255,235,0.12),transparent_18%),linear-gradient(180deg,#07111d_0%,#040816_48%,#0a1629_100%)]" />
+        <div className="relative mx-auto flex max-w-[1320px] items-center justify-center rounded-[30px] border border-white/10 bg-white/[0.04] px-8 py-24 text-center text-white/58 backdrop-blur-xl">
+          音频不存在
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#f6f8fb]">
+    <div className="relative min-h-screen overflow-hidden bg-[#040816] pb-24 text-white selection:bg-[#dff8ff] selection:text-[#061120]">
       <audio ref={audioRef} src={audio.audioUrl} preload="metadata" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,166,255,0.18),transparent_24%),radial-gradient(circle_at_82%_16%,rgba(120,255,235,0.12),transparent_18%),linear-gradient(180deg,#07111d_0%,#040816_48%,#0a1629_100%)]" />
+      <div className="pointer-events-none absolute left-1/2 top-[300px] h-[420px] w-[920px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.12),transparent_62%)] blur-3xl" />
 
-      <div className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/95 backdrop-blur md:hidden">
-        <div className="mx-auto flex h-14 max-w-sm items-center px-4">
-          <button
-            type="button"
-            onClick={handleBack}
-            className="flex size-10 items-center justify-center rounded-full text-slate-700 transition hover:bg-slate-100"
-          >
-            <ArrowLeft className="size-5" />
-          </button>
-          <h1 className="flex-1 text-center text-base font-semibold text-slate-900">音频播放</h1>
-          <div className="w-10" />
-        </div>
-      </div>
+      <div className="relative mx-auto max-w-[1320px] px-4 pb-10 pt-4 md:px-8 md:pt-8 xl:px-10">
+        <section className="rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] p-4 shadow-[0_24px_90px_rgba(0,0,0,0.20)] backdrop-blur-[20px] md:rounded-[30px] md:p-5">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <button
+                type="button"
+                onClick={handleBack}
+                className="flex size-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-white transition hover:bg-white/[0.12]"
+              >
+                <ArrowLeft className="size-5" />
+              </button>
 
-      <div className="hidden border-b border-slate-200/80 bg-white/95 backdrop-blur md:block">
-        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-6 px-6 xl:px-8">
-          <div className="flex min-w-0 items-center gap-3">
-            <button
-              type="button"
-              onClick={handleBack}
-              className="flex size-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700"
-            >
-              <ArrowLeft className="size-5" />
-            </button>
+              <div className="min-w-0">
+                <div className="text-[11px] uppercase tracking-[0.28em] text-white/36">DE EN FA KAO</div>
+                <h1 className="mt-2 truncate text-[22px] font-semibold tracking-[-0.05em] text-white md:text-[34px]">{audio.name}</h1>
+              </div>
+            </div>
 
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-blue-600">音频播放</p>
-              <h1 className="truncate text-2xl font-semibold tracking-[-0.03em] text-slate-900">{audio.name}</h1>
+            <div className="flex flex-wrap items-center gap-2 md:justify-end">
+              <span className="rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-sm text-white/64">{course.name}</span>
+              <span className="rounded-full border border-[#73a9ff]/20 bg-[#3f6fff]/14 px-4 py-2 text-sm text-[#9bc3ff]">{tag.name}</span>
+              <span className="rounded-full border border-white/10 bg-black/26 px-4 py-2 text-sm text-white">{playerStatus}</span>
+              {audio.hasHandout ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => void handleDownloadHandout()}
+                  disabled={downloadingHandout}
+                  className="hidden rounded-full border border-white/10 bg-white/[0.05] px-4 text-white hover:bg-white/[0.10] hover:text-white md:inline-flex"
+                >
+                  {downloadingHandout ? <Loader2 className="mr-2 size-4 animate-spin" /> : <FileDown className="mr-2 size-4" />}
+                  下载讲义
+                </Button>
+              ) : null}
             </div>
           </div>
+        </section>
 
-          <div className="flex items-center gap-2 text-sm">
-            <span className="rounded-full bg-slate-100 px-4 py-2 text-slate-600">{course.name}</span>
-            <span className="rounded-full bg-blue-50 px-4 py-2 text-blue-700">{tag.name}</span>
-            <span className="rounded-full bg-slate-900 px-4 py-2 text-white">{playerStatus}</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="mx-auto max-w-7xl px-4 py-4 md:px-6 md:py-8 xl:px-8">
-        <div className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
-          <aside className="space-y-4 xl:sticky xl:top-8 xl:h-fit">
-            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+        <div className="mt-5 grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
+          <aside className="space-y-5 xl:sticky xl:top-8 xl:h-fit">
+            <section className="overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] p-4 shadow-[0_24px_90px_rgba(0,0,0,0.20)] backdrop-blur-[20px] md:rounded-[30px] md:p-6">
               <div className="flex flex-col items-center text-center">
-                <div
-                  className={cn(
-                    "relative flex size-40 items-center justify-center overflow-hidden rounded-full border-[6px] border-blue-100 bg-blue-50 shadow-sm md:size-48",
-                    isPlaying && "animate-[spin_10s_linear_infinite]",
-                  )}
-                >
-                  {playerDiscImageUrl ? (
-                    <img src={playerDiscImageUrl} alt="播放器图片" className="size-full object-cover" />
-                  ) : (
-                    <div className="absolute inset-0 bg-blue-50" />
-                  )}
+                <div className="relative flex size-[180px] items-center justify-center md:size-[260px]">
+                  <div className="absolute inset-6 rounded-full bg-[radial-gradient(circle,rgba(96,165,250,0.18),transparent_68%)] blur-3xl" />
+                  <div
+                    className={cn(
+                      "relative flex size-full items-center justify-center overflow-hidden rounded-full border-[7px] border-white/12 bg-white/[0.05] shadow-[0_30px_80px_rgba(0,0,0,0.3)]",
+                      isPlaying && "animate-[spin_12s_linear_infinite]",
+                    )}
+                  >
+                    {playerDiscImageUrl ? (
+                      <img src={playerDiscImageUrl} alt="播放器图片" className="size-full object-cover" />
+                    ) : (
+                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(255,255,255,0.22),rgba(255,255,255,0.04)_55%,rgba(255,255,255,0.02))]" />
+                    )}
+                  </div>
                 </div>
 
-                <h2 className="mt-5 text-2xl font-semibold text-slate-900">{audio.name}</h2>
-                <p className="mt-2 text-sm text-slate-500">{course.name}</p>
+                <h2 className="mt-5 text-[22px] font-semibold tracking-[-0.05em] text-white md:mt-6 md:text-[28px]">{audio.name}</h2>
+                <p className="mt-2 text-sm leading-6 text-white/56 md:leading-7">{course.name}</p>
 
                 <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm">
-                  <span className="rounded-full bg-blue-50 px-3 py-1 text-blue-700">{tag.name}</span>
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">{playerStatus}</span>
+                  <span className="rounded-full border border-[#73a9ff]/20 bg-[#3f6fff]/14 px-3 py-1.5 text-[#9bc3ff]">{tag.name}</span>
+                  <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-white/68">{playerStatus}</span>
                 </div>
               </div>
             </section>
 
-            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-              <div className="flex items-center justify-between text-sm text-slate-500">
+            <section className="overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] p-4 shadow-[0_24px_90px_rgba(0,0,0,0.20)] backdrop-blur-[20px] md:rounded-[28px] md:p-5">
+              {playerError ? (
+                <div className="mb-4 rounded-[20px] border border-[#ff8f8f]/18 bg-[#ff5f6d]/10 px-4 py-3 text-sm leading-6 text-[#ffc3c8]">
+                  {playerError}
+                </div>
+              ) : null}
+
+              <div className="flex items-center justify-between text-sm text-white/50">
                 <span>{formatTime(currentTime)}</span>
                 <span>总时长 {formatTime(duration)}</span>
               </div>
 
-              <div className="mt-3">
+              <div className="mt-3 rounded-full border border-white/8 bg-black/18 px-3 py-3">
                 <Slider value={[currentTime]} max={duration || 1} step={1} onValueChange={handleSeek} />
               </div>
 
-              <div className="mt-5 grid grid-cols-2 gap-3">
+              <div className="mt-4 flex items-center justify-between text-xs uppercase tracking-[0.22em] text-white/34">
+                <span>当前进度</span>
+                <span>{progressPercent}%</span>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-3">
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                   onClick={handleToggleLoopMode}
                   className={cn(
-                    "h-auto flex-col items-start rounded-2xl border-slate-200 px-4 py-3 text-left shadow-none",
-                    loopMode === "single" && "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100",
+                    "h-auto flex-col items-start rounded-[22px] border border-white/10 bg-black/16 px-4 py-3 text-left text-white shadow-none hover:bg-black/24 hover:text-white",
+                    loopMode === "single" && "border-[#73a9ff]/20 bg-[#3f6fff]/12 text-[#9bc3ff]",
                   )}
                 >
-                  <span className="text-xs font-medium text-slate-400">循环模式</span>
-                  <span className="mt-1 flex items-center text-sm font-semibold">
+                  <span className="text-[11px] uppercase tracking-[0.22em] text-white/32">循环模式</span>
+                  <span className="mt-2 flex items-center text-sm font-semibold">
                     {loopMode === "single" ? <Repeat1 className="mr-2 size-4" /> : <Repeat className="mr-2 size-4" />}
                     {loopMode === "single" ? "单曲循环" : "顺序循环"}
                   </span>
@@ -482,35 +527,38 @@ export function AudioPlayer() {
 
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                   onClick={handleCyclePlaybackRate}
-                  className="h-auto flex-col items-start rounded-2xl border-slate-200 px-4 py-3 text-left shadow-none"
+                  className="h-auto flex-col items-start rounded-[22px] border border-white/10 bg-black/16 px-4 py-3 text-left text-white shadow-none hover:bg-black/24 hover:text-white"
                 >
-                  <span className="text-xs font-medium text-slate-400">播放速度</span>
-                  <span className="mt-1 text-sm font-semibold text-slate-900">倍速 {playbackRate}x</span>
+                  <span className="text-[11px] uppercase tracking-[0.22em] text-white/32">播放速度</span>
+                  <span className="mt-2 text-sm font-semibold">倍速 {playbackRate}x</span>
                 </Button>
               </div>
 
-              <div className="mt-5 flex items-center justify-between gap-3">
+              <div className="mt-5 flex items-center justify-between gap-2 md:gap-3">
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   onClick={() => void handleJump(currentPrevAudio)}
                   disabled={!currentPrevAudio}
-                  className="h-12 flex-1 rounded-full px-4"
+                  className="h-11 flex-1 rounded-full border border-white/10 bg-white/[0.05] px-3 text-white hover:bg-white/[0.10] hover:text-white disabled:opacity-40 md:h-12 md:px-4"
                 >
                   <SkipBack className="mr-2 size-5" />
                   上一条
                 </Button>
 
-                <Button onClick={togglePlay} className="size-16 shrink-0 rounded-full bg-blue-600 p-0 text-white hover:bg-blue-700">
-                  {isPlaying ? <Pause className="size-7" /> : <Play className="ml-1 size-7" />}
+                <Button
+                  onClick={togglePlay}
+                  className="size-12 shrink-0 rounded-full bg-[linear-gradient(180deg,#3d7dff_0%,#2456ff_100%)] p-0 text-white shadow-[0_18px_42px_rgba(36,86,255,0.38)] hover:brightness-110 md:size-16"
+                >
+                  {isPlaying ? <Pause className="size-6 md:size-7" /> : <Play className="ml-0.5 size-6 md:ml-1 md:size-7" />}
                 </Button>
 
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   onClick={() => void handleJump(currentNextAudio)}
                   disabled={!currentNextAudio}
-                  className="h-12 flex-1 rounded-full px-4"
+                  className="h-11 flex-1 rounded-full border border-white/10 bg-white/[0.05] px-3 text-white hover:bg-white/[0.10] hover:text-white disabled:opacity-40 md:h-12 md:px-4"
                 >
                   下一条
                   <SkipForward className="ml-2 size-5" />
@@ -519,33 +567,25 @@ export function AudioPlayer() {
             </section>
           </aside>
 
-          <section className="min-h-0 rounded-3xl border border-slate-200 bg-white shadow-sm">
-            <div className="p-4 md:p-6">
-              {audio.hasHandout ? (
-                <div className="mb-4 flex justify-end">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => void handleDownloadHandout()}
-                    disabled={downloadingHandout}
-                    className="rounded-full"
-                  >
-                    {downloadingHandout ? <Loader2 className="mr-2 size-4 animate-spin" /> : <FileDown className="mr-2 size-4" />}
-                    下载讲义
-                  </Button>
-                </div>
-              ) : null}
+          <section className="overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] shadow-[0_24px_90px_rgba(0,0,0,0.20)] backdrop-blur-[20px] md:rounded-[30px]">
+            <div className="flex flex-col gap-4 border-b border-white/8 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-6">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.28em] text-white/36">SCRIPT PANEL</div>
+                <h2 className="mt-2 text-[24px] font-semibold tracking-[-0.05em] text-white md:text-[30px]">课程文稿</h2>
+              </div>
 
-              {playerError ? (
-                <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{playerError}</div>
-              ) : null}
+              <div className="text-sm leading-7 text-white/48">
+                {audio.script ? "边听边看，按自己的学习节奏通读课程文稿。" : "当前音频暂无文稿内容。"}
+              </div>
+            </div>
 
-              <div className="overflow-hidden rounded-2xl bg-slate-50">
-                <div className="max-h-[calc(100vh-260px)] min-h-[360px] overflow-y-auto px-4 py-4 text-[15px] leading-8 text-slate-700 md:px-6 md:py-6 md:text-base md:leading-8">
+            <div className="p-3 md:p-5">
+              <div className="min-h-[300px] overflow-hidden rounded-[20px] border border-white/8 bg-black/18 md:min-h-[380px] md:rounded-[24px]">
+                <div className="h-full max-h-[56vh] overflow-y-auto px-4 py-4 text-[14px] leading-7 text-white/72 md:min-h-[620px] md:max-h-[70vh] md:px-6 md:py-6 md:text-base md:leading-9 xl:max-h-[calc(100vh-240px)]">
                   {audio.script ? (
                     <div className="whitespace-pre-wrap">{audio.script}</div>
                   ) : (
-                    <div className="flex min-h-[320px] items-center justify-center text-center text-sm text-slate-400">暂无文案内容</div>
+                    <div className="flex min-h-[320px] items-center justify-center text-center text-sm text-white/38">暂无文稿内容</div>
                   )}
                 </div>
               </div>
@@ -556,12 +596,12 @@ export function AudioPlayer() {
 
       {audio.hasHandout ? (
         <div className="pointer-events-none fixed inset-x-0 bottom-24 z-30 md:bottom-8">
-          <div className="mx-auto flex max-w-7xl justify-end px-4 md:px-6 xl:px-8">
+          <div className="mx-auto flex max-w-[1320px] justify-end px-5 md:px-8 xl:px-10">
             <button
               type="button"
               onClick={() => void handleDownloadHandout()}
               disabled={downloadingHandout}
-              className="pointer-events-auto flex size-16 flex-col items-center justify-center rounded-full bg-[linear-gradient(180deg,#2563eb_0%,#1d4ed8_100%)] text-white shadow-[0_18px_45px_rgba(37,99,235,0.35)] transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-80 md:hidden"
+              className="pointer-events-auto flex size-16 flex-col items-center justify-center rounded-full border border-white/12 bg-[linear-gradient(180deg,#3d7dff_0%,#2456ff_100%)] text-white shadow-[0_18px_45px_rgba(37,99,235,0.35)] transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-80 md:hidden"
             >
               {downloadingHandout ? <Loader2 className="size-5 animate-spin" /> : <FileDown className="size-5" />}
               <span className="mt-1 text-[11px] font-medium leading-none">讲义</span>

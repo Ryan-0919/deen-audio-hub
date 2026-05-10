@@ -142,27 +142,28 @@ export function ShopProductDetail() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f5f7fb] px-4 py-6">
-        <div className="mx-auto max-w-sm py-12 text-center text-slate-500">商品详情加载中...</div>
+      <div className="min-h-screen bg-[#f5f7fb] px-4 py-6 md:px-6 xl:px-8">
+        <div className="mx-auto max-w-3xl rounded-[28px] bg-white px-6 py-12 text-center text-slate-500">商品详情加载中...</div>
       </div>
     );
   }
 
   if (!product || !selectedSku) {
     return (
-      <div className="min-h-screen bg-[#f5f7fb] px-4 py-6">
-        <div className="mx-auto max-w-sm py-12 text-center text-slate-500">商品不存在或已下架</div>
+      <div className="min-h-screen bg-[#f5f7fb] px-4 py-6 md:px-6 xl:px-8">
+        <div className="mx-auto max-w-3xl rounded-[28px] bg-white px-6 py-12 text-center text-slate-500">商品不存在或已下架</div>
       </div>
     );
   }
 
   const gallery = product.images.length > 0 ? product.images : [{ id: "cover", imageUrl: product.coverUrl, sortOrder: 0 }];
   const heroImageUrl = selectedImageUrl || gallery[0]?.imageUrl || product.coverUrl;
+  const detailImages = product.detailImages ?? [];
 
   return (
-    <div className="min-h-screen bg-[#f5f7fb] pb-28">
+    <div className="min-h-screen bg-[#f5f7fb] pb-28 lg:pb-10">
       <div className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/96 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-sm items-center px-4">
+        <div className="mx-auto flex h-14 max-w-7xl items-center px-4 md:h-[72px] md:px-6 xl:px-8">
           <button
             type="button"
             onClick={() => navigate(-1)}
@@ -170,168 +171,237 @@ export function ShopProductDetail() {
           >
             <ArrowLeft className="size-5" />
           </button>
-          <h1 className="min-w-0 flex-1 truncate px-3 text-center text-base font-semibold text-slate-900">商品详情</h1>
-          <Button variant="ghost" size="icon" className="rounded-full text-slate-700 hover:bg-slate-100" onClick={() => navigate("/user/shop/cart")}>
+          <h1 className="min-w-0 flex-1 truncate px-3 text-center text-base font-semibold text-slate-900 md:text-lg">商品详情</h1>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="rounded-full text-slate-700 hover:bg-slate-100"
+            onClick={() => navigate("/user/shop/cart")}
+          >
             <ShoppingCart className="size-5" />
           </Button>
         </div>
       </div>
 
-      <div className="mx-auto max-w-sm px-4 py-4">
-        <section className="overflow-hidden rounded-[26px] bg-white">
-          <div className="aspect-square bg-[#fff3ee]">
-            <img src={heroImageUrl} alt={product.name} className="h-full w-full object-cover" />
-          </div>
+      <div className="mx-auto max-w-7xl px-4 py-4 md:px-6 md:py-6 xl:px-8">
+        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:items-start lg:gap-6 xl:grid-cols-[minmax(0,1fr)_420px] xl:gap-8">
+          <div className="space-y-4 lg:space-y-5">
+            <section className="overflow-hidden rounded-[26px] bg-white">
+              <div className="aspect-square bg-[#fff3ee]">
+                <img src={heroImageUrl} alt={product.name} className="h-full w-full object-cover" />
+              </div>
 
-          {gallery.length > 1 ? (
-            <div className="flex gap-2 overflow-x-auto px-4 py-4">
-              {gallery.map((image) => (
-                <button
-                  key={image.id}
-                  type="button"
-                  onClick={() => setSelectedImageUrl(image.imageUrl)}
-                  className={cn(
-                    "overflow-hidden rounded-[16px] border transition",
-                    heroImageUrl === image.imageUrl ? "border-[#ff6a3d]" : "border-slate-200",
-                  )}
-                >
-                  <img src={image.imageUrl} alt={product.name} className="h-16 w-16 object-cover" />
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </section>
-
-        <section className="mt-4 rounded-[26px] bg-white px-4 py-5">
-          <div className="flex flex-wrap items-center gap-2">
-            {product.categoryName ? (
-              <Badge variant="secondary" className="rounded-full bg-slate-100 text-slate-700">
-                {product.categoryName}
-              </Badge>
-            ) : null}
-            {product.boundCourses.length > 0 ? (
-              <Badge variant="secondary" className="rounded-full bg-orange-50 text-[#ff6a3d]">
-                含课程内容
-              </Badge>
-            ) : null}
-            {product.requiresShipping ? (
-              <Badge variant="secondary" className="rounded-full bg-amber-50 text-amber-700">
-                支持发货
-              </Badge>
-            ) : null}
-          </div>
-
-          <h1 className="mt-4 text-[28px] font-semibold leading-9 tracking-[-0.04em] text-slate-900">{product.name}</h1>
-          {product.subtitle ? <p className="mt-2 text-sm leading-7 text-slate-500">{product.subtitle}</p> : null}
-
-          <div className="mt-5 flex items-end justify-between gap-4">
-            <div>
-              <p className="text-[32px] font-semibold tracking-[-0.05em] text-[#ff6a3d]">{formatSkuPriceText(selectedSku)}</p>
-              {selectedSku.originalPrice ? <p className="mt-1 text-sm text-slate-400 line-through">{formatShopMoney(selectedSku.originalPrice)}</p> : null}
-            </div>
-            <div className="text-right text-xs leading-6 text-slate-500">
-              <p>已售 {product.salesCount}</p>
-              <p>库存 {selectedSku.stock}</p>
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-4 rounded-[26px] bg-white px-4 py-5">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-slate-900">规格选择</h2>
-            <p className="text-xs text-slate-500">请选择适合你的版本</p>
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2.5">
-            {product.skus.map((sku) => {
-              const disabled = !sku.status || sku.stock <= 0;
-
-              return (
-                <button
-                  key={sku.id}
-                  type="button"
-                  onClick={() => {
-                    if (!disabled) setSelectedSkuId(sku.id);
-                  }}
-                  disabled={disabled}
-                  className={cn(
-                    "min-w-[132px] rounded-[18px] border px-4 py-3 text-left text-sm transition-colors",
-                    sku.id === selectedSku.id ? "border-[#ff6a3d] bg-orange-50 text-[#ff6a3d]" : "border-slate-200 bg-white text-slate-700",
-                    disabled && "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400",
-                  )}
-                >
-                  <p className="font-medium">{sku.name}</p>
-                  <p className="mt-1 text-xs">{sku.stock > 0 ? `${formatSkuPriceText(sku)} · 库存 ${sku.stock}` : "暂时售罄"}</p>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mt-5 flex items-center justify-between rounded-[20px] bg-slate-50 px-4 py-4">
-            <div>
-              <p className="text-sm font-medium text-slate-900">购买数量</p>
-              <p className="mt-1 text-xs text-slate-500">当前规格库存 {selectedSku.stock}</p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setQuantity((current) => Math.max(current - 1, 1))}
-                className="flex size-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-800"
-              >
-                <Minus className="size-4" />
-              </button>
-              <div className="min-w-10 text-center text-base font-semibold text-slate-900">{quantity}</div>
-              <button
-                type="button"
-                onClick={() => setQuantity((current) => Math.min(current + 1, Math.max(selectedSku.stock, 1)))}
-                className="flex size-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-800"
-              >
-                <Plus className="size-4" />
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-4 rounded-[26px] bg-white px-4 py-5">
-          <h2 className="text-base font-semibold text-slate-900">购买说明</h2>
-          <div className="mt-3 space-y-2 text-sm leading-7 text-slate-500">
-            {purchaseHints.map((text) => (
-              <p key={text}>{text}</p>
-            ))}
-          </div>
-        </section>
-
-        {product.boundCourses.length > 0 ? (
-          <section className="mt-4 rounded-[26px] bg-white px-4 py-5">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-base font-semibold text-slate-900">包含内容</h2>
-              <p className="text-xs text-slate-500">{product.boundCourses.length} 项</p>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {product.boundCourses.map((course) => (
-                <div key={course.id} className="rounded-[18px] bg-slate-50 px-4 py-4">
-                  <p className="text-sm font-semibold text-slate-900">{course.name}</p>
-                  {course.description ? <p className="mt-1 text-sm leading-6 text-slate-500">{course.description}</p> : null}
+              {gallery.length > 1 ? (
+                <div className="grid grid-cols-4 gap-2.5 px-4 py-4 sm:grid-cols-5 lg:grid-cols-4 xl:grid-cols-5">
+                  {gallery.map((image) => (
+                    <button
+                      key={image.id}
+                      type="button"
+                      onClick={() => setSelectedImageUrl(image.imageUrl)}
+                      className={cn(
+                        "overflow-hidden rounded-[16px] border bg-[#fff8f4] transition",
+                        heroImageUrl === image.imageUrl ? "border-[#ff6a3d] ring-2 ring-orange-100" : "border-slate-200",
+                      )}
+                    >
+                      <img src={image.imageUrl} alt={product.name} className="aspect-square w-full object-cover" />
+                    </button>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </section>
-        ) : null}
+              ) : null}
+            </section>
 
-        {product.description || product.detailContent ? (
-          <section className="mt-4 rounded-[26px] bg-white px-4 py-5">
-            <h2 className="text-base font-semibold text-slate-900">图文详情</h2>
-            <div className="mt-3 space-y-3 text-sm leading-7 text-slate-500">
-              {product.description ? <p className="whitespace-pre-wrap">{product.description}</p> : null}
-              {product.detailContent ? <p className="whitespace-pre-wrap">{product.detailContent}</p> : null}
-            </div>
-          </section>
-        ) : null}
+            {product.boundCourses.length > 0 ? (
+              <section className="rounded-[26px] bg-white px-4 py-5 md:px-5">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-base font-semibold text-slate-900">包含内容</h2>
+                  <p className="text-xs text-slate-500">{product.boundCourses.length} 项</p>
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {product.boundCourses.map((course) => (
+                    <div key={course.id} className="rounded-[18px] bg-slate-50 px-4 py-4">
+                      <p className="text-sm font-semibold text-slate-900">{course.name}</p>
+                      {course.description ? <p className="mt-1 text-sm leading-6 text-slate-500">{course.description}</p> : null}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            {product.description || product.detailContent ? (
+              <section className="rounded-[26px] bg-white px-4 py-5 md:px-5">
+                <h2 className="text-base font-semibold text-slate-900">图文详情</h2>
+                <div className="mt-3 space-y-3 text-sm leading-7 text-slate-500">
+                  {product.description ? <p className="whitespace-pre-wrap">{product.description}</p> : null}
+                  {product.detailContent ? <p className="whitespace-pre-wrap">{product.detailContent}</p> : null}
+                </div>
+              </section>
+            ) : null}
+
+            {detailImages.length > 0 ? (
+              <section className="overflow-hidden rounded-[26px] bg-white">
+                <div className="px-4 py-5 md:px-5">
+                  <h2 className="text-base font-semibold text-slate-900">详情展示</h2>
+                  <p className="mt-2 text-sm text-slate-500">以下长图展示在商品详情最底部，桌面端会完整铺开展示。</p>
+                </div>
+                <div>
+                  {detailImages.map((image, index) => (
+                    <img
+                      key={image.id || `${image.imageUrl}-${index}`}
+                      src={image.imageUrl}
+                      alt={`${product.name} 详情图 ${index + 1}`}
+                      className="block w-full object-contain"
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </div>
+
+          <div className="mt-4 space-y-4 lg:sticky lg:top-[96px] lg:mt-0">
+            <section className="rounded-[26px] bg-white px-4 py-5 lg:px-5">
+              <div className="flex flex-wrap items-center gap-2">
+                {product.categoryName ? (
+                  <Badge variant="secondary" className="rounded-full bg-slate-100 text-slate-700">
+                    {product.categoryName}
+                  </Badge>
+                ) : null}
+                {product.boundCourses.length > 0 ? (
+                  <Badge variant="secondary" className="rounded-full bg-orange-50 text-[#ff6a3d]">
+                    含课程内容
+                  </Badge>
+                ) : null}
+                {product.requiresShipping ? (
+                  <Badge variant="secondary" className="rounded-full bg-amber-50 text-amber-700">
+                    支持发货
+                  </Badge>
+                ) : null}
+              </div>
+
+              <h1 className="mt-4 text-[28px] font-semibold leading-9 tracking-[-0.04em] text-slate-900 lg:text-[34px] lg:leading-[1.15]">
+                {product.name}
+              </h1>
+              {product.subtitle ? <p className="mt-2 text-sm leading-7 text-slate-500">{product.subtitle}</p> : null}
+
+              <div className="mt-5 flex items-end justify-between gap-4 rounded-[22px] bg-[#fff8f4] px-4 py-4">
+                <div>
+                  <p className="text-[32px] font-semibold tracking-[-0.05em] text-[#ff6a3d]">{formatSkuPriceText(selectedSku)}</p>
+                  {selectedSku.originalPrice ? (
+                    <p className="mt-1 text-sm text-slate-400 line-through">{formatShopMoney(selectedSku.originalPrice)}</p>
+                  ) : null}
+                </div>
+                <div className="text-right text-xs leading-6 text-slate-500">
+                  <p>已售 {product.salesCount}</p>
+                  <p>库存 {selectedSku.stock}</p>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[26px] bg-white px-4 py-5 lg:px-5">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-base font-semibold text-slate-900">规格选择</h2>
+                <p className="text-xs text-slate-500">请选择适合你的版本</p>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2.5">
+                {product.skus.map((sku) => {
+                  const disabled = !sku.status || sku.stock <= 0;
+
+                  return (
+                    <button
+                      key={sku.id}
+                      type="button"
+                      onClick={() => {
+                        if (!disabled) setSelectedSkuId(sku.id);
+                      }}
+                      disabled={disabled}
+                      className={cn(
+                        "min-w-[132px] rounded-[18px] border px-4 py-3 text-left text-sm transition-colors",
+                        sku.id === selectedSku.id ? "border-[#ff6a3d] bg-orange-50 text-[#ff6a3d]" : "border-slate-200 bg-white text-slate-700",
+                        disabled && "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400",
+                      )}
+                    >
+                      <p className="font-medium">{sku.name}</p>
+                      <p className="mt-1 text-xs">{sku.stock > 0 ? `${formatSkuPriceText(sku)} · 库存 ${sku.stock}` : "暂时售罄"}</p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-5 flex items-center justify-between rounded-[20px] bg-slate-50 px-4 py-4">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">购买数量</p>
+                  <p className="mt-1 text-xs text-slate-500">当前规格库存 {selectedSku.stock}</p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((current) => Math.max(current - 1, 1))}
+                    className="flex size-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-800"
+                  >
+                    <Minus className="size-4" />
+                  </button>
+                  <div className="min-w-10 text-center text-base font-semibold text-slate-900">{quantity}</div>
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((current) => Math.min(current + 1, Math.max(selectedSku.stock, 1)))}
+                    className="flex size-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-800"
+                  >
+                    <Plus className="size-4" />
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[26px] bg-white px-4 py-5 lg:px-5">
+              <h2 className="text-base font-semibold text-slate-900">购买说明</h2>
+              <div className="mt-3 space-y-2 text-sm leading-7 text-slate-500">
+                {purchaseHints.map((text) => (
+                  <p key={text}>{text}</p>
+                ))}
+              </div>
+            </section>
+
+            <section className="hidden rounded-[26px] bg-white px-5 py-5 lg:block">
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-[30px] font-semibold tracking-[-0.05em] text-[#ff6a3d]">{formatSkuPriceText(selectedSku)}</p>
+                  <p className="mt-2 text-sm text-slate-500">
+                    已选 {selectedSku.name} · {quantity} 件
+                  </p>
+                </div>
+                <div className="text-right text-xs leading-6 text-slate-500">
+                  <p>已售 {product.salesCount}</p>
+                  <p>库存 {selectedSku.stock}</p>
+                </div>
+              </div>
+
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-12 rounded-full border-[#ff6a3d] text-[#ff6a3d] hover:bg-orange-50 hover:text-[#ff6a3d]"
+                  disabled={submitting}
+                  onClick={() => void handleAddToCart()}
+                >
+                  加购物车
+                </Button>
+                <Button
+                  type="button"
+                  className="h-12 rounded-full bg-[#ff6a3d] text-white hover:bg-[#f65a28]"
+                  disabled={submitting}
+                  onClick={handleBuyNow}
+                >
+                  立即购买
+                </Button>
+              </div>
+            </section>
+          </div>
+        </div>
       </div>
 
-      <div className="fixed inset-x-0 bottom-16 z-30 border-t border-slate-200/80 bg-white/96 backdrop-blur">
+      <div className="fixed inset-x-0 bottom-16 z-30 border-t border-slate-200/80 bg-white/96 backdrop-blur lg:hidden">
         <div className="mx-auto flex max-w-sm items-center gap-3 px-4 py-3">
           <div className="min-w-0 flex-1">
             <p className="text-[22px] font-semibold tracking-[-0.04em] text-[#ff6a3d]">{formatSkuPriceText(selectedSku)}</p>

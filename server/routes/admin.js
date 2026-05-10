@@ -4,10 +4,11 @@ import { randomUUID } from "node:crypto";
 import { extname } from "node:path";
 import { prisma } from "../lib/prisma.js";
 import { ok, fail } from "../lib/response.js";
-import { requireAdminAuth } from "../middleware/auth.js";
+import { requireAdminAuth, requireAdminRoles } from "../middleware/auth.js";
 import { serializeAudio, serializeCourse, serializeDevice, serializeFolder, serializeTag, serializeUser } from "../lib/serializers.js";
 import { formatDateTime } from "../lib/time.js";
 import { hashPassword } from "../lib/auth.js";
+import { normalizeAdminRole } from "../lib/admin-role.js";
 import { cleanupObjectIfReplaced, cleanupObjectIfUnused } from "../lib/assets.js";
 import {
   cleanupAudioProcessingSource,
@@ -34,6 +35,7 @@ import { extractScriptFromFile } from "../lib/script-file.js";
 import { isValidPhone, normalizePhone, validatePasswordOrThrow, validatePhoneOrThrow } from "../lib/security.js";
 import { extractObjectKeyFromUrl, getReadableObjectUrl, uploadBuffer } from "../lib/upload.js";
 import { getDisplayNameFromUpload } from "../lib/text.js";
+import { normalizePortalConfig } from "../../src/shared/portal-config.js";
 
 const DEFAULT_USER_PASSWORD = "den2024";
 const DEVICE_LIMIT = 5;
@@ -203,6 +205,15 @@ const createPendingAudioRecord = async ({ fileName, folderId, scriptText, mimeTy
 export const adminRouter = Router();
 
 adminRouter.use(requireAdminAuth);
+adminRouter.use("/admins", requireAdminRoles("super_admin"));
+adminRouter.use("/users", requireAdminRoles("super_admin", "user_admin"));
+adminRouter.use("/devices", requireAdminRoles("super_admin", "user_admin"));
+adminRouter.use("/tags", requireAdminRoles("super_admin", "operations_admin"));
+adminRouter.use("/library", requireAdminRoles("super_admin", "operations_admin"));
+adminRouter.use("/logs", requireAdminRoles("super_admin", "operations_admin"));
+adminRouter.use("/system-config", requireAdminRoles("super_admin", "operations_admin"));
+adminRouter.use("/uploads", requireAdminRoles("super_admin", "operations_admin"));
+adminRouter.use("/progress", requireAdminRoles("super_admin", "operations_admin"));
 
 const serializeProgress = (progress) => ({
   userId: progress.userId,
@@ -217,6 +228,7 @@ const serializeAdminAccount = (admin) => ({
   id: admin.id,
   account: admin.account,
   name: admin.name,
+  role: admin.role ?? "super_admin",
   createdAt: formatDateTime(admin.createdAt),
   updatedAt: formatDateTime(admin.updatedAt),
 });
@@ -224,6 +236,35 @@ const serializeAdminAccount = (admin) => ({
 const toDate = (value) => {
   if (!value) return new Date();
   return value instanceof Date ? value : new Date(value);
+};
+
+const normalizeStoredPortalConfig = (rawPortalConfig, customerServiceUrl = "") => {
+  const portalConfig = normalizePortalConfig(rawPortalConfig, {
+    customerServiceUrl,
+  });
+
+  portalConfig.seo.ogImageUrl = getReadableObjectUrl({
+    objectKey: portalConfig.seo.ogImageObjectKey ?? "",
+    fallbackUrl: portalConfig.seo.ogImageUrl ?? "",
+  });
+  portalConfig.memberHome.bannerImageUrl = getReadableObjectUrl({
+    objectKey: portalConfig.memberHome.bannerImageObjectKey ?? "",
+    fallbackUrl: portalConfig.memberHome.bannerImageUrl ?? "",
+  });
+  portalConfig.founder.imageUrl = getReadableObjectUrl({
+    objectKey: portalConfig.founder.imageObjectKey ?? "",
+    fallbackUrl: portalConfig.founder.imageUrl ?? "",
+  });
+
+  return portalConfig;
+};
+
+const parsePortalConfigJson = (portalConfigJson, customerServiceUrl = "") => {
+  try {
+    return normalizeStoredPortalConfig(portalConfigJson ? JSON.parse(portalConfigJson) : null, customerServiceUrl);
+  } catch {
+    return normalizeStoredPortalConfig(null, customerServiceUrl);
+  }
 };
 
 const serializeSystemConfig = (config) => ({
@@ -239,6 +280,7 @@ const serializeSystemConfig = (config) => ({
     fallbackUrl: config?.playerDiscImageUrl ?? "",
   }),
   playerDiscImageObjectKey: config?.playerDiscImageObjectKey ?? "",
+  portalConfig: parsePortalConfigJson(config?.portalConfigJson ?? null, config?.customerServiceUrl ?? ""),
 });
 
 const toStringArray = (value) =>
@@ -609,7 +651,40 @@ const createCoursePermissionLinks = async (userId, courseIds) => {
   });
 };
 
-const createOrAppendUser = async (phone, courseIds, defaultPasswordHash) => {
+const getMockExamPaperTitlesByIds = async (paperIds = []) => {
+  const normalizedPaperIds = toStringArray(paperIds);
+  if (normalizedPaperIds.length === 0) return [];
+
+  const papers = await prisma.mockExamPaper.findMany({
+    where: {
+      id: {
+        in: normalizedPaperIds,
+      },
+    },
+    select: {
+      id: true,
+      title: true,
+    },
+  });
+
+  const titleMap = new Map(papers.map((paper) => [paper.id, paper.title]));
+  return normalizedPaperIds.map((paperId) => titleMap.get(paperId)).filter(Boolean);
+};
+
+const createMockExamPermissionLinks = async (userId, paperIds) => {
+  const normalizedPaperIds = toStringArray(paperIds);
+  if (normalizedPaperIds.length === 0) return;
+
+  await prisma.userMockExamPermission.createMany({
+    data: normalizedPaperIds.map((paperId) => ({
+      userId,
+      paperId,
+    })),
+    skipDuplicates: true,
+  });
+};
+
+const createOrAppendUser = async (phone, courseIds, mockExamPaperIds, defaultPasswordHash) => {
   const normalizedPhone = validatePhoneOrThrow(phone);
   const existed = await prisma.user.findUnique({
     where: { phone: normalizedPhone },
@@ -617,6 +692,7 @@ const createOrAppendUser = async (phone, courseIds, defaultPasswordHash) => {
 
   if (existed) {
     await createCoursePermissionLinks(existed.id, courseIds);
+    await createMockExamPermissionLinks(existed.id, mockExamPaperIds);
     return { isNew: false, userId: existed.id, phone: existed.phone };
   }
 
@@ -628,11 +704,13 @@ const createOrAppendUser = async (phone, courseIds, defaultPasswordHash) => {
     },
   });
   await createCoursePermissionLinks(user.id, courseIds);
+  await createMockExamPermissionLinks(user.id, mockExamPaperIds);
   return { isNew: true, userId: user.id, phone: user.phone };
 };
 
-const batchCreateOrAppendUsers = async (phones, courseIds) => {
+const batchCreateOrAppendUsers = async (phones, courseIds, mockExamPaperIds) => {
   const normalizedCourseIds = toStringArray(courseIds);
+  const normalizedMockExamPaperIds = toStringArray(mockExamPaperIds);
   const uniquePhones = [...new Set((Array.isArray(phones) ? phones : [phones]).map((item) => normalizePhone(item)).filter(Boolean))];
   const failed = [];
   const validPhones = [];
@@ -715,6 +793,18 @@ const batchCreateOrAppendUsers = async (phones, courseIds) => {
     });
   }
 
+  if (normalizedMockExamPaperIds.length > 0 && allUsers.length > 0) {
+    await prisma.userMockExamPermission.createMany({
+      data: allUsers.flatMap((user) =>
+        normalizedMockExamPaperIds.map((paperId) => ({
+          userId: user.id,
+          paperId,
+        })),
+      ),
+      skipDuplicates: true,
+    });
+  }
+
   for (const phone of newPhones) {
     if (!knownPhones.has(phone)) {
       failed.push(phone);
@@ -728,18 +818,23 @@ const batchCreateOrAppendUsers = async (phones, courseIds) => {
   };
 };
 
-adminRouter.get("/admins", async (_req, res) => {
-  const admins = await prisma.admin.findMany({
-    orderBy: { createdAt: "desc" },
-  });
+adminRouter.get("/admins", async (_req, res, next) => {
+  try {
+    const admins = await prisma.admin.findMany({
+      orderBy: { createdAt: "desc" },
+    });
 
-  return ok(res, admins.map(serializeAdminAccount));
+    return ok(res, admins.map(serializeAdminAccount));
+  } catch (error) {
+    return next(error);
+  }
 });
 
 adminRouter.post("/admins", async (req, res) => {
   const account = `${req.body?.account ?? ""}`.trim();
   const name = `${req.body?.name ?? ""}`.trim();
   const password = `${req.body?.password ?? ""}`.trim();
+  const role = normalizeAdminRole(req.body?.role, "operations_admin");
 
   if (!account || !name || !password) {
     return fail(res, "请填写管理员账号、姓名和密码", 400);
@@ -751,6 +846,7 @@ adminRouter.post("/admins", async (req, res) => {
       data: {
         account,
         name,
+        role,
         passwordHash: await hashPassword(validatedPassword),
       },
     });
@@ -762,6 +858,7 @@ adminRouter.post("/admins", async (req, res) => {
       entityName: admin.account,
       detail: {
         name: admin.name,
+        role: admin.role,
       },
     });
 
@@ -779,9 +876,14 @@ adminRouter.patch("/admins/:adminId", async (req, res) => {
   const { adminId } = req.params;
   const account = `${req.body?.account ?? ""}`.trim();
   const name = `${req.body?.name ?? ""}`.trim();
+  const role = normalizeAdminRole(req.body?.role, "operations_admin");
 
   if (!account || !name) {
     return fail(res, "请填写管理员账号和姓名", 400);
+  }
+
+  if (req.auth?.adminId === adminId && (role === "review_admin" || role === "user_admin")) {
+    return fail(res, "当前登录的超级管理员不能把自己改成仅批改权限", 400);
   }
 
   try {
@@ -790,6 +892,7 @@ adminRouter.patch("/admins/:adminId", async (req, res) => {
       data: {
         account,
         name,
+        role,
       },
     });
 
@@ -800,6 +903,7 @@ adminRouter.patch("/admins/:adminId", async (req, res) => {
       entityName: admin.account,
       detail: {
         name: admin.name,
+        role: admin.role,
       },
     });
 
@@ -1037,6 +1141,7 @@ adminRouter.get("/users", async (req, res) => {
       where,
       include: {
         permissions: true,
+        mockExamPermissions: true,
         _count: {
           select: {
             devices: true,
@@ -1061,14 +1166,84 @@ adminRouter.get("/users", async (req, res) => {
   });
 });
 
+adminRouter.get("/users/mock-exam-papers", async (_req, res) => {
+  const papers = await prisma.mockExamPaper.findMany({
+    where: {
+      status: "published",
+    },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+    select: {
+      id: true,
+      title: true,
+      subtitle: true,
+      paperType: true,
+      year: true,
+      phase: true,
+      status: true,
+      reviewEnabled: true,
+    },
+  });
+
+  return ok(
+    res,
+    papers.map((paper) => ({
+      id: paper.id,
+      title: paper.title,
+      subtitle: paper.subtitle ?? "",
+      paperType: paper.paperType === "subjective" ? "subjective" : "objective",
+      paperTypeLabel: paper.paperType === "subjective" ? "主观题" : "客观题",
+      year: Number(paper.year ?? 0),
+      phase: paper.phase ?? "",
+      status: paper.status,
+      reviewEnabled: Boolean(paper.reviewEnabled),
+    })),
+  );
+});
+
+adminRouter.get("/mock-exam-papers", async (_req, res) => {
+  const papers = await prisma.mockExamPaper.findMany({
+    where: {
+      status: "published",
+    },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+    select: {
+      id: true,
+      title: true,
+      subtitle: true,
+      paperType: true,
+      year: true,
+      phase: true,
+      status: true,
+      reviewEnabled: true,
+    },
+  });
+
+  return ok(
+    res,
+    papers.map((paper) => ({
+      id: paper.id,
+      title: paper.title,
+      subtitle: paper.subtitle ?? "",
+      paperType: paper.paperType === "subjective" ? "subjective" : "objective",
+      paperTypeLabel: paper.paperType === "subjective" ? "主观题" : "客观题",
+      year: Number(paper.year ?? 0),
+      phase: paper.phase ?? "",
+      status: paper.status,
+      reviewEnabled: Boolean(paper.reviewEnabled),
+    })),
+  );
+});
+
 adminRouter.post("/users", async (req, res) => {
-  const { phone, courseIds = [] } = req.body ?? {};
+  const { phone, courseIds = [], mockExamPaperIds = [] } = req.body ?? {};
   if (!phone) return fail(res, "请输入手机号", 400);
 
   const normalizedCourseIds = toStringArray(courseIds);
+  const normalizedMockExamPaperIds = toStringArray(mockExamPaperIds);
   const normalizedPhone = validatePhoneOrThrow(phone);
-  const result = await createOrAppendUser(normalizedPhone, normalizedCourseIds);
+  const result = await createOrAppendUser(normalizedPhone, normalizedCourseIds, normalizedMockExamPaperIds);
   const courseNames = await getCourseNamesByIds(normalizedCourseIds);
+  const mockExamPaperTitles = await getMockExamPaperTitlesByIds(normalizedMockExamPaperIds);
 
   void notifyMarkdownSafely(
     `user-create:${result.userId}`,
@@ -1093,16 +1268,18 @@ adminRouter.post("/users", async (req, res) => {
     entityName: result.phone,
     detail: {
       courseNames,
+      mockExamPaperTitles,
     },
   });
   return ok(res, result, result.isNew ? "用户已新增" : "已为现有用户追加课程权限");
 });
 
 adminRouter.post("/users/batch-import", async (req, res) => {
-  const { phones = [], courseIds = [] } = req.body ?? {};
+  const { phones = [], courseIds = [], mockExamPaperIds = [] } = req.body ?? {};
   const normalizedPhones = [...new Set((phones || []).map((item) => `${item}`.trim()).filter(Boolean))];
   const normalizedCourseIds = toStringArray(courseIds);
-  const { createdCount, appendedCount, failed } = await batchCreateOrAppendUsers(normalizedPhones, normalizedCourseIds);
+  const normalizedMockExamPaperIds = toStringArray(mockExamPaperIds);
+  const { createdCount, appendedCount, failed } = await batchCreateOrAppendUsers(normalizedPhones, normalizedCourseIds, normalizedMockExamPaperIds);
 
   void notifyMarkdownSafely(
     "user-batch-import",
@@ -1125,6 +1302,7 @@ adminRouter.post("/users/batch-import", async (req, res) => {
       appendedCount,
       failedCount: failed.length,
       courseNames: await getCourseNamesByIds(normalizedCourseIds),
+      mockExamPaperTitles: await getMockExamPaperTitlesByIds(normalizedMockExamPaperIds),
     },
   });
 
@@ -1133,8 +1311,9 @@ adminRouter.post("/users/batch-import", async (req, res) => {
 
 adminRouter.post("/users/batch-import-excel", uploadExcel.single("file"), async (req, res) => {
   const file = req.file;
-  const { courseIds = [] } = req.body ?? {};
+  const { courseIds = [], mockExamPaperIds = [] } = req.body ?? {};
   const normalizedCourseIds = toStringArray(courseIds);
+  const normalizedMockExamPaperIds = toStringArray(mockExamPaperIds);
   if (!file) return fail(res, "请选择 Excel 文件", 400);
 
   let normalizedPhones = [];
@@ -1151,7 +1330,7 @@ adminRouter.post("/users/batch-import-excel", uploadExcel.single("file"), async 
     return fail(res, "Excel 中未读取到手机号", 400);
   }
 
-  const { createdCount, appendedCount, failed } = await batchCreateOrAppendUsers(normalizedPhones, normalizedCourseIds);
+  const { createdCount, appendedCount, failed } = await batchCreateOrAppendUsers(normalizedPhones, normalizedCourseIds, normalizedMockExamPaperIds);
 
   void notifyMarkdownSafely(
     "user-batch-import-excel",
@@ -1175,6 +1354,7 @@ adminRouter.post("/users/batch-import-excel", uploadExcel.single("file"), async 
       appendedCount,
       failedCount: failed.length,
       courseNames: await getCourseNamesByIds(normalizedCourseIds),
+      mockExamPaperTitles: await getMockExamPaperTitlesByIds(normalizedMockExamPaperIds),
     },
   });
 
@@ -1182,7 +1362,7 @@ adminRouter.post("/users/batch-import-excel", uploadExcel.single("file"), async 
 });
 
 adminRouter.patch("/users/:userId/permissions", async (req, res) => {
-  const { addCourses = [], removeCourses = [] } = req.body ?? {};
+  const { addCourses = [], removeCourses = [], addMockExamPapers = [], removeMockExamPapers = [] } = req.body ?? {};
   const { userId } = req.params;
   const targetUser = await prisma.user.findUnique({
     where: { id: userId },
@@ -1190,11 +1370,20 @@ adminRouter.patch("/users/:userId/permissions", async (req, res) => {
   });
 
   await createCoursePermissionLinks(userId, addCourses);
+  await createMockExamPermissionLinks(userId, addMockExamPapers);
   if (removeCourses.length > 0) {
     await prisma.userCoursePermission.deleteMany({
       where: {
         userId,
         courseId: { in: removeCourses },
+      },
+    });
+  }
+  if (removeMockExamPapers.length > 0) {
+    await prisma.userMockExamPermission.deleteMany({
+      where: {
+        userId,
+        paperId: { in: removeMockExamPapers },
       },
     });
   }
@@ -1207,6 +1396,8 @@ adminRouter.patch("/users/:userId/permissions", async (req, res) => {
     detail: {
       addedCourses: await getCourseNamesByIds(addCourses),
       removedCourses: await getCourseNamesByIds(removeCourses),
+      addedMockExamPapers: await getMockExamPaperTitlesByIds(addMockExamPapers),
+      removedMockExamPapers: await getMockExamPaperTitlesByIds(removeMockExamPapers),
     },
   });
 
@@ -1214,9 +1405,10 @@ adminRouter.patch("/users/:userId/permissions", async (req, res) => {
 });
 
 adminRouter.post("/users/batch-permissions", async (req, res) => {
-  const { userIds = [], courseIds = [] } = req.body ?? {};
+  const { userIds = [], courseIds = [], mockExamPaperIds = [] } = req.body ?? {};
   const normalizedUserIds = toStringArray(userIds);
   const normalizedCourseIds = toStringArray(courseIds);
+  const normalizedMockExamPaperIds = toStringArray(mockExamPaperIds);
 
   if (normalizedUserIds.length > 0 && normalizedCourseIds.length > 0) {
     await prisma.userCoursePermission.createMany({
@@ -1229,6 +1421,17 @@ adminRouter.post("/users/batch-permissions", async (req, res) => {
       skipDuplicates: true,
     });
   }
+  if (normalizedUserIds.length > 0 && normalizedMockExamPaperIds.length > 0) {
+    await prisma.userMockExamPermission.createMany({
+      data: normalizedUserIds.flatMap((userId) =>
+        normalizedMockExamPaperIds.map((paperId) => ({
+          userId,
+          paperId,
+        })),
+      ),
+      skipDuplicates: true,
+    });
+  }
   recordAdminAction(req, {
     action: "user.permission.batch_add",
     entityType: "user",
@@ -1236,6 +1439,7 @@ adminRouter.post("/users/batch-permissions", async (req, res) => {
     detail: {
       userCount: normalizedUserIds.length,
       courseNames: await getCourseNamesByIds(normalizedCourseIds),
+      mockExamPaperTitles: await getMockExamPaperTitlesByIds(normalizedMockExamPaperIds),
     },
   });
   return ok(res, { success: true }, "批量加课完成");
@@ -1391,15 +1595,17 @@ adminRouter.delete("/users/:userId/devices", async (req, res) => {
   return ok(res, { success: true }, "设备已清空");
 });
 
-adminRouter.get("/courses", async (_req, res) => {
+adminRouter.get("/courses", requireAdminRoles("super_admin", "operations_admin", "user_admin"), async (_req, res) => {
   return ok(res, await getCourseList());
 });
 
-adminRouter.get("/courses/:courseId/detail", async (req, res) => {
+adminRouter.get("/courses/:courseId/detail", requireAdminRoles("super_admin", "operations_admin"), async (req, res) => {
   const detail = await getCourseDetailForAdmin(req.params.courseId);
   if (!detail) return fail(res, "课程不存在", 404);
   return ok(res, detail);
 });
+
+adminRouter.use("/courses", requireAdminRoles("super_admin", "operations_admin"));
 
 adminRouter.post("/courses", async (req, res) => {
   const { name, cover, coverObjectKey, description, status, openTime, tags = [] } = req.body ?? {};
@@ -2082,10 +2288,12 @@ adminRouter.get("/system-config", async (_req, res) => {
 });
 
 adminRouter.patch("/system-config", async (req, res) => {
-  const { webhookUrl, customerServiceUrl, brandLogoUrl, brandLogoObjectKey, playerDiscImageUrl, playerDiscImageObjectKey } = req.body ?? {};
+  const { webhookUrl, customerServiceUrl, brandLogoUrl, brandLogoObjectKey, playerDiscImageUrl, playerDiscImageObjectKey, portalConfig } = req.body ?? {};
   const current = await prisma.systemConfig.findUnique({
     where: { id: 1 },
   });
+  const normalizedPortalConfig = portalConfig !== undefined ? normalizePortalConfig(portalConfig) : null;
+  const previousPortalConfig = parsePortalConfigJson(current?.portalConfigJson ?? null, current?.customerServiceUrl ?? "");
 
   const config = await prisma.systemConfig.upsert({
     where: { id: 1 },
@@ -2097,6 +2305,10 @@ adminRouter.patch("/system-config", async (req, res) => {
       playerDiscImageUrl: playerDiscImageUrl !== undefined ? playerDiscImageUrl || null : current?.playerDiscImageUrl ?? null,
       playerDiscImageObjectKey:
         playerDiscImageObjectKey !== undefined ? playerDiscImageObjectKey || null : current?.playerDiscImageObjectKey ?? null,
+      portalConfigJson:
+        portalConfig !== undefined
+          ? JSON.stringify(normalizedPortalConfig)
+          : current?.portalConfigJson ?? null,
     },
     create: {
       id: 1,
@@ -2106,8 +2318,10 @@ adminRouter.patch("/system-config", async (req, res) => {
       brandLogoObjectKey: brandLogoObjectKey || null,
       playerDiscImageUrl: playerDiscImageUrl || null,
       playerDiscImageObjectKey: playerDiscImageObjectKey || null,
+      portalConfigJson: JSON.stringify(normalizedPortalConfig ?? normalizePortalConfig(null)),
     },
   });
+  const nextPortalConfig = parsePortalConfigJson(config.portalConfigJson ?? null, config.customerServiceUrl ?? "");
 
   cleanupReplacedObject({
     previousObjectKey: current?.brandLogoObjectKey ?? "",
@@ -2116,6 +2330,18 @@ adminRouter.patch("/system-config", async (req, res) => {
   cleanupReplacedObject({
     previousObjectKey: current?.playerDiscImageObjectKey ?? "",
     nextObjectKey: config.playerDiscImageObjectKey ?? "",
+  });
+  cleanupReplacedObject({
+    previousObjectKey: previousPortalConfig.seo.ogImageObjectKey ?? "",
+    nextObjectKey: nextPortalConfig.seo.ogImageObjectKey ?? "",
+  });
+  cleanupReplacedObject({
+    previousObjectKey: previousPortalConfig.memberHome.bannerImageObjectKey ?? "",
+    nextObjectKey: nextPortalConfig.memberHome.bannerImageObjectKey ?? "",
+  });
+  cleanupReplacedObject({
+    previousObjectKey: previousPortalConfig.founder.imageObjectKey ?? "",
+    nextObjectKey: nextPortalConfig.founder.imageObjectKey ?? "",
   });
   recordAdminAction(req, {
     action: "system.config.update",
@@ -2127,6 +2353,10 @@ adminRouter.patch("/system-config", async (req, res) => {
       hasWebhookUrl: Boolean(config.webhookUrl),
       hasBrandLogo: Boolean(config.brandLogoObjectKey || config.brandLogoUrl),
       hasPlayerDiscImage: Boolean(config.playerDiscImageObjectKey || config.playerDiscImageUrl),
+      hasPortalConfig: Boolean(config.portalConfigJson),
+      hasPortalShareImage: Boolean(nextPortalConfig.seo.ogImageObjectKey || nextPortalConfig.seo.ogImageUrl),
+      hasMemberHomeBanner: Boolean(nextPortalConfig.memberHome.bannerImageObjectKey || nextPortalConfig.memberHome.bannerImageUrl),
+      hasFounderImage: Boolean(nextPortalConfig.founder.imageObjectKey || nextPortalConfig.founder.imageUrl),
     },
   });
 

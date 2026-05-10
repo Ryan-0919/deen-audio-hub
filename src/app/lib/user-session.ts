@@ -1,6 +1,7 @@
 const USER_TOKEN_KEY = "userToken";
 const USER_ID_KEY = "userId";
 const USER_PHONE_KEY = "userPhone";
+const USER_DISPLAY_NAME_KEY = "userDisplayName";
 const USER_DEVICE_KEY = "userDeviceKey";
 
 const USER_SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
@@ -119,11 +120,47 @@ const createRandomDeviceKey = () => {
   return `device-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 };
 
+const isManagedDisplayName = (value: string) =>
+  /^(?:den|得宝|å¾—å®)_/i.test(value) ||
+  value === "得宝用户" ||
+  value === "den用户" ||
+  value === "å¾—å®ç”¨æˆ·";
+
+export const buildDefaultUserDisplayName = (phone: string) => {
+  const digits = `${phone ?? ""}`.replace(/\D/g, "");
+  if (digits.length >= 6) {
+    return `得宝_${digits.slice(-6)}`;
+  }
+  if (digits) {
+    return `得宝_${digits}`;
+  }
+  return "得宝用户";
+};
+
 export const getUserToken = () => readPersistedValue(USER_TOKEN_KEY);
 
 export const getUserId = () => readPersistedValue(USER_ID_KEY);
 
 export const getUserPhone = () => readPersistedValue(USER_PHONE_KEY);
+
+export const getUserDisplayName = () => {
+  const phone = getUserPhone();
+  const defaultDisplayName = buildDefaultUserDisplayName(phone);
+  const storedDisplayName = readPersistedValue(USER_DISPLAY_NAME_KEY);
+
+  if (!storedDisplayName) {
+    return defaultDisplayName;
+  }
+
+  if (isManagedDisplayName(storedDisplayName)) {
+    if (storedDisplayName !== defaultDisplayName) {
+      persistValue(USER_DISPLAY_NAME_KEY, defaultDisplayName);
+    }
+    return defaultDisplayName;
+  }
+
+  return storedDisplayName;
+};
 
 export const getUserDeviceKey = () => readPersistedValue(USER_DEVICE_KEY);
 
@@ -136,14 +173,26 @@ export const ensureUserDeviceKey = () => {
   return nextKey;
 };
 
-export const saveUserSession = ({ token, userId, phone }: { token: string; userId: string; phone: string }) => {
+export const saveUserSession = ({
+  token,
+  userId,
+  phone,
+  displayName,
+}: {
+  token: string;
+  userId: string;
+  phone: string;
+  displayName?: string;
+}) => {
   persistValue(USER_TOKEN_KEY, token);
   persistValue(USER_ID_KEY, userId);
   persistValue(USER_PHONE_KEY, phone);
+  persistValue(USER_DISPLAY_NAME_KEY, displayName || buildDefaultUserDisplayName(phone));
 };
 
 export const clearUserSession = () => {
   persistValue(USER_TOKEN_KEY, "");
   persistValue(USER_ID_KEY, "");
   persistValue(USER_PHONE_KEY, "");
+  persistValue(USER_DISPLAY_NAME_KEY, "");
 };

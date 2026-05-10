@@ -21,9 +21,117 @@ const lawEntryContentSelect = {
   content: true,
 };
 
+const lawEntryOperationSelect = {
+  sourceLawId: true,
+  isPublished: true,
+  isPinned: true,
+  manualSortOrder: true,
+  tagsJson: true,
+  operatorNote: true,
+  customTitle: true,
+  updatedAt: true,
+};
+
+const parseJsonArray = (value) => {
+  try {
+    const parsed = JSON.parse(value ?? "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_error) {
+    return [];
+  }
+};
+
+const parseLawOperationTags = (value) =>
+  parseJsonArray(value)
+    .map((item) => normalizeDisplayText(item))
+    .filter(Boolean);
+
+const parseLawTagsInput = (value) => {
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeDisplayText(item)).filter(Boolean);
+  }
+
+  return `${value ?? ""}`
+    .split(/[\n,，、]/)
+    .map((item) => normalizeDisplayText(item))
+    .filter(Boolean);
+};
+
+const normalizeLawOperation = (operation) => ({
+  sourceLawId: Number(operation?.sourceLawId ?? 0),
+  isPublished: operation?.isPublished !== false,
+  isPinned: operation?.isPinned === true,
+  manualSortOrder: Number.isFinite(Number(operation?.manualSortOrder)) ? Math.max(0, Number(operation.manualSortOrder)) : 0,
+  tags: parseLawOperationTags(operation?.tagsJson),
+  operatorNote: normalizeDisplayText(operation?.operatorNote ?? ""),
+  customTitle: normalizeDisplayText(operation?.customTitle ?? ""),
+  updatedAt: operation?.updatedAt ?? null,
+});
+
+const buildLawOperationMap = async (sourceLawIds = []) => {
+  if (!Array.isArray(sourceLawIds) || sourceLawIds.length === 0) {
+    return new Map();
+  }
+
+  const operations = await prisma.lawEntryOperation.findMany({
+    where: {
+      sourceLawId: {
+        in: Array.from(new Set(sourceLawIds.map((item) => Number(item)).filter((item) => Number.isFinite(item) && item > 0))),
+      },
+    },
+    select: lawEntryOperationSelect,
+  });
+
+  return new Map(operations.map((item) => [item.sourceLawId, normalizeLawOperation(item)]));
+};
+
+const hydrateLawEntry = (entry, operationMap) => {
+  const operation = normalizeLawOperation(operationMap?.get(entry.sourceLawId) ?? null);
+  const displayTitle = normalizeDisplayText(operation.customTitle || entry.title);
+
+  return {
+    ...entry,
+    displayTitle,
+    isPublished: operation.isPublished,
+    isPinned: operation.isPinned,
+    manualSortOrder: operation.manualSortOrder,
+    tags: operation.tags,
+    operatorNote: operation.operatorNote,
+    customTitle: operation.customTitle,
+    operationUpdatedAt: operation.updatedAt,
+  };
+};
+
+const hydrateLawEntries = async (entries = []) => {
+  const operationMap = await buildLawOperationMap(entries.map((item) => item.sourceLawId));
+  return entries.map((entry) => hydrateLawEntry(entry, operationMap));
+};
+
+const compareManualSortOrder = (left, right) => {
+  const leftValue = Number(left?.manualSortOrder ?? 0);
+  const rightValue = Number(right?.manualSortOrder ?? 0);
+  const leftRank = leftValue > 0 ? leftValue : Number.MAX_SAFE_INTEGER;
+  const rightRank = rightValue > 0 ? rightValue : Number.MAX_SAFE_INTEGER;
+
+  if (leftRank !== rightRank) {
+    return leftRank - rightRank;
+  }
+
+  return 0;
+};
+
 const sortLawEntries = (left, right) => {
   if (left.topCategoryId !== right.topCategoryId) {
     return left.topCategoryId - right.topCategoryId;
+  }
+
+  if (left.isPinned !== right.isPinned) {
+    return left.isPinned ? -1 : 1;
+  }
+
+  const manualSortDelta = compareManualSortOrder(left, right);
+  if (manualSortDelta !== 0) {
+    return manualSortDelta;
   }
 
   if ((left.position ?? 0) !== (right.position ?? 0)) {
@@ -33,18 +141,10 @@ const sortLawEntries = (left, right) => {
   return (left.sourceLawId ?? 0) - (right.sourceLawId ?? 0);
 };
 
-export const parseLawPathTitles = (value) => {
-  try {
-    const parsed = JSON.parse(value ?? "[]");
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed.map((item) => normalizeDisplayText(item)).filter(Boolean);
-  } catch (_error) {
-    return [];
-  }
-};
+export const parseLawPathTitles = (value) =>
+  parseJsonArray(value)
+    .map((item) => normalizeDisplayText(item))
+    .filter(Boolean);
 
 export const buildLawPathNodeId = (pathLabels = []) => `path:${pathLabels.map((item) => encodeURIComponent(item)).join("/")}`;
 
@@ -130,7 +230,7 @@ export const buildLawTree = (entries = []) => {
 
     currentChildren.push({
       id: buildLawRecordNodeId(entry.id),
-      title: normalizeDisplayText(entry.title),
+      title: normalizeDisplayText(entry.displayTitle ?? entry.title),
       nodeType: "record",
       pathLabels,
       recordId: entry.id,
@@ -151,8 +251,15 @@ const serializeLawEntryMeta = (entry) => {
     topCategoryTitle: normalizeDisplayText(entry.topCategoryTitle),
     bookTitle: normalizeDisplayText(entry.bookTitle ?? ""),
     title: normalizeDisplayText(entry.title),
+    displayTitle: normalizeDisplayText(entry.displayTitle ?? entry.title),
+    customTitle: normalizeDisplayText(entry.customTitle ?? ""),
     pathLabels,
     pathString: normalizeDisplayText(entry.pathString),
+    isPublished: entry.isPublished !== false,
+    isPinned: entry.isPinned === true,
+    manualSortOrder: Number(entry.manualSortOrder ?? 0),
+    tags: Array.isArray(entry.tags) ? entry.tags : [],
+    operatorNote: normalizeDisplayText(entry.operatorNote ?? ""),
     updatedAt: formatDateTime(entry.updatedAt),
   };
 };
@@ -191,7 +298,7 @@ export const listLawEntriesForNode = (entries = [], nodeId = "") => {
     return {
       nodeId,
       nodeType: "record",
-      nodeTitle: normalizeDisplayText(entry.title),
+      nodeTitle: normalizeDisplayText(entry.displayTitle ?? entry.title),
       pathLabels,
       items: [serializeLawContentItem(entry)],
       total: 1,
@@ -223,11 +330,18 @@ export const listLawEntriesForNode = (entries = [], nodeId = "") => {
   return null;
 };
 
-export const getLawOverview = async () => {
+const getPublishedHydratedLawEntries = async ({ selectContent = false } = {}) => {
   const entries = await prisma.lawEntry.findMany({
-    select: lawEntryMetaSelect,
+    select: selectContent ? lawEntryContentSelect : lawEntryMetaSelect,
     orderBy: [{ topCategoryId: "asc" }, { position: "asc" }, { sourceLawId: "asc" }],
   });
+
+  const hydrated = await hydrateLawEntries(entries);
+  return hydrated.filter((entry) => entry.isPublished !== false).sort(sortLawEntries);
+};
+
+export const getLawOverview = async () => {
+  const entries = await getPublishedHydratedLawEntries();
   const tree = buildLawTree(entries);
 
   const lastUpdated = entries.reduce((latest, entry) => {
@@ -256,13 +370,21 @@ export const getLawContentByNode = async (nodeId) => {
       select: lawEntryContentSelect,
     });
 
-    return entry ? listLawEntriesForNode([entry], nodeId) : null;
+    if (!entry) {
+      return null;
+    }
+
+    const hydrated = (await hydrateLawEntries([entry]))[0];
+    if (!hydrated || hydrated.isPublished === false) {
+      return null;
+    }
+
+    return listLawEntriesForNode([hydrated], nodeId);
   }
 
   if (parsed.type === "path") {
-    const entries = await prisma.lawEntry.findMany({
-      select: lawEntryContentSelect,
-      orderBy: [{ topCategoryId: "asc" }, { position: "asc" }, { sourceLawId: "asc" }],
+    const entries = await getPublishedHydratedLawEntries({
+      selectContent: true,
     });
 
     return listLawEntriesForNode(entries, nodeId);
@@ -271,12 +393,63 @@ export const getLawContentByNode = async (nodeId) => {
   return null;
 };
 
+const matchesLawKeyword = (entry, normalizedKeyword) => {
+  if (!normalizedKeyword) {
+    return true;
+  }
+
+  return [
+    entry.title,
+    entry.displayTitle,
+    entry.customTitle,
+    entry.bookTitle,
+    entry.pathString,
+    entry.operatorNote,
+    Array.isArray(entry.tags) ? entry.tags.join(" ") : "",
+  ].some((item) => normalizeDisplayText(item ?? "").includes(normalizedKeyword));
+};
+
+const findMatchingOperationSourceLawIds = async (keyword) => {
+  const normalizedKeyword = normalizeDisplayText(keyword);
+  if (!normalizedKeyword) {
+    return [];
+  }
+
+  const operations = await prisma.lawEntryOperation.findMany({
+    where: {
+      OR: [
+        {
+          customTitle: {
+            contains: normalizedKeyword,
+          },
+        },
+        {
+          tagsJson: {
+            contains: normalizedKeyword,
+          },
+        },
+        {
+          operatorNote: {
+            contains: normalizedKeyword,
+          },
+        },
+      ],
+    },
+    select: {
+      sourceLawId: true,
+    },
+  });
+
+  return operations.map((item) => item.sourceLawId);
+};
+
 export const searchLawEntries = async ({ keyword = "", limit = 50 } = {}) => {
   const normalizedKeyword = normalizeDisplayText(keyword);
   if (!normalizedKeyword) {
     return [];
   }
 
+  const operationMatchIds = await findMatchingOperationSourceLawIds(normalizedKeyword);
   const entries = await prisma.lawEntry.findMany({
     where: {
       OR: [
@@ -300,14 +473,30 @@ export const searchLawEntries = async ({ keyword = "", limit = 50 } = {}) => {
             contains: normalizedKeyword,
           },
         },
+        ...(operationMatchIds.length > 0
+          ? [
+              {
+                sourceLawId: {
+                  in: operationMatchIds,
+                },
+              },
+            ]
+          : []),
       ],
     },
     select: lawEntryContentSelect,
     orderBy: [{ topCategoryId: "asc" }, { position: "asc" }, { sourceLawId: "asc" }],
-    take: limit,
+    take: Math.max(limit * 4, limit),
   });
 
-  return entries.map((entry) => serializeLawSearchResult(entry, normalizedKeyword));
+  const hydrated = await hydrateLawEntries(entries);
+
+  return hydrated
+    .filter((entry) => entry.isPublished !== false)
+    .filter((entry) => matchesLawKeyword(entry, normalizedKeyword) || normalizeDisplayText(entry.content ?? "").includes(normalizedKeyword))
+    .sort(sortLawEntries)
+    .slice(0, limit)
+    .map((entry) => serializeLawSearchResult(entry, normalizedKeyword));
 };
 
 export const getLawAdminSummary = async () => {
@@ -315,76 +504,151 @@ export const getLawAdminSummary = async () => {
     select: lawEntryMetaSelect,
     orderBy: [{ updatedAt: "desc" }, { topCategoryId: "asc" }, { position: "asc" }],
   });
+  const hydrated = await hydrateLawEntries(entries);
 
   const topCategories = Array.from(
-    new Map(entries.map((entry) => [entry.topCategoryId, normalizeDisplayText(entry.topCategoryTitle)])).entries(),
+    new Map(hydrated.map((entry) => [entry.topCategoryId, normalizeDisplayText(entry.topCategoryTitle)])).entries(),
   ).map(([id, title]) => ({
     id,
     title,
   }));
 
   return {
-    totalRecords: entries.length,
+    totalRecords: hydrated.length,
+    publishedRecords: hydrated.filter((entry) => entry.isPublished !== false).length,
+    hiddenRecords: hydrated.filter((entry) => entry.isPublished === false).length,
+    pinnedRecords: hydrated.filter((entry) => entry.isPinned === true).length,
     topCategoryCount: topCategories.length,
     lastUpdated: entries[0]?.updatedAt ? formatDateTime(entries[0].updatedAt) : "",
     topCategories,
   };
 };
 
-export const getLawAdminEntries = async ({ keyword = "", topCategoryId = "", page = 1, pageSize = 20 } = {}) => {
+export const getLawAdminEntries = async ({
+  keyword = "",
+  topCategoryId = "",
+  visibility = "all",
+  pinnedOnly = false,
+  page = 1,
+  pageSize = 20,
+} = {}) => {
   const normalizedKeyword = normalizeDisplayText(keyword);
   const normalizedTopCategoryId = Number.parseInt(`${topCategoryId ?? ""}`, 10);
-  const where = {
-    ...(Number.isFinite(normalizedTopCategoryId)
-      ? {
-          topCategoryId: normalizedTopCategoryId,
-        }
-      : {}),
-    ...(normalizedKeyword
-      ? {
-          OR: [
-            {
-              title: {
-                contains: normalizedKeyword,
-              },
-            },
-            {
-              bookTitle: {
-                contains: normalizedKeyword,
-              },
-            },
-            {
-              pathString: {
-                contains: normalizedKeyword,
-              },
-            },
-          ],
-        }
-      : {}),
-  };
-
   const safePageSize = Math.min(Math.max(pageSize, 1), 100);
   const safePage = Math.max(page, 1);
-  const total = await prisma.lawEntry.count({ where });
+
+  const entries = await prisma.lawEntry.findMany({
+    where: {
+      ...(Number.isFinite(normalizedTopCategoryId)
+        ? {
+            topCategoryId: normalizedTopCategoryId,
+          }
+        : {}),
+    },
+    select: lawEntryMetaSelect,
+    orderBy: [{ topCategoryId: "asc" }, { position: "asc" }, { sourceLawId: "asc" }],
+  });
+
+  const hydrated = await hydrateLawEntries(entries);
+  const filtered = hydrated
+    .filter((entry) => matchesLawKeyword(entry, normalizedKeyword))
+    .filter((entry) => {
+      if (visibility === "published") {
+        return entry.isPublished !== false;
+      }
+      if (visibility === "hidden") {
+        return entry.isPublished === false;
+      }
+      return true;
+    })
+    .filter((entry) => (pinnedOnly ? entry.isPinned === true : true))
+    .sort(sortLawEntries);
+
+  const total = filtered.length;
   const totalPages = Math.max(Math.ceil(total / safePageSize), 1);
   const currentPage = Math.min(safePage, totalPages);
-
-  const entries =
-    total === 0
-      ? []
-      : await prisma.lawEntry.findMany({
-          where,
-          select: lawEntryMetaSelect,
-          orderBy: [{ topCategoryId: "asc" }, { position: "asc" }, { sourceLawId: "asc" }],
-          skip: (currentPage - 1) * safePageSize,
-          take: safePageSize,
-        });
+  const pageItems = filtered.slice((currentPage - 1) * safePageSize, currentPage * safePageSize);
 
   return {
-    items: entries.map(serializeLawEntryMeta),
+    items: pageItems.map(serializeLawEntryMeta),
     total,
     page: currentPage,
     pageSize: safePageSize,
     totalPages,
   };
+};
+
+const createLawHttpError = (message, statusCode) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+};
+
+export const updateLawAdminEntry = async (sourceLawId, payload = {}) => {
+  const normalizedSourceLawId = Number.parseInt(`${sourceLawId ?? ""}`, 10);
+  if (!Number.isFinite(normalizedSourceLawId) || normalizedSourceLawId <= 0) {
+    throw createLawHttpError("法条标识不合法", 400);
+  }
+
+  const entry = await prisma.lawEntry.findUnique({
+    where: {
+      sourceLawId: normalizedSourceLawId,
+    },
+    select: lawEntryMetaSelect,
+  });
+
+  if (!entry) {
+    throw createLawHttpError("法条记录不存在", 404);
+  }
+
+  const existing = normalizeLawOperation(
+    await prisma.lawEntryOperation.findUnique({
+      where: {
+        sourceLawId: normalizedSourceLawId,
+      },
+      select: lawEntryOperationSelect,
+    }),
+  );
+
+  const nextTags = payload?.tags === undefined ? existing.tags : parseLawTagsInput(payload.tags);
+  const nextCustomTitle =
+    payload?.customTitle === undefined ? existing.customTitle : normalizeDisplayText(payload.customTitle ?? "");
+  const nextOperatorNote =
+    payload?.operatorNote === undefined ? existing.operatorNote : normalizeDisplayText(payload.operatorNote ?? "");
+  const nextIsPublished = typeof payload?.isPublished === "boolean" ? payload.isPublished : existing.isPublished;
+  const nextIsPinned = typeof payload?.isPinned === "boolean" ? payload.isPinned : existing.isPinned;
+  const manualSortOrderRaw =
+    payload?.manualSortOrder === undefined ? existing.manualSortOrder : Number.parseInt(`${payload.manualSortOrder ?? ""}`, 10);
+  const nextManualSortOrder = Number.isFinite(manualSortOrderRaw) && manualSortOrderRaw > 0 ? manualSortOrderRaw : 0;
+
+  const operation = await prisma.lawEntryOperation.upsert({
+    where: {
+      sourceLawId: normalizedSourceLawId,
+    },
+    create: {
+      sourceLawId: normalizedSourceLawId,
+      isPublished: nextIsPublished,
+      isPinned: nextIsPinned,
+      manualSortOrder: nextManualSortOrder,
+      tagsJson: JSON.stringify(nextTags),
+      operatorNote: nextOperatorNote || null,
+      customTitle: nextCustomTitle || null,
+    },
+    update: {
+      isPublished: nextIsPublished,
+      isPinned: nextIsPinned,
+      manualSortOrder: nextManualSortOrder,
+      tagsJson: JSON.stringify(nextTags),
+      operatorNote: nextOperatorNote || null,
+      customTitle: nextCustomTitle || null,
+    },
+    select: lawEntryOperationSelect,
+  });
+
+  return serializeLawEntryMeta(
+    hydrateLawEntry(
+      entry,
+      new Map([[normalizedSourceLawId, normalizeLawOperation(operation)]]),
+    ),
+  );
 };

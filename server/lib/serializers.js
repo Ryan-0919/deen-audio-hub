@@ -78,6 +78,7 @@ export const serializeUser = (user) => ({
   lastLogin: user.lastLoginAt ? formatDateTime(user.lastLoginAt) : "",
   deviceCount: user._count?.devices ?? user.devices?.length ?? 0,
   coursePermissions: (user.permissions ?? []).map((item) => item.courseId),
+  mockExamPermissions: (user.mockExamPermissions ?? []).map((item) => item.paperId),
 });
 
 export const serializeDevice = (device) => ({
