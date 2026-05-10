@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, ChevronUp, Circle, Clock3, LayoutGrid, Volume2, XCircle } from "lucide-react";
+import { ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, ChevronUp, Circle, Clock3, LayoutGrid, Pause, Play, Volume2, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
@@ -178,6 +178,77 @@ function ReviewVoicePlayer({
   );
 }
 
+function LessonAudioInlinePlayer({
+  url,
+  durationSeconds,
+}: {
+  url: string;
+  durationSeconds?: number;
+}) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handlePause = () => setPlaying(false);
+    const handlePlay = () => setPlaying(true);
+    const handleEnded = () => setPlaying(false);
+
+    audio.addEventListener("pause", handlePause);
+    audio.addEventListener("play", handlePlay);
+    audio.addEventListener("ended", handleEnded);
+
+    return () => {
+      audio.removeEventListener("pause", handlePause);
+      audio.removeEventListener("play", handlePlay);
+      audio.removeEventListener("ended", handleEnded);
+    };
+  }, [url]);
+
+  return (
+    <div className="mt-4 flex justify-start">
+      <div className="inline-flex max-w-full items-center gap-4 rounded-full bg-[#d8efee] px-4 py-3 text-[#3f9f9a]">
+        <audio ref={audioRef} src={url} preload="metadata" className="hidden" />
+        <span className="text-[18px] font-medium text-[#3f9f9a]">微课</span>
+        <button
+          type="button"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#48a9a4] text-white transition hover:bg-[#3f9b97]"
+          onClick={async () => {
+            const audio = audioRef.current;
+            if (!audio) return;
+            if (audio.paused) {
+              try {
+                await audio.play();
+              } catch (error) {
+                toast.error(error instanceof Error ? error.message : "语音播放失败");
+              }
+              return;
+            }
+            audio.pause();
+          }}
+        >
+          {playing ? <Pause className="ml-[1px] size-5" /> : <Play className="ml-[2px] size-5 fill-current" />}
+        </button>
+        <div className="flex min-w-[132px] items-center gap-[5px]">
+          {Array.from({ length: 10 }).map((_, index) => (
+            <span
+              key={index}
+              className="w-[3px] shrink-0 rounded-full bg-white/95"
+              style={{
+                height: `${14 + [8, 18, 12, 22, 14, 24, 16, 20, 12, 18][index]}px`,
+                opacity: playing ? 0.98 : 0.74,
+              }}
+            />
+          ))}
+        </div>
+        <span className="shrink-0 text-[15px] font-medium tracking-[0.04em] text-[#3f9f9a]">{formatClockText(durationSeconds)}</span>
+      </div>
+    </div>
+  );
+}
+
 function PaperSectionTitle({ title }: { title: string }) {
   return (
     <div className="mb-3 flex items-center gap-3">
@@ -305,6 +376,7 @@ function SubjectiveQuestionBlock({
           <div className="whitespace-pre-wrap">{prompt.intro}</div>
         </div>
       ) : null}
+      {question.reviewVoiceUrl ? <LessonAudioInlinePlayer url={question.reviewVoiceUrl} durationSeconds={question.reviewVoiceDurationSeconds} /> : null}
       <div className={prompt.intro ? "mt-4" : ""}>
         <div className="whitespace-pre-wrap text-[20px] leading-[2] text-[#18181b]">{prompt.title}</div>
       </div>
@@ -641,10 +713,6 @@ function SubjectiveReviewSheet({
                   {record.summary.finalScorePending ? "批改完成后显示参考答案。" : currentSubQuestion.referenceAnswer || "暂无参考答案"}
                 </div>
               </FoldBlock>
-
-              {!record.summary.finalScorePending && question.reviewVoiceUrl ? (
-                <ReviewVoicePlayer url={question.reviewVoiceUrl} durationSeconds={question.reviewVoiceDurationSeconds} />
-              ) : null}
             </div>
           </div>
         </div>
