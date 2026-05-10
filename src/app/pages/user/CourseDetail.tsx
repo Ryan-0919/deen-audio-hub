@@ -344,29 +344,27 @@ export function CourseDetail() {
   };
 
   const renderMobileTagSelector = () => (
-    <div className="-mx-1 overflow-x-auto px-1 pb-1 md:hidden">
-      <div className="flex min-w-max items-center gap-2.5">
-        {tagSummaries.map((summary) => {
-          const active = summary.tag.id === selectedTagId;
+    <div className="grid grid-cols-4 gap-2.5 md:hidden">
+      {tagSummaries.map((summary) => {
+        const active = summary.tag.id === selectedTagId;
 
-          return (
-            <button
-              key={summary.tag.id}
-              type="button"
-              onClick={() => setSelectedTagId(summary.tag.id)}
-              className={cn(
-                "rounded-full border px-4 py-2.5 text-sm font-medium tracking-[0.01em] transition-all backdrop-blur-xl",
-                active
-                  ? "border-white/18 bg-white text-slate-950 shadow-[0_10px_24px_rgba(255,255,255,0.14)]"
-                  : "border-white/10 bg-white/[0.05] text-white/68",
-              )}
-            >
-              <span>{summary.tag.name}</span>
-              <span className={cn("ml-2 text-[11px]", active ? "text-slate-700/72" : "text-white/38")}>{summary.completionRate}%</span>
-            </button>
-          );
-        })}
-      </div>
+        return (
+          <button
+            key={summary.tag.id}
+            type="button"
+            onClick={() => setSelectedTagId(summary.tag.id)}
+            className={cn(
+              "min-w-0 rounded-[18px] border px-2 py-2.5 text-center text-sm font-medium tracking-[0.01em] transition-all backdrop-blur-xl",
+              active
+                ? "border-white/18 bg-white text-slate-950 shadow-[0_10px_24px_rgba(255,255,255,0.14)]"
+                : "border-white/10 bg-white/[0.05] text-white/68",
+            )}
+          >
+            <div className="truncate">{summary.tag.name}</div>
+            <div className={cn("mt-1 text-[11px]", active ? "text-slate-700/72" : "text-white/38")}>{summary.completionRate}%</div>
+          </button>
+        );
+      })}
     </div>
   );
 
