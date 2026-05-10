@@ -87,6 +87,25 @@ const getQuestionReviewVoiceUrl = (reviewJson) =>
     fallbackUrl: reviewJson?.reviewVoiceUrl ?? "",
   });
 
+const getQuestionDisplayVoice = (question, reviewJson) => {
+  const reviewVoiceUrl = getQuestionReviewVoiceUrl(reviewJson);
+  if (reviewVoiceUrl) {
+    return {
+      url: reviewVoiceUrl,
+      objectKey: `${reviewJson?.reviewVoiceObjectKey ?? ""}`.trim(),
+      durationSeconds: Number(reviewJson?.reviewVoiceDurationSeconds ?? 0) || 0,
+      source: "review",
+    };
+  }
+
+  return {
+    url: getQuestionLessonAudioUrl(question),
+    objectKey: `${question?.lessonAudioObjectKey ?? ""}`.trim(),
+    durationSeconds: Number(question?.lessonAudioDurationSeconds ?? 0) || 0,
+    source: "lesson",
+  };
+};
+
 const buildRecordPaperSnapshot = (paper) =>
   JSON.stringify({
     paper: {
@@ -185,7 +204,49 @@ const parseRecordPaperSnapshot = (record) => {
   };
 };
 
-const getRecordPaper = (record) => parseRecordPaperSnapshot(record) ?? record.paper;
+const mergeSnapshotQuestionLessonAudio = (snapshotQuestion, liveQuestion) => {
+  if (!snapshotQuestion || !liveQuestion) {
+    return snapshotQuestion ?? liveQuestion;
+  }
+
+  const snapshotUrl = `${snapshotQuestion.lessonAudioUrl ?? ""}`.trim();
+  const snapshotObjectKey = `${snapshotQuestion.lessonAudioObjectKey ?? ""}`.trim();
+  const snapshotDuration = Number(snapshotQuestion.lessonAudioDurationSeconds ?? 0) || 0;
+
+  if (snapshotUrl || snapshotObjectKey || snapshotDuration > 0) {
+    return snapshotQuestion;
+  }
+
+  return {
+    ...snapshotQuestion,
+    lessonAudioUrl: `${liveQuestion.lessonAudioUrl ?? ""}`.trim(),
+    lessonAudioObjectKey: `${liveQuestion.lessonAudioObjectKey ?? ""}`.trim(),
+    lessonAudioDurationSeconds: Number(liveQuestion.lessonAudioDurationSeconds ?? 0) || 0,
+  };
+};
+
+const mergeSnapshotPaperWithLivePaper = (snapshotPaper, livePaper) => {
+  if (!snapshotPaper) {
+    return livePaper;
+  }
+
+  if (!livePaper || !Array.isArray(snapshotPaper.questions) || !Array.isArray(livePaper.questions)) {
+    return snapshotPaper;
+  }
+
+  const liveQuestionMap = new Map(
+    livePaper.questions.map((question) => [`${question?.id ?? ""}`.trim(), question]),
+  );
+
+  return {
+    ...snapshotPaper,
+    questions: snapshotPaper.questions.map((question) =>
+      mergeSnapshotQuestionLessonAudio(question, liveQuestionMap.get(question.id)),
+    ),
+  };
+};
+
+const getRecordPaper = (record) => mergeSnapshotPaperWithLivePaper(parseRecordPaperSnapshot(record), record?.paper ?? null);
 
 const isSubjectiveQuestionType = (type) => type === subjectiveQuestionType;
 const isSubjectiveQuestion = (question) => isSubjectiveQuestionType(question?.type);
@@ -469,6 +530,7 @@ const serializeQuestion = (question, answer, revealAnswer) => {
     const allocations = buildSubjectiveSubQuestionAllocations(question);
     const answerMap = parseSubjectiveAnswerMap(answer?.answerJson, question);
     const reviewJson = parseJsonSafely(answer?.reviewJson, null);
+    const displayVoice = getQuestionDisplayVoice(question, reviewJson);
     const reviewSource = `${reviewJson?.source ?? "system"}`.trim() || "system";
     const reviewProvider = normalizeReviewProvider(reviewJson?.reviewProvider ?? reviewJson?.provider ?? "");
 
@@ -549,9 +611,9 @@ const serializeQuestion = (question, answer, revealAnswer) => {
       lessonAudioUrl: getQuestionLessonAudioUrl(question),
       lessonAudioObjectKey: `${question.lessonAudioObjectKey ?? ""}`.trim(),
       lessonAudioDurationSeconds: Number(question.lessonAudioDurationSeconds ?? 0) || 0,
-      reviewVoiceUrl: getQuestionReviewVoiceUrl(reviewJson),
-      reviewVoiceObjectKey: `${reviewJson?.reviewVoiceObjectKey ?? ""}`.trim(),
-      reviewVoiceDurationSeconds: Number(reviewJson?.reviewVoiceDurationSeconds ?? 0) || 0,
+      reviewVoiceUrl: displayVoice.url,
+      reviewVoiceObjectKey: displayVoice.objectKey,
+      reviewVoiceDurationSeconds: displayVoice.durationSeconds,
     };
   }
 

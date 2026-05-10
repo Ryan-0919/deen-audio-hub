@@ -188,6 +188,7 @@ type EditableReviewVoice = {
   url: string;
   objectKey: string;
   durationSeconds: number;
+  source?: "lesson" | "review";
 };
 
 const getSubQuestionKey = (questionId: string, subQuestionId: string) => `${questionId}::${subQuestionId}`;
@@ -204,10 +205,20 @@ const buildDraftState = (detail: AdminMockExamReviewDetail): DraftState => {
   const reviewVoices: Record<string, EditableReviewVoice> = {};
 
   for (const question of detail.questions.filter((item) => item.type === "subjective_case")) {
+    const lessonAudioUrl = (question.lessonAudioUrl ?? "").trim();
+    const lessonAudioObjectKey = (question.lessonAudioObjectKey ?? "").trim();
+    const reviewVoiceUrl = (question.reviewVoiceUrl ?? "").trim();
+    const reviewVoiceObjectKey = (question.reviewVoiceObjectKey ?? "").trim();
+    const isUsingLessonAudioFallback =
+      Boolean(reviewVoiceUrl) &&
+      ((!reviewVoiceObjectKey && !lessonAudioObjectKey && reviewVoiceUrl === lessonAudioUrl) ||
+        (Boolean(reviewVoiceObjectKey) && Boolean(lessonAudioObjectKey) && reviewVoiceObjectKey === lessonAudioObjectKey));
+
     reviewVoices[question.id] = {
       url: question.reviewVoiceUrl ?? "",
       objectKey: question.reviewVoiceObjectKey ?? "",
       durationSeconds: Number(question.reviewVoiceDurationSeconds ?? 0) || 0,
+      source: isUsingLessonAudioFallback ? "lesson" : reviewVoiceUrl ? "review" : undefined,
     };
 
     for (const subQuestion of question.subjectiveSubQuestions) {
@@ -907,6 +918,7 @@ function SubQuestionReviewWorkbench({
   const commentLength = commentValue.trim().length;
   const localWrongMarks = marks.filter((mark) => mark.status === "wrong").length;
   const localPositiveMarks = marks.filter((mark) => mark.status !== "wrong").length;
+  const reviewVoiceSource = reviewVoice.source ?? (reviewVoice.url ? "review" : undefined);
 
   return (
     <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_14px_36px_rgba(15,23,42,0.04)]">
@@ -980,29 +992,31 @@ function SubQuestionReviewWorkbench({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h4 className="text-base font-semibold text-slate-900">本题语音点评</h4>
-                <p className="mt-1 text-sm text-slate-500">上传后学生端会在本题结果下方显示语音播放器。</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  {reviewVoiceSource === "lesson" ? "当前默认复用题目已关联音频，无需重复上传；如需替换，可重新上传覆盖。" : "当前可直接复用题目已关联音频，也可重新上传老师点评语音进行覆盖。"}
+                </p>
               </div>
               <div className="flex gap-2">
                 <input ref={voiceInputRef} type="file" accept="audio/*" className="hidden" onChange={onReviewVoiceUpload} />
                 <Button type="button" variant="outline" onClick={() => voiceInputRef.current?.click()} disabled={reviewVoiceUploading}>
                   <Upload className="mr-2 size-4" />
-                  {reviewVoiceUploading ? "上传中..." : "上传语音"}
+                  {reviewVoiceUploading ? "上传中..." : reviewVoiceSource === "lesson" ? "重新上传覆盖" : "上传语音"}
                 </Button>
                 <Button type="button" variant="outline" className="text-red-500 hover:text-red-600" onClick={onReviewVoiceClear} disabled={!reviewVoice.url && !reviewVoice.objectKey}>
                   <Trash2 className="mr-2 size-4" />
-                  清空
+                  {reviewVoiceSource === "lesson" ? "取消覆盖" : "清空"}
                 </Button>
               </div>
             </div>
             <div className="mt-4 rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-7 text-slate-600">
               {reviewVoice.url ? (
                 <div className="space-y-2">
-                  <div>已上传语音点评</div>
+                  <div>{reviewVoiceSource === "lesson" ? "已关联题目音频" : "已上传语音点评"}</div>
                   <div>时长：{reviewVoice.durationSeconds > 0 ? `${reviewVoice.durationSeconds} 秒` : "未识别"}</div>
                   <audio controls src={reviewVoice.url} className="w-full" />
                 </div>
               ) : (
-                <div>当前还没有上传语音点评。</div>
+                <div>当前还没有可播放音频，可直接上传老师点评语音。</div>
               )}
             </div>
           </section>
@@ -1137,6 +1151,7 @@ function InlineSubQuestionReviewWorkbench({
   const commentLength = commentValue.trim().length;
   const localWrongMarks = marks.filter((mark) => mark.status === "wrong").length;
   const localPositiveMarks = marks.filter((mark) => mark.status !== "wrong").length;
+  const reviewVoiceSource = reviewVoice.source ?? (reviewVoice.url ? "review" : undefined);
   const previewRubricPoints = normalizeDraftRubricPointsForSave(rubricPoints);
   const previewMissedPoints = normalizeDraftMissedPointsForSave(missedPoints);
   const awardedRubricCount = previewRubricPoints.filter((point) => Number(point.awardedScore ?? 0) > 0).length;
@@ -1216,28 +1231,30 @@ function InlineSubQuestionReviewWorkbench({
             <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
               <div>
                 <h4 className="text-base font-semibold text-slate-900">本题语音点评</h4>
-                <p className="mt-1 text-sm text-slate-500">同一道大题的语音点评共用，上传后学生端可以直接播放。</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  {reviewVoiceSource === "lesson" ? "当前默认复用题目已关联音频，无需重复上传；如需替换，可重新上传覆盖。" : "同一道大题的语音点评共用；当前也可直接复用题目已关联音频。"}
+                </p>
               </div>
               <div className="mt-4 flex flex-col gap-2">
                 <input ref={voiceInputRef} type="file" accept="audio/*" className="hidden" onChange={onReviewVoiceUpload} />
                 <Button type="button" variant="outline" onClick={() => voiceInputRef.current?.click()} disabled={reviewVoiceUploading}>
                   <Upload className="mr-2 size-4" />
-                  {reviewVoiceUploading ? "上传中..." : "上传语音"}
+                  {reviewVoiceUploading ? "上传中..." : reviewVoiceSource === "lesson" ? "重新上传覆盖" : "上传语音"}
                 </Button>
                 <Button type="button" variant="outline" className="text-red-500 hover:text-red-600" onClick={onReviewVoiceClear} disabled={!reviewVoice.url && !reviewVoice.objectKey}>
                   <Trash2 className="mr-2 size-4" />
-                  清空
+                  {reviewVoiceSource === "lesson" ? "取消覆盖" : "清空"}
                 </Button>
               </div>
               <div className="mt-4 rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-7 text-slate-600">
                 {reviewVoice.url ? (
                   <div className="space-y-2">
-                    <div>已上传语音点评</div>
+                    <div>{reviewVoiceSource === "lesson" ? "已关联题目音频" : "已上传语音点评"}</div>
                     <div>时长：{reviewVoice.durationSeconds > 0 ? `${reviewVoice.durationSeconds} 秒` : "未识别"}</div>
                     <audio controls src={reviewVoice.url} className="w-full" />
                   </div>
                 ) : (
-                  <div>当前还没有上传语音点评。</div>
+                  <div>当前还没有可播放音频，可直接上传老师点评语音。</div>
                 )}
               </div>
             </section>
@@ -1532,6 +1549,7 @@ export function MockExamReviewList() {
             url: uploaded.readableUrl ?? uploaded.url,
             objectKey: uploaded.objectKey,
             durationSeconds: Number(uploaded.durationSeconds ?? 0) || 0,
+            source: "review",
           },
         },
       }));
@@ -1545,14 +1563,20 @@ export function MockExamReviewList() {
   };
 
   const handleReviewVoiceClear = (questionId: string) => {
+    const question = subjectiveQuestions.find((item) => item.id === questionId);
+    const lessonAudioUrl = (question?.lessonAudioUrl ?? "").trim();
+    const lessonAudioObjectKey = (question?.lessonAudioObjectKey ?? "").trim();
+    const lessonAudioDurationSeconds = Number(question?.lessonAudioDurationSeconds ?? 0) || 0;
+
     setDrafts((current) => ({
       ...current,
       reviewVoices: {
         ...current.reviewVoices,
         [questionId]: {
-          url: "",
-          objectKey: "",
-          durationSeconds: 0,
+          url: lessonAudioUrl,
+          objectKey: lessonAudioObjectKey,
+          durationSeconds: lessonAudioDurationSeconds,
+          source: lessonAudioUrl || lessonAudioObjectKey ? "lesson" : undefined,
         },
       },
     }));
