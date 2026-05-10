@@ -209,12 +209,12 @@ function LessonAudioInlinePlayer({
 
   return (
     <div className="mt-4 flex justify-start">
-      <div className="inline-flex max-w-full items-center gap-4 rounded-full bg-[#d8efee] px-4 py-3 text-[#3f9f9a]">
+      <div className="inline-flex max-w-full items-center gap-4 rounded-full border border-[#ececf1] bg-[#fcfcfd] px-4 py-3 text-[#433b35] shadow-[0_10px_22px_rgba(24,24,27,0.05)]">
         <audio ref={audioRef} src={url} preload="metadata" className="hidden" />
-        <span className="text-[18px] font-medium text-[#3f9f9a]">微课</span>
+        <span className="text-[18px] font-medium text-[#433b35]">微课</span>
         <button
           type="button"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#48a9a4] text-white transition hover:bg-[#3f9b97]"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#18181b] text-white transition hover:bg-[#2b2b31]"
           onClick={async () => {
             const audio = audioRef.current;
             if (!audio) return;
@@ -235,15 +235,15 @@ function LessonAudioInlinePlayer({
           {Array.from({ length: 10 }).map((_, index) => (
             <span
               key={index}
-              className="w-[3px] shrink-0 rounded-full bg-white/95"
+              className="w-[3px] shrink-0 rounded-full bg-[#e2485a]"
               style={{
                 height: `${14 + [8, 18, 12, 22, 14, 24, 16, 20, 12, 18][index]}px`,
-                opacity: playing ? 0.98 : 0.74,
+                opacity: playing ? 0.96 : 0.56,
               }}
             />
           ))}
         </div>
-        <span className="shrink-0 text-[15px] font-medium tracking-[0.04em] text-[#3f9f9a]">{formatClockText(durationSeconds)}</span>
+        <span className="shrink-0 text-[15px] font-medium tracking-[0.04em] text-[#71717a]">{formatClockText(durationSeconds)}</span>
       </div>
     </div>
   );
