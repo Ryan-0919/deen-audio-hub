@@ -59,6 +59,7 @@ const EMPTY_HOME: TypingPracticeHomePayload = {
 };
 
 const HISTORY_PAGE_SIZE = 5;
+const VISIBLE_TYPING_PRACTICE_MODES: TypingPracticeMode[] = ["guided", "sprint"];
 
 const EMPTY_RECORD_LIST: TypingPracticeRecordListPayload = {
   items: [],
@@ -164,6 +165,10 @@ export function TypingPracticeHome() {
 
   const texts = payload.texts;
   const homeConfig = payload.homeConfig;
+  const visibleRuleParagraphs = useMemo(
+    () => homeConfig.rules.paragraphs.filter((item) => !/(法条默写|默写)/.test(item.text)),
+    [homeConfig.rules.paragraphs],
+  );
 
   useEffect(() => {
     if (texts.length === 0) {
@@ -302,7 +307,7 @@ export function TypingPracticeHome() {
 
             <div className="mt-5 rounded-[22px] border border-white/10 bg-white/[0.04] p-4 backdrop-blur-xl md:rounded-[26px] md:p-5">
               <div className="flex flex-wrap items-center justify-center gap-2">
-                {(["guided", "sprint", "memorize"] as TypingPracticeMode[]).map((mode) => (
+                {VISIBLE_TYPING_PRACTICE_MODES.map((mode) => (
                   <ModeButton key={mode} mode={mode} active={selectedMode === mode} onClick={() => setSelectedMode(mode)} />
                 ))}
               </div>
@@ -381,7 +386,7 @@ export function TypingPracticeHome() {
                 <div className="rounded-[26px] border border-white/10 bg-white/[0.04] p-4 backdrop-blur-xl md:p-5">
                   <div className="text-base font-semibold text-white">游戏说明</div>
                   <div className="mt-3 space-y-1 text-sm leading-7 text-white/54">
-                    {homeConfig.rules.paragraphs.map((item, index) => (
+                    {visibleRuleParagraphs.map((item, index) => (
                       <p key={`${index}-${item.text}`}>{item.text}</p>
                     ))}
                   </div>

@@ -214,7 +214,7 @@ export function MyCourses() {
       "/user/my-courses": courses.length > 0 ? `已开通 ${courses.length} 门课程` : "查看全部课程",
       "/user/mock-exams": papers.length > 0 ? "进入主观题试卷列表" : "查看可用主观题试卷",
       "/user/laws": "考试中可直接调出",
-      "/user/typing-practice": "跟打、冲刺、默写",
+      "/user/typing-practice": "跟打、冲刺",
     }),
     [courses.length, papers.length],
   );

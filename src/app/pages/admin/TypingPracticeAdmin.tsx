@@ -72,7 +72,6 @@ const difficultyConfigFieldGroups: Array<{
       { key: "errorPenalty", label: "错误扣分", hint: "每个错误字符扣除的分数", min: 0 },
       { key: "captureBonus", label: "通关奖励", hint: "完成一段文本后额外奖励的分数", min: 0 },
       { key: "lifeBonus", label: "剩余生命奖励", hint: "结算时每条剩余生命对应的分数", min: 0 },
-      { key: "memorizePreviewSeconds", label: "默写预览秒数", hint: "法条默写开始前的预览时长", min: 1 },
     ],
   },
 ];
@@ -607,7 +606,7 @@ export function TypingPracticeAdmin() {
                 />
               </div>
 
-              <div className="grid gap-4 xl:grid-cols-3">
+              <div className="grid gap-4 xl:grid-cols-2">
                 <div className="space-y-2 rounded-[24px] border border-slate-200 bg-slate-50/70 p-5">
                   <Label className="text-sm text-slate-700">跟打练习提示</Label>
                   <Textarea
@@ -621,14 +620,6 @@ export function TypingPracticeAdmin() {
                   <Textarea
                     value={homeConfig.modeHints.sprint}
                     onChange={(event) => updateModeHint("sprint", event.target.value)}
-                    className="min-h-[120px] rounded-2xl border-slate-200 bg-white"
-                  />
-                </div>
-                <div className="space-y-2 rounded-[24px] border border-slate-200 bg-slate-50/70 p-5">
-                  <Label className="text-sm text-slate-700">法条默写提示</Label>
-                  <Textarea
-                    value={homeConfig.modeHints.memorize}
-                    onChange={(event) => updateModeHint("memorize", event.target.value)}
                     className="min-h-[120px] rounded-2xl border-slate-200 bg-white"
                   />
                 </div>
