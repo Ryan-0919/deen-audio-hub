@@ -19,6 +19,11 @@ const normalizeFixedArray = (value, fallback, mapper) => {
   return fallback.map((item, index) => mapper(source[index] && typeof source[index] === "object" ? source[index] : {}, item, index));
 };
 
+const LEGACY_MEMBER_HOME_MOCK_EXAM_TITLE = "进入真机模考";
+const LEGACY_MEMBER_HOME_MOCK_EXAM_DESCRIPTION = "直接进入机考系统，继续客观题刷题或主观题实战演练。";
+const CURRENT_MEMBER_HOME_MOCK_EXAM_TITLE = "进入主观批改";
+const CURRENT_MEMBER_HOME_MOCK_EXAM_DESCRIPTION = "直接进入主观题试卷列表，查看已购的试卷。";
+
 export const DEFAULT_PORTAL_CONFIG = {
   seo: {
     title: "得恩法考 | 音频课程、机考系统、法条检索与打字训练一体化平台",
@@ -93,8 +98,8 @@ export const DEFAULT_PORTAL_CONFIG = {
         },
         {
           eyebrow: "机考训练",
-          title: "进入真机模考",
-          description: "直接进入机考系统，继续客观题刷题或主观题实战演练。",
+          title: CURRENT_MEMBER_HOME_MOCK_EXAM_TITLE,
+          description: CURRENT_MEMBER_HOME_MOCK_EXAM_DESCRIPTION,
           path: "/user/mock-exams",
         },
         {
@@ -411,8 +416,16 @@ export const normalizePortalConfig = (value, options = {}) => {
       subtitle: toTrimmedString(memberHomeOperationsSource.subtitle, fallback.memberHome.operations.subtitle),
       items: normalizeFixedArray(memberHomeOperationsSource.items, fallback.memberHome.operations.items, (item, operationItem) => ({
         eyebrow: toTrimmedString(item.eyebrow, operationItem.eyebrow),
-        title: toTrimmedString(item.title, operationItem.title),
-        description: toTrimmedString(item.description, operationItem.description),
+        title:
+          toTrimmedString(item.path, operationItem.path) === "/user/mock-exams" &&
+          toTrimmedString(item.title, operationItem.title) === LEGACY_MEMBER_HOME_MOCK_EXAM_TITLE
+            ? CURRENT_MEMBER_HOME_MOCK_EXAM_TITLE
+            : toTrimmedString(item.title, operationItem.title),
+        description:
+          toTrimmedString(item.path, operationItem.path) === "/user/mock-exams" &&
+          toTrimmedString(item.description, operationItem.description) === LEGACY_MEMBER_HOME_MOCK_EXAM_DESCRIPTION
+            ? CURRENT_MEMBER_HOME_MOCK_EXAM_DESCRIPTION
+            : toTrimmedString(item.description, operationItem.description),
         path: toTrimmedString(item.path, operationItem.path),
       })),
     },
