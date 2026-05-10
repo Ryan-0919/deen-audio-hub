@@ -620,6 +620,7 @@ model TypingPracticeRecord {
   userId          String
   textId          String?
   mode            TypingPracticeMode
+  difficulty      TypingPracticeDifficulty @default(medium)
   titleSnapshot   String               @db.VarChar(191)
   sourceSnapshot  String?              @db.VarChar(255)
   contentSnapshot String               @db.LongText

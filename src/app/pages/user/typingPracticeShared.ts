@@ -1,4 +1,4 @@
-import type { TypingPracticeMode, TypingPracticeText } from "../../lib/mockData";
+import type { TypingPracticeDifficulty, TypingPracticeMode, TypingPracticeText } from "../../lib/mockData";
 
 export const TYPING_PRACTICE_POLICE_IMAGE = "/typing-practice/police.png";
 export const TYPING_PRACTICE_THIEF_IMAGE = "/typing-practice/thief.png";
@@ -45,9 +45,16 @@ export const TYPING_PRACTICE_VISIBLE_TILE_COUNT = 60;
 
 const normalizeTypingPracticeContent = (value: string) => `${value ?? ""}`.replace(/\r\n/g, "\n").trim();
 
-export const buildTypingPracticeSearch = (mode: TypingPracticeMode, options?: { timeLimitSeconds?: number; previewSeconds?: number }) => {
+export const buildTypingPracticeSearch = (
+  mode: TypingPracticeMode,
+  options?: { difficulty?: TypingPracticeDifficulty; timeLimitSeconds?: number; previewSeconds?: number },
+) => {
   const searchParams = new URLSearchParams();
   searchParams.set("mode", mode);
+
+  if (options?.difficulty) {
+    searchParams.set("difficulty", options.difficulty);
+  }
 
   if (options?.timeLimitSeconds) {
     searchParams.set("limit", `${options.timeLimitSeconds}`);
@@ -118,6 +125,11 @@ export const createSprintTargetContent = (content: string, timeLimitSeconds: num
 export const parseTypingPracticeMode = (value: string | null): TypingPracticeMode => {
   if (value === "sprint" || value === "memorize") return value;
   return "guided";
+};
+
+export const parseTypingPracticeDifficulty = (value: string | null): TypingPracticeDifficulty => {
+  if (value === "easy" || value === "hard") return value;
+  return "medium";
 };
 
 export const parsePositiveSearchNumber = (value: string | null, fallback: number) => {
@@ -191,12 +203,14 @@ export const buildTypingPracticeStageWindow = (totalStageCount: number, currentS
 export const buildTypingPracticeRetryHref = (record: {
   textId: string;
   mode: TypingPracticeMode;
+  difficulty: TypingPracticeDifficulty;
   timeLimitSeconds: number | null;
   previewSeconds: number | null;
 }) => {
   if (!record.textId) return "";
 
   return `/user/typing-practice/texts/${record.textId}/play${buildTypingPracticeSearch(record.mode, {
+    difficulty: record.difficulty,
     timeLimitSeconds: record.timeLimitSeconds ?? undefined,
     previewSeconds: record.previewSeconds ?? undefined,
   })}`;

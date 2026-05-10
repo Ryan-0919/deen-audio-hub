@@ -1084,7 +1084,7 @@ export interface TypingPracticeText {
 export interface TypingPracticeTextPayload {
   folderId: string;
   title: string;
-  difficulty: TypingPracticeDifficulty;
+  difficulty?: TypingPracticeDifficulty;
   source?: string;
   tags?: string[] | string;
   content: string;
@@ -1106,6 +1106,8 @@ export interface TypingPracticeRecord {
   textId: string;
   mode: TypingPracticeMode;
   modeLabel: string;
+  difficulty: TypingPracticeDifficulty;
+  difficultyLabel: string;
   title: string;
   source: string;
   targetLength: number;
@@ -1199,6 +1201,7 @@ export interface TypingPracticeHomePayload {
 export interface TypingPracticeRecordPayload {
   textId?: string;
   mode: TypingPracticeMode;
+  difficulty: TypingPracticeDifficulty;
   title: string;
   sourceSnapshot?: string;
   contentSnapshot: string;
@@ -2151,10 +2154,11 @@ export const mockApi = {
     postJson<MockExamRecordDetail>(`/api/user/mock-exams/records/${recordId}/review-feedback`, { questionId, stars }, "user"),
 
   getTypingPracticeHome: () => request<TypingPracticeHomePayload>("/api/user/typing-practice/home", { auth: "user" }),
-  getTypingPracticeText: (textId: string, params?: { mode?: TypingPracticeMode; timeLimitSeconds?: number }) =>
+  getTypingPracticeText: (textId: string, params?: { mode?: TypingPracticeMode; difficulty?: TypingPracticeDifficulty; timeLimitSeconds?: number }) =>
     request<TypingPracticeText>(
       `/api/user/typing-practice/texts/${textId}${buildQueryString({
         mode: params?.mode,
+        difficulty: params?.difficulty,
         limit: params?.timeLimitSeconds,
       })}`,
       { auth: "user" },

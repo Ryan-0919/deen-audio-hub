@@ -19,6 +19,8 @@ const EMPTY_RECORD: TypingPracticeRecord = {
   textId: "",
   mode: "guided",
   modeLabel: "",
+  difficulty: "medium",
+  difficultyLabel: "",
   title: "",
   source: "",
   targetLength: 0,

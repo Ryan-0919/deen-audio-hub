@@ -12,6 +12,7 @@ import {
   buildTypingScoreText,
   DEFAULT_MEMORIZE_PREVIEW_SECONDS,
   formatTypingSecondsText,
+  parseTypingPracticeDifficulty,
   parsePositiveSearchNumber,
   parseTypingPracticeMode,
   TYPING_PRACTICE_POLICE_IMAGE,
@@ -300,6 +301,7 @@ export function TypingPracticeGame() {
   const isMobileBlocked = useMockExamDesktopGuard();
   const [searchParams] = useSearchParams();
   const mode = parseTypingPracticeMode(searchParams.get("mode"));
+  const difficulty = parseTypingPracticeDifficulty(searchParams.get("difficulty"));
   const timeLimitSeconds = mode === "sprint" ? parsePositiveSearchNumber(searchParams.get("limit"), 180) : null;
   const requestedPreviewSeconds = mode === "memorize" ? parsePositiveSearchNumber(searchParams.get("preview"), 0) : 0;
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -328,8 +330,8 @@ export function TypingPracticeGame() {
       return DEFAULT_DIFFICULTY_CONFIG_MAP.medium;
     }
 
-    return text.difficultyConfig ?? DEFAULT_DIFFICULTY_CONFIG_MAP[text.difficulty] ?? DEFAULT_DIFFICULTY_CONFIG_MAP.medium;
-  }, [text]);
+    return text.difficultyConfig ?? DEFAULT_DIFFICULTY_CONFIG_MAP[difficulty] ?? DEFAULT_DIFFICULTY_CONFIG_MAP.medium;
+  }, [difficulty, text]);
 
   const currentIndex = inputValue.length;
   const targetLength = targetContent.length;
@@ -421,6 +423,7 @@ export function TypingPracticeGame() {
       const record = await mockApi.createTypingPracticeRecord({
         textId: text.id,
         mode,
+        difficulty,
         title: text.title,
         sourceSnapshot: text.source,
         contentSnapshot: targetContent,
@@ -451,9 +454,10 @@ export function TypingPracticeGame() {
         setPlayTicket("");
         const nextText = await mockApi.getTypingPracticeText(textId, {
           mode,
+          difficulty,
           timeLimitSeconds: timeLimitSeconds ?? undefined,
         });
-        const nextDifficultyConfig = nextText.difficultyConfig ?? DEFAULT_DIFFICULTY_CONFIG_MAP[nextText.difficulty] ?? DEFAULT_DIFFICULTY_CONFIG_MAP.medium;
+        const nextDifficultyConfig = nextText.difficultyConfig ?? DEFAULT_DIFFICULTY_CONFIG_MAP[difficulty] ?? DEFAULT_DIFFICULTY_CONFIG_MAP.medium;
         const resolvedPreviewSeconds =
           mode === "memorize"
             ? requestedPreviewSeconds || nextDifficultyConfig.memorizePreviewSeconds || DEFAULT_MEMORIZE_PREVIEW_SECONDS
@@ -497,7 +501,7 @@ export function TypingPracticeGame() {
     return () => {
       clearTransitionTimer();
     };
-  }, [mode, navigate, requestedPreviewSeconds, textId, timeLimitSeconds]);
+  }, [difficulty, mode, navigate, requestedPreviewSeconds, textId, timeLimitSeconds]);
 
   useEffect(() => {
     if (phase !== "preview") return;

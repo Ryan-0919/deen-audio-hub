@@ -12,7 +12,6 @@ import { Label } from "../../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Textarea } from "../../components/ui/textarea";
 import {
-  type TypingPracticeDifficulty,
   type TypingPracticeDifficultyConfig,
   type TypingPracticeFolder,
   type TypingPracticeHomeConfig,
@@ -84,7 +83,6 @@ type FolderFormState = {
 type TextFormState = {
   folderId: string;
   title: string;
-  difficulty: TypingPracticeDifficulty;
   source: string;
   tags: string;
   content: string;
@@ -101,7 +99,6 @@ const createEmptyFolderForm = (): FolderFormState => ({
 const createEmptyTextForm = (folderId = ""): TextFormState => ({
   folderId,
   title: "",
-  difficulty: "medium",
   source: "",
   tags: "",
   content: "",
@@ -113,7 +110,6 @@ const createEmptyTextForm = (folderId = ""): TextFormState => ({
 const createTextFormFromItem = (text: TypingPracticeText): TextFormState => ({
   folderId: text.folderId,
   title: text.title,
-  difficulty: text.difficulty,
   source: text.source,
   tags: text.tags.join("，"),
   content: text.content,
@@ -465,7 +461,6 @@ export function TypingPracticeAdmin() {
     const payload: TypingPracticeTextPayload = {
       folderId: textForm.folderId,
       title: textForm.title.trim(),
-      difficulty: textForm.difficulty,
       source: textForm.source.trim(),
       tags: textForm.tags,
       content: textForm.content,
@@ -968,7 +963,6 @@ export function TypingPracticeAdmin() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge className={statusMeta[text.status].className}>{statusMeta[text.status].label}</Badge>
-                        <Badge className={difficultyMeta[text.difficulty].className}>{difficultyMeta[text.difficulty].label}</Badge>
                         <Badge variant="secondary">{folderNameMap.get(text.folderId) ?? text.folderName}</Badge>
                         <span className="text-xs text-slate-400">{text.contentLength} 字符</span>
                       </div>

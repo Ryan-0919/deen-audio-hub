@@ -400,6 +400,7 @@ const serializeFolder = (folder) => ({
 
 const serializeText = (text, options = {}) => {
   const includeContent = options.includeContent !== false;
+  const resolvedDifficulty = getValidatedDifficulty(options.selectedDifficulty ?? text.difficulty);
   const difficultyConfigMap = options.difficultyConfigMap ?? null;
   const resolvedContent = options.contentOverride ?? text.content;
   const normalizedContent = normalizeTypingPracticeContent(resolvedContent);
@@ -409,8 +410,8 @@ const serializeText = (text, options = {}) => {
     folderId: text.folderId,
     folderName: normalizeText(text.folder?.name),
     title: normalizeText(text.title),
-    difficulty: text.difficulty,
-    difficultyLabel: typingPracticeDifficultyLabelMap[text.difficulty] ?? text.difficulty,
+    difficulty: resolvedDifficulty,
+    difficultyLabel: typingPracticeDifficultyLabelMap[resolvedDifficulty] ?? resolvedDifficulty,
     source: normalizeText(text.source),
     tags: parseTagsJson(text.tagsJson),
     content: includeContent ? normalizedContent : "",
@@ -420,7 +421,7 @@ const serializeText = (text, options = {}) => {
     sortOrder: Number(text.sortOrder ?? 0),
     contentLength: normalizedContent.length || Number(text.contentLength ?? 0),
     preview: createPreview(resolvedContent),
-    difficultyConfig: difficultyConfigMap ? difficultyConfigMap[text.difficulty] ?? null : null,
+    difficultyConfig: difficultyConfigMap ? difficultyConfigMap[resolvedDifficulty] ?? null : null,
     playTicket: includeContent ? `${options.playTicket ?? ""}` : "",
     createdAt: formatDateTime(text.createdAt),
     updatedAt: formatDateTime(text.updatedAt),
@@ -435,6 +436,8 @@ const serializeRecord = (record, options = {}) => {
     textId: record.textId ?? "",
     mode: record.mode,
     modeLabel: typingPracticeModeLabelMap[record.mode] ?? record.mode,
+    difficulty: record.difficulty ?? "medium",
+    difficultyLabel: typingPracticeDifficultyLabelMap[record.difficulty] ?? record.difficulty ?? "medium",
     title: normalizeText(record.titleSnapshot),
     source: normalizeText(record.sourceSnapshot),
     targetLength: Number(record.targetLength ?? 0),
@@ -513,7 +516,6 @@ const validateTextPayload = ({ folder, payload }) => {
 
   return {
     title,
-    difficulty: getValidatedDifficulty(payload?.difficulty),
     source: toOptionalText(payload?.source),
     tagsJson: JSON.stringify(parseTagsInput(payload?.tags)),
     content,
@@ -873,7 +875,7 @@ export const createTypingPracticeText = async ({ db, payload }) =>
       data: {
         folderId,
         title: validated.title,
-        difficulty: validated.difficulty,
+        difficulty: "medium",
         source: validated.source,
         tagsJson: validated.tagsJson,
         content: validated.content,
@@ -951,7 +953,7 @@ export const updateTypingPracticeText = async ({ db, textId, payload }) =>
       data: {
         folderId,
         title: validated.title,
-        difficulty: validated.difficulty,
+        difficulty: "medium",
         source: validated.source,
         tagsJson: validated.tagsJson,
         content: validated.content,
@@ -1169,7 +1171,7 @@ export const getTypingPracticeLeaderboard = async ({ db, limit = 10 }) => {
   );
 };
 
-export const getTypingPracticeTextForUser = async ({ db, textId, mode, timeLimitSeconds }) => {
+export const getTypingPracticeTextForUser = async ({ db, textId, mode, difficulty, timeLimitSeconds }) => {
   const [text, difficultyConfigs] = await Promise.all([
     db.typingPracticeText.findFirst({
       where: {
@@ -1192,12 +1194,13 @@ export const getTypingPracticeTextForUser = async ({ db, textId, mode, timeLimit
   }
 
   const resolvedMode = getValidatedMode(mode);
+  const resolvedDifficulty = getValidatedDifficulty(difficulty);
   const resolvedTimeLimitSeconds = resolvedMode === "sprint" ? toPositiveInt(timeLimitSeconds, 180) : 0;
   const resolvedContent =
     resolvedMode === "sprint" ? createSprintTargetContent(text.content, resolvedTimeLimitSeconds) : normalizeTypingPracticeContent(text.content);
   const playTicket = createTypingPracticePlayTicket({
     textId: text.id,
-    difficulty: text.difficulty,
+    difficulty: resolvedDifficulty,
     mode: resolvedMode,
     content: resolvedContent,
     timeLimitSeconds: resolvedTimeLimitSeconds,
@@ -1206,6 +1209,7 @@ export const getTypingPracticeTextForUser = async ({ db, textId, mode, timeLimit
   return serializeText(text, {
     includeContent: true,
     contentOverride: resolvedContent,
+    selectedDifficulty: resolvedDifficulty,
     difficultyConfigMap: buildTypingPracticeDifficultyConfigMap(difficultyConfigs),
     playTicket,
   });
@@ -1213,6 +1217,7 @@ export const getTypingPracticeTextForUser = async ({ db, textId, mode, timeLimit
 
 export const createTypingPracticeRecord = async ({ db, userId, payload }) => {
   const mode = getValidatedMode(payload?.mode);
+  const difficulty = getValidatedDifficulty(payload?.difficulty);
   const textId = `${payload?.textId ?? ""}`.trim() || null;
   const titleSnapshot = normalizeText(payload?.title);
   const contentSnapshot = normalizeTypingPracticeContent(payload?.contentSnapshot);
@@ -1271,7 +1276,7 @@ export const createTypingPracticeRecord = async ({ db, userId, payload }) => {
 
     if (
       `${playTicketPayload.textId ?? ""}` !== `${sourceText?.id ?? ""}` ||
-      `${playTicketPayload.difficulty ?? ""}` !== `${sourceText?.difficulty ?? ""}` ||
+      `${playTicketPayload.difficulty ?? ""}` !== difficulty ||
       `${playTicketPayload.mode ?? ""}` !== mode
     ) {
       throw createHttpError("练习内容与凭证不匹配，请重新进入练习", 400);
@@ -1300,7 +1305,7 @@ export const createTypingPracticeRecord = async ({ db, userId, payload }) => {
     comboMax,
   });
   const difficultyConfigMap = buildTypingPracticeDifficultyConfigMap(difficultyConfigs);
-  const difficultyConfig = difficultyConfigMap[sourceText?.difficulty ?? "medium"] ?? defaultTypingPracticeDifficultyConfigMap.medium;
+  const difficultyConfig = difficultyConfigMap[difficulty] ?? defaultTypingPracticeDifficultyConfigMap.medium;
   const derivedCapturedStageCount = calculateCapturedStageCount({
     correctLength: metrics.correctLength,
     targetLength: metrics.targetLength,
@@ -1329,6 +1334,7 @@ export const createTypingPracticeRecord = async ({ db, userId, payload }) => {
       userId,
       textId: sourceText?.id ?? null,
       mode,
+      difficulty,
       titleSnapshot: titleSnapshot || normalizeText(sourceText?.title),
       sourceSnapshot: toOptionalText(payload?.sourceSnapshot) ?? toOptionalText(sourceText?.source),
       contentSnapshot,

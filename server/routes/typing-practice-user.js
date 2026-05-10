@@ -56,6 +56,7 @@ typingPracticeUserRouter.get("/texts/:textId", async (req, res) => {
         db: prisma,
         textId: `${req.params.textId ?? ""}`.trim(),
         mode: `${req.query?.mode ?? ""}`.trim(),
+        difficulty: `${req.query?.difficulty ?? ""}`.trim(),
         timeLimitSeconds: toPositiveInt(req.query?.limit, 180),
       }),
     );

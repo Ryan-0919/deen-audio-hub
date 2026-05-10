@@ -60,6 +60,11 @@ const EMPTY_HOME: TypingPracticeHomePayload = {
 
 const HISTORY_PAGE_SIZE = 5;
 const VISIBLE_TYPING_PRACTICE_MODES: TypingPracticeMode[] = ["guided", "sprint"];
+const VISIBLE_TYPING_DIFFICULTIES = [
+  { value: "easy", label: "入门" },
+  { value: "medium", label: "标准" },
+  { value: "hard", label: "挑战" },
+] as const;
 
 const EMPTY_RECORD_LIST: TypingPracticeRecordListPayload = {
   items: [],
@@ -121,6 +126,7 @@ export function TypingPracticeHome() {
   const [loading, setLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [selectedMode, setSelectedMode] = useState<TypingPracticeMode>("guided");
+  const [selectedDifficulty, setSelectedDifficulty] = useState<"easy" | "medium" | "hard">("medium");
   const [selectedTextId, setSelectedTextId] = useState("");
   const [sprintSeconds, setSprintSeconds] = useState<180 | 300>(180);
 
@@ -203,14 +209,19 @@ export function TypingPracticeHome() {
 
     if (selectedMode === "sprint") {
       const target = selectedText ?? texts[0];
-      navigate(`/user/typing-practice/texts/${target.id}/play${buildTypingPracticeSearch("sprint", { timeLimitSeconds: sprintSeconds })}`);
+      navigate(
+        `/user/typing-practice/texts/${target.id}/play${buildTypingPracticeSearch("sprint", {
+          difficulty: selectedDifficulty,
+          timeLimitSeconds: sprintSeconds,
+        })}`,
+      );
       return;
     }
 
     const target = selectedText ?? texts[0];
     navigate(
       `/user/typing-practice/texts/${target.id}/play${buildTypingPracticeSearch(selectedMode, {
-        previewSeconds: selectedMode === "memorize" ? target.difficultyConfig?.memorizePreviewSeconds : undefined,
+        difficulty: selectedDifficulty,
       })}`,
     );
   };
@@ -309,6 +320,24 @@ export function TypingPracticeHome() {
               <div className="flex flex-wrap items-center justify-center gap-2">
                 {VISIBLE_TYPING_PRACTICE_MODES.map((mode) => (
                   <ModeButton key={mode} mode={mode} active={selectedMode === mode} onClick={() => setSelectedMode(mode)} />
+                ))}
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                {VISIBLE_TYPING_DIFFICULTIES.map((difficulty) => (
+                  <button
+                    key={difficulty.value}
+                    type="button"
+                    onClick={() => setSelectedDifficulty(difficulty.value)}
+                    className={cn(
+                      "rounded-full border px-4 py-1.5 text-sm transition",
+                      selectedDifficulty === difficulty.value
+                        ? "border-white/18 bg-white text-slate-950"
+                        : "border-white/10 bg-white/[0.05] text-white/62 hover:bg-white/[0.08]",
+                    )}
+                  >
+                    {difficulty.label}
+                  </button>
                 ))}
               </div>
 

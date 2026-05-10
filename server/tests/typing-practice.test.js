@@ -91,6 +91,7 @@ test("getTypingPracticeTextForUser returns server-resolved sprint content and a 
       db,
       textId: "text_1",
       mode: "sprint",
+      difficulty: "hard",
       timeLimitSeconds: 180,
     }),
   );
@@ -100,6 +101,7 @@ test("getTypingPracticeTextForUser returns server-resolved sprint content and a 
   assert.ok(text.content.length > 0);
   assert.ok(text.content.length <= 260);
   assert.notEqual(text.content, LONG_CONTENT);
+  assert.equal(text.difficulty, "hard");
 });
 
 test("createTypingPracticeRecord rejects tampered content when play ticket does not match", async () => {
@@ -109,6 +111,7 @@ test("createTypingPracticeRecord rejects tampered content when play ticket does 
       db,
       textId: "text_1",
       mode: "sprint",
+      difficulty: "easy",
       timeLimitSeconds: 180,
     }),
   );
@@ -122,6 +125,7 @@ test("createTypingPracticeRecord rejects tampered content when play ticket does 
           payload: {
             textId: text.id,
             mode: "sprint",
+            difficulty: "easy",
             title: text.title,
             sourceSnapshot: text.source,
             contentSnapshot: `${text.content}篡改`,
@@ -148,6 +152,7 @@ test("createTypingPracticeRecord clamps duration using server-issued play ticket
       db,
       textId: "text_1",
       mode: "guided",
+      difficulty: "hard",
     }),
   );
 
@@ -158,6 +163,7 @@ test("createTypingPracticeRecord clamps duration using server-issued play ticket
       payload: {
         textId: text.id,
         mode: "guided",
+        difficulty: "hard",
         title: text.title,
         sourceSnapshot: text.source,
         contentSnapshot: text.content,
@@ -174,6 +180,7 @@ test("createTypingPracticeRecord clamps duration using server-issued play ticket
   );
 
   assert.equal(record.durationSeconds, 19);
+  assert.equal(record.difficulty, "hard");
 });
 
 test("createTypingPracticeRecord ignores client supplied capturedStageCount when scoring", async () => {
@@ -183,6 +190,7 @@ test("createTypingPracticeRecord ignores client supplied capturedStageCount when
       db,
       textId: "text_1",
       mode: "guided",
+      difficulty: "medium",
     }),
   );
 
@@ -193,6 +201,7 @@ test("createTypingPracticeRecord ignores client supplied capturedStageCount when
       payload: {
         textId: text.id,
         mode: "guided",
+        difficulty: "medium",
         title: text.title,
         sourceSnapshot: text.source,
         contentSnapshot: text.content,
