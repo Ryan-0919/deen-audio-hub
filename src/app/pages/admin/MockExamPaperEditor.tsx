@@ -336,14 +336,21 @@ export function MockExamPaperEditor() {
     return true;
   };
 
-  const handleSave = async (options?: { autoOpenQuestionDialogAfterCreate?: boolean; successMessage?: string }) => {
+  const handleSave = async (options?: {
+    autoOpenQuestionDialogAfterCreate?: boolean;
+    successMessage?: string;
+    forceDraftStatus?: boolean;
+  }) => {
     if (!validateBeforeSave()) {
       return null;
     }
 
     setSaving(true);
     try {
-      const payload = buildPaperPayload(form);
+      const payload = buildPaperPayload({
+        ...form,
+        status: options?.forceDraftStatus ? "draft" : form.status,
+      });
       const result = isEdit && paperId ? await mockApi.updateAdminMockExamPaper(paperId, payload) : await mockApi.createAdminMockExamPaper(payload);
       setPaper(result);
       setForm(mapPaperDetailToForm(result));
@@ -373,6 +380,7 @@ export function MockExamPaperEditor() {
     if (!paper?.id) {
       const result = await handleSave({
         autoOpenQuestionDialogAfterCreate: true,
+        forceDraftStatus: true,
         successMessage: "试卷已创建，正在打开题库",
       });
       if (!result?.id) {

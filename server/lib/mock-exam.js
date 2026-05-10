@@ -2917,66 +2917,76 @@ export const reviewMockExamRecord = async ({
 
       subjectiveScoreTotal += score;
 
+      const existingReviewJson = parseJsonSafely(answer?.reviewJson, null);
+      const questionExtra = questionExtraMap.get(question.id) ?? {};
+      const reviewJson = isSubjectiveQuestion(question)
+        ? (() => {
+            const built = buildSubjectiveReviewJson({
+              question,
+              answer: {
+                ...(answer ?? {}),
+                score,
+              },
+              source: "manual",
+              subQuestionScores: sourcePayload
+                ? Object.fromEntries(Array.from(sourcePayload.entries()).map(([subQuestionId, value]) => [subQuestionId, value?.score]))
+                : null,
+            });
+
+            built.reviewVoiceUrl = questionExtra.reviewVoiceUrl ?? "";
+            built.reviewVoiceObjectKey = questionExtra.reviewVoiceObjectKey ?? "";
+            built.reviewVoiceDurationSeconds = questionExtra.reviewVoiceDurationSeconds ?? 0;
+            built.feedbackStars = Number(existingReviewJson?.feedbackStars ?? 0) || 0;
+            built.feedbackSubmittedAt = existingReviewJson?.feedbackSubmittedAt ?? null;
+            built.subQuestions = built.subQuestions.map((subQuestion) => {
+              const extra = sourcePayload?.get(subQuestion.id);
+              const previousSubQuestion = Array.isArray(existingReviewJson?.subQuestions)
+                ? existingReviewJson.subQuestions.find((item) => `${item?.id ?? ""}`.trim() === subQuestion.id)
+                : null;
+
+              return {
+                ...subQuestion,
+                reviewComment: extra?.reviewComment || subQuestion.reviewComment,
+                referenceAnswer: extra?.referenceAnswer || subQuestion.referenceAnswer,
+                abilityLabel: extra?.abilityLabel || subQuestion.abilityLabel || subQuestion.title,
+                rubricGuidance:
+                  `${extra?.rubricGuidance ?? ""}`.trim() ||
+                  `${previousSubQuestion?.rubricGuidance ?? ""}`.trim() ||
+                  subQuestion.rubricGuidance,
+                rubricPoints:
+                  Array.isArray(extra?.rubricPoints) && extra.rubricPoints.length > 0
+                    ? normalizeRubricPoints(extra.rubricPoints)
+                    : Array.isArray(previousSubQuestion?.rubricPoints) && previousSubQuestion.rubricPoints.length > 0
+                    ? normalizeRubricPoints(previousSubQuestion.rubricPoints)
+                    : normalizeRubricPoints(subQuestion.rubricPoints),
+                missedPoints:
+                  Array.isArray(extra?.missedPoints) && extra.missedPoints.length > 0
+                    ? normalizeMissedPoints(extra.missedPoints)
+                    : Array.isArray(previousSubQuestion?.missedPoints) && previousSubQuestion.missedPoints.length > 0
+                    ? normalizeMissedPoints(previousSubQuestion.missedPoints)
+                    : Array.isArray(subQuestion.missedPoints)
+                      ? normalizeMissedPoints(subQuestion.missedPoints)
+                      : [],
+                answerMarks: syncAnswerMarkScoresWithExpectedScore(extra?.answerMarks, extra?.score),
+              };
+            });
+            return JSON.stringify(built);
+          })()
+        : null;
+
       if (answer) {
-        const existingReviewJson = parseJsonSafely(answer.reviewJson, null);
-        const questionExtra = questionExtraMap.get(question.id) ?? {};
-        const reviewJson = isSubjectiveQuestion(question)
-          ? (() => {
-              const built = buildSubjectiveReviewJson({
-                question,
-                answer: {
-                  ...answer,
-                  score,
-                },
-                source: "manual",
-                subQuestionScores: sourcePayload
-                  ? Object.fromEntries(Array.from(sourcePayload.entries()).map(([subQuestionId, value]) => [subQuestionId, value?.score]))
-                  : null,
-              });
-
-              built.reviewVoiceUrl = questionExtra.reviewVoiceUrl ?? "";
-              built.reviewVoiceObjectKey = questionExtra.reviewVoiceObjectKey ?? "";
-              built.reviewVoiceDurationSeconds = questionExtra.reviewVoiceDurationSeconds ?? 0;
-              built.feedbackStars = Number(existingReviewJson?.feedbackStars ?? 0) || 0;
-              built.feedbackSubmittedAt = existingReviewJson?.feedbackSubmittedAt ?? null;
-              built.subQuestions = built.subQuestions.map((subQuestion) => {
-                const extra = sourcePayload?.get(subQuestion.id);
-                const previousSubQuestion = Array.isArray(existingReviewJson?.subQuestions)
-                  ? existingReviewJson.subQuestions.find((item) => `${item?.id ?? ""}`.trim() === subQuestion.id)
-                  : null;
-
-                return {
-                  ...subQuestion,
-                  reviewComment: extra?.reviewComment || subQuestion.reviewComment,
-                  referenceAnswer: extra?.referenceAnswer || subQuestion.referenceAnswer,
-                  abilityLabel: extra?.abilityLabel || subQuestion.abilityLabel || subQuestion.title,
-                  rubricGuidance:
-                    `${extra?.rubricGuidance ?? ""}`.trim() ||
-                    `${previousSubQuestion?.rubricGuidance ?? ""}`.trim() ||
-                    subQuestion.rubricGuidance,
-                  rubricPoints:
-                    Array.isArray(extra?.rubricPoints) && extra.rubricPoints.length > 0
-                      ? normalizeRubricPoints(extra.rubricPoints)
-                      : Array.isArray(previousSubQuestion?.rubricPoints) && previousSubQuestion.rubricPoints.length > 0
-                      ? normalizeRubricPoints(previousSubQuestion.rubricPoints)
-                      : normalizeRubricPoints(subQuestion.rubricPoints),
-                  missedPoints:
-                    Array.isArray(extra?.missedPoints) && extra.missedPoints.length > 0
-                      ? normalizeMissedPoints(extra.missedPoints)
-                      : Array.isArray(previousSubQuestion?.missedPoints) && previousSubQuestion.missedPoints.length > 0
-                      ? normalizeMissedPoints(previousSubQuestion.missedPoints)
-                      : Array.isArray(subQuestion.missedPoints)
-                        ? normalizeMissedPoints(subQuestion.missedPoints)
-                        : [],
-                  answerMarks: syncAnswerMarkScoresWithExpectedScore(extra?.answerMarks, extra?.score),
-                };
-              });
-              return JSON.stringify(built);
-            })()
-          : null;
         await tx.mockExamAnswer.update({
           where: { id: answer.id },
           data: {
+            score,
+            reviewJson,
+          },
+        });
+      } else if (reviewJson) {
+        await tx.mockExamAnswer.create({
+          data: {
+            recordId: record.id,
+            questionId: question.id,
             score,
             reviewJson,
           },
