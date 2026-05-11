@@ -981,6 +981,28 @@ const mergeAiAnswerMarks = ({ existingMarks, answerText, rubricPoints, reviewCom
   return dedupeAnswerMarks([...existingMarks, ...fallbackWrongMarks]);
 };
 
+const canAutoRepairAnswerMarks = ({ answerMarks, answerText, score, maxScore }) => {
+  const safeScore = Number(score ?? 0);
+  const safeMaxScore = Number(maxScore ?? 0);
+  const normalizedMarks = normalizeAnswerMarks(answerMarks);
+
+  if (safeScore > 0) {
+    const hasPositiveMark = normalizedMarks.some((mark) => mark.status === "score" || mark.status === "correct");
+    if (!hasPositiveMark && answerText.trim()) {
+      return true;
+    }
+  }
+
+  if (safeScore < safeMaxScore) {
+    const hasWrongMark = normalizedMarks.some((mark) => mark.status === "wrong");
+    if (!hasWrongMark && answerText.trim()) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
 const ensureWrongMarkForPartialScore = ({ marks, answerText, reviewComment, score, maxScore }) => {
   if (marks.some((item) => item.status === "wrong")) {
     return dedupeAnswerMarks(marks);
@@ -2031,13 +2053,14 @@ const assertValidAiSubQuestionResult = ({ item, allocation, fallbackTitle, fallb
   const hasPositiveMark = rawAnswerMarks.some((mark) => mark.status === "score" || mark.status === "correct");
   const hasWrongMark = rawAnswerMarks.some((mark) => mark.status === "wrong");
 
-  if (rawScore > 0 && !hasPositiveMark) {
+  if (rawScore > 0 && !hasPositiveMark && !canAutoRepairAnswerMarks({ answerMarks: rawAnswerMarks, answerText: fallbackAnswerText, score: rawScore, maxScore })) {
     throw createHttpError(`批改返回缺少正向标注：${fallbackTitle || allocation?.id || "unknown"}`, 502);
   }
 
   if (
     rawScore < maxScore &&
     !hasWrongMark &&
+    !canAutoRepairAnswerMarks({ answerMarks: rawAnswerMarks, answerText: fallbackAnswerText, score: rawScore, maxScore }) &&
     !shouldRelaxWrongMarkRequirement({
       marks: rawAnswerMarks,
       answerText: fallbackAnswerText,
