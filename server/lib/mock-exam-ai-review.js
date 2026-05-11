@@ -3,11 +3,28 @@ import { normalizeDisplayText } from "./text.js";
 
 const subjectiveQuestionType = "subjective_case";
 const normalizeMultilineText = (value) => normalizeDisplayText(`${value ?? ""}`.replace(/\r\n/g, "\n")).trim();
-const AI_REVIEW_COMMENT_MAX_LENGTH = 180;
+const AI_REVIEW_COMMENT_MAX_LENGTH = 350;
 const AI_REVIEW_MARK_COMMENT_MAX_LENGTH = 60;
 const SUBJECTIVE_REVIEW_MIN_MEANINGFUL_LENGTH = 6;
 const KEYWORD_SPLIT_PATTERN = /[\n,，、；;]/;
 const SENTENCE_SPLIT_PATTERN = /[。；;！!？?\n]/;
+const REVIEW_COMMENT_ACTION_HINT_PATTERN = /(补上|补出|写明|写清楚|展开|落到|扣到|带回|对应到|单独起一句|改的时候|回去改|更稳的写法|别只停在|先把|再把|最后把)/;
+const REVIEW_COMMENT_GENERIC_PATTERNS = [
+  /理由不足/u,
+  /展开不够/u,
+  /论证不足/u,
+  /分析不够/u,
+  /分析不够全面/u,
+  /有待提升/u,
+  /还有提升空间/u,
+  /需要继续完善/u,
+  /还需继续完善/u,
+  /作答不够完整/u,
+  /表达不够完整/u,
+  /没有充分展开/u,
+  /建议进一步完善/u,
+  /建议继续完善/u,
+];
 const SUBJECTIVE_REVIEW_LOW_QUALITY_PATTERNS = [
   /^无$/i,
   /^不会$/i,
@@ -162,7 +179,7 @@ const enrichReviewCommentWithActionableGuidance = (value) => {
     return "";
   }
 
-  const hasActionHint = /(补上|补出|写明|写清楚|展开|落到|扣到|带回|对应到|单独起一句|改的时候|回去改|更稳的写法)/.test(text);
+  const hasActionHint = REVIEW_COMMENT_ACTION_HINT_PATTERN.test(text);
   if (hasActionHint) {
     return text;
   }
@@ -174,6 +191,36 @@ const enrichReviewCommentWithActionableGuidance = (value) => {
   }
 
   return `${text}\n\n这题如果你现在回去修改，别只停在结论，把${missingText}单独补出来，每一点都尽量写成“结论 + 依据 + 结合本案”的样子。`;
+};
+const isWeakReviewComment = (value) => {
+  const text = normalizeText(value);
+  if (!text) {
+    return true;
+  }
+
+  const textLength = getUnicodeLength(text);
+  const sentenceCount = text.split(SENTENCE_SPLIT_PATTERN).map((item) => item.trim()).filter(Boolean).length;
+  const hasActionHint = REVIEW_COMMENT_ACTION_HINT_PATTERN.test(text);
+  const genericPatternHit = REVIEW_COMMENT_GENERIC_PATTERNS.some((pattern) => pattern.test(text));
+  const mentionsConcreteMissingPoint = /你现在还缺|最该补上的其实是|真正失分就在|漏掉了|没有覆盖|没有体现|没有交代|没有写到/u.test(text);
+
+  if (textLength < 55) {
+    return true;
+  }
+
+  if (sentenceCount < 2) {
+    return true;
+  }
+
+  if (genericPatternHit && !mentionsConcreteMissingPoint) {
+    return true;
+  }
+
+  if (!hasActionHint && !mentionsConcreteMissingPoint) {
+    return true;
+  }
+
+  return false;
 };
 const normalizeAiReviewComment = (value, maxLength = AI_REVIEW_COMMENT_MAX_LENGTH) => {
   const text = enrichReviewCommentWithActionableGuidance(applyNaturalReviewCommentLineBreaks(sanitizeReviewExposureText(value)));
@@ -361,7 +408,7 @@ export const DEFAULT_AI_REVIEW_SYSTEM_PROMPT = [
   "你的总点评不要复述学生原答案，不要一味重复学生写了什么。",
   "你的总点评可以有清晰结构，但不要写成生硬模板，不要像机器报告，也不要像公文。",
   "你的表达要像老师在给学生讲题，亲切、自然、有针对性，让学生一眼能看懂自己到底错在哪、下一次该怎么改。",
-  "你的总点评请控制在 200 字以内，尽量写成 2 到 3 个短段落。",
+  "你的总点评请控制在 350 字以内，尽量写成 2 到 4 个自然短段落。",
   "你的总点评请围绕这几个层次自然展开：核心失分点、采分点分析、思维诊断、可执行建议。",
   "你可以用这些层次来组织内容，但不要机械套话，不要每一段都写得像固定表格。",
   "在建议部分要直接告诉学生下一次该怎么改、怎么补，但不要写成“第一步、第二步、第三步”这种流程卡片式话术。",
@@ -1338,6 +1385,28 @@ const enrichHighScoreReviewComment = ({ reviewComment, score, maxScore, title, r
   return normalizeAiReviewComment(`${text}\n\n${suggestion}`);
 };
 
+const finalizeAiReviewComment = ({ reviewComment, score, maxScore, title, rubricPoints }) => {
+  const humanized = humanizeAiReviewComment(reviewComment);
+  const enriched = enrichHighScoreReviewComment({
+    reviewComment: humanized,
+    score,
+    maxScore,
+    title,
+    rubricPoints,
+  });
+
+  if (!isWeakReviewComment(enriched)) {
+    return enriched;
+  }
+
+  return buildSubQuestionSummaryComment({
+    score,
+    maxScore,
+    title,
+    rubricPoints,
+  });
+};
+
 const buildSubQuestionSummaryComment = ({ score, maxScore, title, rubricPoints }) => {
   const missedPoints = getMissedRubricPoints(rubricPoints);
   if (missedPoints.length === 0) {
@@ -1745,10 +1814,11 @@ const buildAiPromptV2 = ({ question, answer, allocations, runtimeConfig }) => {
     "5.9 对局部标注也要区分“结论对”和“理由弱”这两件事：如果学生短短一句话已经把本问核心结论答对了，就不要把这句正确结论本身标成 wrong；这时更适合保留正向标注，并另外指出理由、依据或本案分析没有展开。",
     "5.10 只有在结论本身判断错误、方向错误或结论与本题批改依据相反时，才应直接把该结论句标成 wrong。",
     "6. reviewComment 不要复述学生原答案，也不要一味重复学生写了什么。",
-    "7. reviewComment 必须控制在 200 字以内，尽量写成 2 到 3 个自然短段落。",
-    "8. reviewComment 不要按固定模板一段一段去套，也不要每次都用完全一样的句式，要像老师顺着学生这道题的实际问题往下讲。",
-    "9. 建议部分要直接告诉学生下一次该怎么改、怎么补，但不要机械写成“第一步、第二步、第三步”这种流程模板。",
+    "7. reviewComment 必须控制在 350 字以内，尽量写到 220 到 350 字这一档，确有必要时可以略短，但不能只写七八十个字的空泛点评；尽量写成 2 到 4 个自然短段落。",
+    "8. reviewComment 不要按固定模板一段一段去套，也不要每次都用完全一样的句式，要像老师顺着学生这道题的实际问题往下讲，而且必须点到这道题具体漏了哪一层、错在哪一层。",
+    "9. 建议部分要直接告诉学生下一次该怎么改、怎么补，最好明确写到应该往答案里补什么内容、补哪个层次、如何落回本案，但不要机械写成“第一步、第二步、第三步”这种流程模板。",
     "10. 不要先写“虽然你得出了正确结论”“方向是对的”“能/不能这两个字拿到了分”这类话，直接指出遗漏点、问题和改法。",
+    "10.1 不要只写“理由不足”“展开不够”“分析不全面”这种空话，必须继续写清楚到底缺的是哪个采分点、哪层理由、哪段本案分析。",
     "11. answerMarks 中 status=wrong 的 comment 必须针对该段局部内容指出具体错误、遗漏或表达不足，不能把整道小问的总评写在这里，同时要写出修改建议。",
     "12. 只要某小问得了分，answerMarks 中就必须出现正向标注，不能只给 wrong。",
     "13. 如果命中了多个采分点，尽量分别标出多个正向命中位置，让前端可以显示多个对号/加分点。",
@@ -1791,9 +1861,9 @@ const buildAiPromptV2 = ({ question, answer, allocations, runtimeConfig }) => {
     "reviewComment 不要复述学生原答案。",
     "reviewComment 要根据学生这道题的实际作答状态调整语气和重点：全错时重在指出错因，只写结论时重在告诉他该补什么，方向对但理由弱时重在指出缺失层次，接近满分时既要点出答得好的地方，也要告诉他怎样写会更稳、更完整。",
     "不要把总点评写成固定四段或固定句型，也不要把同一套开头结尾机械套给所有学生。",
-    "reviewComment 必须控制在 200 字以内，尽量分成 2 到 3 个自然短段落。",
+    "reviewComment 必须控制在 350 字以内，尽量写到 220 到 350 字这一档，确有必要时可以略短，但不能写成只有七八十个字的空泛点评；尽量分成 2 到 4 个自然短段落。",
     "reviewComment 不要按固定模板去套，不要每次都重复同一组句式，也不要先肯定一句再转折。",
-    "reviewComment 必须给出可执行的修改办法，让学生看完就知道这道题现在该往答案里补什么，而不是只知道自己错了。",
+    "reviewComment 必须给出可执行的修改办法，让学生看完就知道这道题现在该往答案里补什么、补到哪一步，而不是只知道自己错了。",
     "reviewComment 的建议部分要自然地告诉学生下一次该怎么改，但不要写成“第一步、第二步、第三步”这种说明书式结构。",
     "status=wrong 的 answerMarks.comment 要写成老师对该片段的局部提醒，必须同时包含：这里哪里不对或漏了什么、建议怎么改。",
     "subQuestions 中每个对象都必须包含 id，且 id 必须与题目数据中的 subQuestionId 完全一致。",
@@ -1979,7 +2049,7 @@ const normalizeAiSubQuestionResult = ({ item, allocation, fallbackAnswerText, fa
   });
   const normalizedScore = clampInteger(item?.score ?? 0, 0, Number(allocation.maxScore ?? 0));
   const normalizedMissedPoints = normalizeMissedPoints(item?.missedPoints);
-  const normalizedReviewComment = enrichHighScoreReviewComment({
+  const normalizedReviewComment = finalizeAiReviewComment({
     reviewComment: item?.reviewComment,
     score: normalizedScore,
     maxScore: Number(allocation.maxScore ?? 0),
