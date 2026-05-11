@@ -1385,6 +1385,7 @@ function CompactInlineSubQuestionReviewWorkbench({
   const wrongMarkCount = marks.filter((mark) => mark.status === "wrong").length;
   const positiveMarkCount = marks.filter((mark) => mark.status === "correct" || mark.status === "score").length;
   const [selectionHint, setSelectionHint] = useState("");
+  const [editingMarkId, setEditingMarkId] = useState("");
   const markTypeMeta: Array<{
     value: EditableAnswerMark["status"];
     label: string;
@@ -1438,6 +1439,7 @@ function CompactInlineSubQuestionReviewWorkbench({
 
   const updateMark = (markId: string, updater: (mark: EditableAnswerMark) => EditableAnswerMark) =>
     onMarksChange(marks.map((item) => (item.id === markId ? updater(item) : item)));
+  const editingMark = marks.find((item) => item.id === editingMarkId) ?? null;
 
   return (
     <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_14px_36px_rgba(15,23,42,0.04)]">
@@ -1557,7 +1559,7 @@ function CompactInlineSubQuestionReviewWorkbench({
                 marks.map((mark, index) => (
                   <div
                     key={mark.id}
-                    className={`rounded-[22px] border p-4 ${
+                    className={`rounded-[20px] border px-4 py-3 ${
                       mark.status === "wrong"
                         ? "border-rose-100 bg-rose-50/70"
                         : mark.status === "neutral"
@@ -1568,7 +1570,16 @@ function CompactInlineSubQuestionReviewWorkbench({
                     }`}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-slate-900">批注 {index + 1}</p>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold text-slate-900">批注 {index + 1}</p>
+                          {mark.status === "score" && mark.score ? (
+                            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-700">+{mark.score}分</span>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 line-clamp-1 text-sm text-slate-700">{mark.highlight || "未填写对应原文"}</p>
+                        <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-500">{mark.comment || "暂无局部评语"}</p>
+                      </div>
                       <div className="flex items-center gap-2">
                         {markTypeMeta.map((item) => (
                           <button
@@ -1592,6 +1603,13 @@ function CompactInlineSubQuestionReviewWorkbench({
                         ))}
                         <button
                           type="button"
+                          onClick={() => setEditingMarkId(mark.id)}
+                          className="rounded-full px-2 py-1 text-sm font-medium text-blue-600 transition hover:bg-blue-50 hover:text-blue-700"
+                        >
+                          编辑
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => onMarksChange(marks.filter((item) => item.id !== mark.id))}
                           className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
                           aria-label="删除"
@@ -1602,46 +1620,6 @@ function CompactInlineSubQuestionReviewWorkbench({
                       </div>
                     </div>
 
-                    <div className="mt-4 space-y-4">
-                      <div>
-                        <p className="mb-2 text-sm font-semibold text-slate-900">对应原文</p>
-                        <Textarea
-                          className="min-h-[78px] rounded-2xl border-slate-200 bg-white text-[15px] leading-7"
-                          value={mark.highlight}
-                          onChange={(event) => updateMark(mark.id, (item) => ({ ...item, highlight: event.target.value }))}
-                        />
-                      </div>
-
-                      {mark.status === "score" ? (
-                        <div>
-                          <p className="mb-2 text-sm font-semibold text-slate-900">加分数值</p>
-                          <Input
-                            className="h-11 rounded-2xl bg-white"
-                            value={mark.score}
-                            onChange={(event) => updateMark(mark.id, (item) => ({ ...item, score: event.target.value }))}
-                            placeholder="如 1"
-                          />
-                        </div>
-                      ) : null}
-
-                      <div>
-                        <p className="mb-2 text-sm font-semibold text-slate-900">局部评语</p>
-                        <Textarea
-                          className="min-h-[120px] rounded-2xl border-slate-200 bg-white text-[15px] leading-7"
-                          value={mark.comment}
-                          onChange={(event) => updateMark(mark.id, (item) => ({ ...item, comment: event.target.value }))}
-                          placeholder={
-                            mark.status === "wrong"
-                              ? "这里具体错在哪、漏了什么，以及建议怎么改"
-                              : mark.status === "neutral"
-                                ? "这里没有答到哪个点，建议补哪一层"
-                                : mark.status === "score"
-                                  ? "补充这段为什么可以得分"
-                                  : "补充这段答得好的地方"
-                          }
-                        />
-                      </div>
-                    </div>
                   </div>
                 ))
               )}
@@ -1649,6 +1627,89 @@ function CompactInlineSubQuestionReviewWorkbench({
           </section>
         </div>
       </div>
+
+      <Dialog open={Boolean(editingMark)} onOpenChange={(open) => (!open ? setEditingMarkId("") : null)}>
+        <DialogContent className="sm:max-w-[720px]">
+          <DialogHeader>
+            <DialogTitle>编辑局部批注</DialogTitle>
+            <DialogDescription>这里再细改对应原文、批注类型、分数和局部评语，不影响主页面总览效率。</DialogDescription>
+          </DialogHeader>
+
+          {editingMark ? (
+            <div className="space-y-4">
+              <div>
+                <p className="mb-2 text-sm font-semibold text-slate-900">对应原文</p>
+                <Textarea
+                  className="min-h-[96px] rounded-2xl border-slate-200 bg-white text-[15px] leading-7"
+                  value={editingMark.highlight}
+                  onChange={(event) => updateMark(editingMark.id, (item) => ({ ...item, highlight: event.target.value }))}
+                />
+              </div>
+
+              <div>
+                <p className="mb-2 text-sm font-semibold text-slate-900">批注类型</p>
+                <div className="grid gap-2 sm:grid-cols-4">
+                  {markTypeMeta.map((item) => (
+                    <button
+                      key={`dialog_${editingMark.id}_${item.value}`}
+                      type="button"
+                      onClick={() =>
+                        updateMark(editingMark.id, (current) => ({
+                          ...current,
+                          status: item.value,
+                          score: item.value === "score" ? current.score : "",
+                        }))
+                      }
+                      className={`inline-flex h-10 items-center justify-center gap-2 rounded-full border text-sm font-medium transition ${
+                        editingMark.status === item.value ? item.className : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      {item.icon}
+                      <span>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {editingMark.status === "score" ? (
+                <div>
+                  <p className="mb-2 text-sm font-semibold text-slate-900">加分数值</p>
+                  <Input
+                    className="h-11 rounded-2xl bg-white"
+                    value={editingMark.score}
+                    onChange={(event) => updateMark(editingMark.id, (item) => ({ ...item, score: event.target.value }))}
+                    placeholder="如 1"
+                  />
+                </div>
+              ) : null}
+
+              <div>
+                <p className="mb-2 text-sm font-semibold text-slate-900">局部评语</p>
+                <Textarea
+                  className="min-h-[150px] rounded-2xl border-slate-200 bg-white text-[15px] leading-7"
+                  value={editingMark.comment}
+                  onChange={(event) => updateMark(editingMark.id, (item) => ({ ...item, comment: event.target.value }))}
+                  placeholder={
+                    editingMark.status === "wrong"
+                      ? "这里具体错在哪、漏了什么，以及建议怎么改"
+                      : editingMark.status === "neutral"
+                        ? "这里没有答到哪个点，建议补哪一层"
+                        : editingMark.status === "score"
+                          ? "补充这段为什么可以得分"
+                          : "补充这段答得好的地方"
+                  }
+                />
+              </div>
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setEditingMarkId("")}>
+              关闭
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
