@@ -534,6 +534,12 @@ model MockExamRecord {
   paperSnapshotJson String?           @db.LongText
   status         MockExamRecordStatus @default(in_progress)
   reviewWorkflowStatus MockExamReviewWorkflowStatus @default(not_required)
+  manualReviewerId String?            @db.VarChar(191)
+  manualReviewerName String?          @db.VarChar(100)
+  manualReviewLockToken String?       @db.VarChar(191)
+  manualReviewClaimedAt DateTime?
+  manualReviewLockExpiresAt DateTime?
+  manualReviewVersion Int             @default(0)
   isPaused       Boolean              @default(false)
   attemptNo      Int                  @default(1)
   questionCount  Int                  @default(0)
@@ -560,6 +566,8 @@ model MockExamRecord {
   @@index([paperId, userId, createdAt])
   @@index([paperId, reviewWorkflowStatus, submittedAt])
   @@index([userId, reviewWorkflowStatus, updatedAt])
+  @@index([paperId, manualReviewLockExpiresAt])
+  @@index([manualReviewerId, manualReviewLockExpiresAt])
 }
 
 model MockExamAnswer {

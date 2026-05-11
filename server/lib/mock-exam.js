@@ -36,6 +36,11 @@ const createHttpError = (message, statusCode = 400) => {
   return error;
 };
 
+const MANUAL_REVIEW_LOCK_MINUTES = 15;
+
+const buildManualReviewLockToken = () =>
+  `review_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+
 const parseJsonSafely = (value, fallback) => {
   if (!value) return fallback;
 
@@ -713,6 +718,43 @@ const getMockExamRecordReviewWorkflowStatus = (record) => {
   return "ai_pending";
 };
 
+const isManualReviewLockActive = (record, currentTime = new Date()) => {
+  const expiresAt = record?.manualReviewLockExpiresAt ? new Date(record.manualReviewLockExpiresAt) : null;
+  return Boolean(
+    record?.manualReviewLockToken &&
+      record?.manualReviewerId &&
+      expiresAt &&
+      Number.isFinite(expiresAt.getTime()) &&
+      expiresAt.getTime() > currentTime.getTime(),
+  );
+};
+
+const isManualReviewLockedByAdmin = (record, adminId, currentTime = new Date()) =>
+  Boolean(adminId) && isManualReviewLockActive(record, currentTime) && `${record?.manualReviewerId ?? ""}`.trim() === `${adminId}`.trim();
+
+const getManualReviewLockMeta = (record, adminId = "", currentTime = new Date()) => {
+  const active = isManualReviewLockActive(record, currentTime);
+  const ownedByCurrentAdmin = active && isManualReviewLockedByAdmin(record, adminId, currentTime);
+  return {
+    active,
+    ownedByCurrentAdmin,
+    reviewerId: active ? `${record?.manualReviewerId ?? ""}`.trim() : "",
+    reviewerName: active ? `${record?.manualReviewerName ?? ""}`.trim() : "",
+    lockToken: ownedByCurrentAdmin ? `${record?.manualReviewLockToken ?? ""}`.trim() : "",
+    claimedAt: active && record?.manualReviewClaimedAt ? formatDateTime(record.manualReviewClaimedAt) : "",
+    expiresAt: active && record?.manualReviewLockExpiresAt ? formatDateTime(record.manualReviewLockExpiresAt) : "",
+    version: Number(record?.manualReviewVersion ?? 0) || 0,
+  };
+};
+
+const clearManualReviewLockData = () => ({
+  manualReviewerId: null,
+  manualReviewerName: null,
+  manualReviewLockToken: null,
+  manualReviewClaimedAt: null,
+  manualReviewLockExpiresAt: null,
+});
+
 const isMockExamRecordPublishedToUser = (record) => {
   const workflowStatus = getMockExamRecordReviewWorkflowStatus(record);
   if (workflowStatus === "published") {
@@ -729,9 +771,10 @@ const isMockExamRecordReviewPending = (record) =>
   isReviewEnabledForPaper(getRecordPaper(record)) &&
   !isMockExamRecordPublishedToUser(record);
 
-const getAdminMockExamReviewStatus = (record) => {
+const getAdminMockExamReviewStatus = (record, adminId = "", currentTime = new Date()) => {
   const workflowStatus = getMockExamRecordReviewWorkflowStatus(record);
   if (workflowStatus === "published") return "published";
+  if (isManualReviewLockedByAdmin(record, adminId, currentTime)) return "manual_reviewing";
   if (workflowStatus === "manual_pending") return "manual_pending";
   if (workflowStatus === "ai_processing") return "ai_processing";
   return "ai_pending";
@@ -2044,32 +2087,39 @@ const resumeMockExamRecordIfNeeded = async ({ db, record, currentTime = new Date
   return getRecordWithPaper(db, record.id);
 };
 
-export const serializeMockExamReviewSummary = (record) => ({
-  id: record.id,
-  attemptNo: record.attemptNo,
-  totalScore: Number(record.totalScore ?? 0),
-  questionCount: record.questionCount,
-  subjectiveQuestionCount: getSubjectiveQuestionCount(getRecordPaper(record)?.questions ?? []),
-  submittedAt: record.submittedAt ? formatDateTime(record.submittedAt) : "",
-  reviewedAt: record.reviewedAt ? formatDateTime(record.reviewedAt) : "",
-  publishedAt: record.publishedAt ? formatDateTime(record.publishedAt) : "",
-  reviewStatus: getAdminMockExamReviewStatus(record),
-  user: {
-    id: record.user?.id ?? "",
-    phone: record.user?.phone ?? "",
-  },
-  paper: {
-    id: getRecordPaper(record)?.id ?? "",
-    code: getRecordPaper(record)?.code ?? "",
-    title: getRecordPaper(record)?.title ?? "",
-    coverUrl: getMockExamPaperCoverUrl(getRecordPaper(record), getRecordPaper(record)?.paperType),
-    coverObjectKey: getRecordPaper(record)?.coverObjectKey ?? "",
-    phase: getRecordPaper(record)?.phase ?? "",
-    year: Number(getRecordPaper(record)?.year ?? 0),
-    totalScore: Number(getRecordPaper(record)?.totalScore ?? 0),
-    passScore: Number(getRecordPaper(record)?.passScore ?? 0),
-  },
-});
+export const serializeMockExamReviewSummary = (record, options = {}) => {
+  const currentTime = options.currentTime instanceof Date ? options.currentTime : new Date();
+  const currentAdminId = `${options.currentAdminId ?? ""}`.trim();
+  const manualReviewLock = getManualReviewLockMeta(record, currentAdminId, currentTime);
+
+  return {
+    id: record.id,
+    attemptNo: record.attemptNo,
+    totalScore: Number(record.totalScore ?? 0),
+    questionCount: record.questionCount,
+    subjectiveQuestionCount: getSubjectiveQuestionCount(getRecordPaper(record)?.questions ?? []),
+    submittedAt: record.submittedAt ? formatDateTime(record.submittedAt) : "",
+    reviewedAt: record.reviewedAt ? formatDateTime(record.reviewedAt) : "",
+    publishedAt: record.publishedAt ? formatDateTime(record.publishedAt) : "",
+    reviewStatus: getAdminMockExamReviewStatus(record, currentAdminId, currentTime),
+    manualReviewLock,
+    user: {
+      id: record.user?.id ?? "",
+      phone: record.user?.phone ?? "",
+    },
+    paper: {
+      id: getRecordPaper(record)?.id ?? "",
+      code: getRecordPaper(record)?.code ?? "",
+      title: getRecordPaper(record)?.title ?? "",
+      coverUrl: getMockExamPaperCoverUrl(getRecordPaper(record), getRecordPaper(record)?.paperType),
+      coverObjectKey: getRecordPaper(record)?.coverObjectKey ?? "",
+      phase: getRecordPaper(record)?.phase ?? "",
+      year: Number(getRecordPaper(record)?.year ?? 0),
+      totalScore: Number(getRecordPaper(record)?.totalScore ?? 0),
+      passScore: Number(getRecordPaper(record)?.passScore ?? 0),
+    },
+  };
+};
 
 export const serializeUserMockExamHistoryItem = (record) => ({
   id: record.id,
@@ -2130,7 +2180,7 @@ export const listUserVisibleMockExamRecords = async ({ db, userId }) => {
     .map((record) => serializeUserMockExamHistoryItem(record));
 };
 
-export const serializeMockExamReviewDetail = (record, currentTime = new Date()) => {
+export const serializeMockExamReviewDetail = (record, currentTime = new Date(), options = {}) => {
   const detail = serializeMockExamRecordDetail(record, currentTime);
   const subjectiveQuestions = detail.questions.filter((question) => question.type === subjectiveQuestionType);
   const subjectiveScore = subjectiveQuestions.reduce((sum, question) => sum + Number(question.earnedScore ?? 0), 0);
@@ -2139,10 +2189,13 @@ export const serializeMockExamReviewDetail = (record, currentTime = new Date()) 
   const reviewSource = reviewSources.includes("manual") ? "manual" : reviewSources.includes("rule") ? "rule" : reviewSources.includes("ai") ? "ai" : "system";
   const reviewProvider =
     reviewProviders.includes("openai-compatible") ? "openai-compatible" : reviewProviders.includes("rules") ? "rules" : undefined;
+  const currentAdminId = `${options.currentAdminId ?? ""}`.trim();
+  const manualReviewLock = getManualReviewLockMeta(record, currentAdminId, currentTime);
 
   return {
     ...detail,
-    reviewStatus: getAdminMockExamReviewStatus(record),
+    reviewStatus: getAdminMockExamReviewStatus(record, currentAdminId, currentTime),
+    manualReviewLock,
     user: {
       id: record.user?.id ?? "",
       phone: record.user?.phone ?? "",
@@ -2593,6 +2646,7 @@ export const listMockExamReviewRecords = async ({
   keyword = "",
   reviewStatus = "ai_pending",
   paperId = "",
+  currentAdminId = "",
   page = 1,
   pageSize = 20,
 }) => {
@@ -2672,11 +2726,20 @@ export const listMockExamReviewRecords = async ({
         : []),
     ],
   };
+  const manualReviewingWhere = currentAdminId
+    ? {
+        manualReviewerId: currentAdminId,
+      }
+    : {
+        id: "__never__",
+      };
   const normalizedReviewWhere =
     reviewStatus === "ai_pending"
       ? { reviewWorkflowStatus: "ai_pending" }
       : reviewStatus === "ai_processing"
         ? { reviewWorkflowStatus: "ai_processing" }
+        : reviewStatus === "manual_reviewing"
+          ? manualReviewingWhere
         : reviewStatus === "manual_pending"
           ? { reviewWorkflowStatus: "manual_pending" }
           : reviewStatus === "published"
@@ -2687,10 +2750,11 @@ export const listMockExamReviewRecords = async ({
     ...normalizedReviewWhere,
   };
 
-  const [total, aiPendingCount, aiProcessingCount, manualPendingCount, publishedCount, records] = await Promise.all([
+  const [total, aiPendingCount, aiProcessingCount, manualReviewingCount, manualPendingCount, publishedCount, records] = await Promise.all([
     db.mockExamRecord.count({ where }),
     db.mockExamRecord.count({ where: { ...baseWhere, reviewWorkflowStatus: "ai_pending" } }),
     db.mockExamRecord.count({ where: { ...baseWhere, reviewWorkflowStatus: "ai_processing" } }),
+    db.mockExamRecord.count({ where: { ...baseWhere, ...manualReviewingWhere } }),
     db.mockExamRecord.count({ where: { ...baseWhere, reviewWorkflowStatus: "manual_pending" } }),
     db.mockExamRecord.count({ where: { ...baseWhere, reviewWorkflowStatus: "published" } }),
     db.mockExamRecord.findMany({
@@ -2737,7 +2801,11 @@ export const listMockExamReviewRecords = async ({
   ]);
 
   return {
-    list: records.map((record) => serializeMockExamReviewSummary(record)),
+    list: records.map((record) =>
+      serializeMockExamReviewSummary(record, {
+        currentAdminId,
+      }),
+    ),
     pagination: {
       total,
       page,
@@ -2745,16 +2813,17 @@ export const listMockExamReviewRecords = async ({
       totalPages: Math.max(Math.ceil(total / pageSize), 1),
     },
     summary: {
-      total: aiPendingCount + aiProcessingCount + manualPendingCount + publishedCount,
+      total: aiPendingCount + aiProcessingCount + manualReviewingCount + manualPendingCount + publishedCount,
       aiPending: aiPendingCount,
       aiProcessing: aiProcessingCount,
+      manualReviewing: manualReviewingCount,
       manualPending: manualPendingCount,
       published: publishedCount,
     },
   };
 };
 
-export const listMockExamReviewPaperSummaries = async ({ db, keyword = "" }) => {
+export const listMockExamReviewPaperSummaries = async ({ db, keyword = "", currentAdminId = "" }) => {
   const normalizedKeyword = `${keyword ?? ""}`.trim();
   const papers = await db.mockExamPaper.findMany({
     where: {
@@ -2792,10 +2861,21 @@ export const listMockExamReviewPaperSummaries = async ({ db, keyword = "" }) => 
         status: "submitted",
       };
 
-      const [total, aiPending, aiProcessing, manualPending, published] = await Promise.all([
+      const [total, aiPending, aiProcessing, manualReviewing, manualPending, published] = await Promise.all([
         db.mockExamRecord.count({ where: baseWhere }),
         db.mockExamRecord.count({ where: { ...baseWhere, reviewWorkflowStatus: "ai_pending" } }),
         db.mockExamRecord.count({ where: { ...baseWhere, reviewWorkflowStatus: "ai_processing" } }),
+        db.mockExamRecord.count({
+          where: currentAdminId
+            ? {
+                ...baseWhere,
+                manualReviewerId: currentAdminId,
+              }
+            : {
+                ...baseWhere,
+                id: "__never__",
+              },
+        }),
         db.mockExamRecord.count({ where: { ...baseWhere, reviewWorkflowStatus: "manual_pending" } }),
         db.mockExamRecord.count({ where: { ...baseWhere, reviewWorkflowStatus: "published" } }),
       ]);
@@ -2806,6 +2886,7 @@ export const listMockExamReviewPaperSummaries = async ({ db, keyword = "" }) => 
           total,
           aiPending,
           aiProcessing,
+          manualReviewing,
           manualPending,
           published,
         },
@@ -2820,6 +2901,7 @@ export const listMockExamReviewPaperSummaries = async ({ db, keyword = "" }) => 
       totalRecords: list.reduce((sum, item) => sum + Number(item.reviewSummary?.total ?? 0), 0),
       aiPending: list.reduce((sum, item) => sum + Number(item.reviewSummary?.aiPending ?? 0), 0),
       aiProcessing: list.reduce((sum, item) => sum + Number(item.reviewSummary?.aiProcessing ?? 0), 0),
+      manualReviewing: list.reduce((sum, item) => sum + Number(item.reviewSummary?.manualReviewing ?? 0), 0),
       manualPending: list.reduce((sum, item) => sum + Number(item.reviewSummary?.manualPending ?? 0), 0),
       published: list.reduce((sum, item) => sum + Number(item.reviewSummary?.published ?? 0), 0),
     },
@@ -2847,9 +2929,157 @@ export const getMockExamReviewRecord = async ({ db, recordId, currentTime = new 
   return record;
 };
 
+const assertReviewRecordCanBeManuallyHandled = (record) => {
+  if (record.status !== "submitted") {
+    throw createHttpError("该考试记录尚未交卷", 409);
+  }
+
+  if (getSubjectiveQuestionCount(getRecordPaper(record)?.questions ?? []) === 0) {
+    throw createHttpError("该考试记录不需要主观题批改", 400);
+  }
+
+  if (!isReviewEnabledForPaper(getRecordPaper(record))) {
+    throw createHttpError("该试卷未开启人工批改", 400);
+  }
+};
+
+const assertManualReviewAccess = ({ record, adminId, lockToken, version, currentTime = new Date() }) => {
+  assertReviewRecordCanBeManuallyHandled(record);
+
+  if (!isManualReviewLockedByAdmin(record, adminId, currentTime)) {
+    const lockMeta = getManualReviewLockMeta(record, adminId, currentTime);
+    if (lockMeta.active && !lockMeta.ownedByCurrentAdmin) {
+      throw createHttpError(`该试卷正在由${lockMeta.reviewerName || "其他老师"}批改，请稍后再试`, 409);
+    }
+    throw createHttpError("请先领取这份试卷后再进行批改", 409);
+  }
+
+  if (`${record?.manualReviewLockToken ?? ""}`.trim() !== `${lockToken ?? ""}`.trim()) {
+    throw createHttpError("该试卷的批改锁已更新，请刷新后重试", 409);
+  }
+
+  const normalizedVersion = Number(version);
+  if (!Number.isInteger(normalizedVersion) || normalizedVersion !== Number(record?.manualReviewVersion ?? 0)) {
+    throw createHttpError("该试卷已被其他操作更新，请刷新后重试", 409);
+  }
+};
+
+export const claimMockExamReviewRecord = async ({
+  db,
+  recordId,
+  adminId,
+  adminName,
+  currentTime = new Date(),
+}) =>
+  db.$transaction(async (tx) => {
+    const record = await getReviewRecordWithPaper(tx, recordId);
+    if (!record) {
+      throw createHttpError("考试记录不存在", 404);
+    }
+
+    assertReviewRecordCanBeManuallyHandled(record);
+
+    const workflowStatus = getMockExamRecordReviewWorkflowStatus(record);
+    if (workflowStatus === "ai_processing") {
+      throw createHttpError("该试卷正在自动批改，暂时不能领取", 409);
+    }
+
+    if (workflowStatus === "published") {
+      return getReviewRecordWithPaper(tx, record.id);
+    }
+
+    const lockMeta = getManualReviewLockMeta(record, adminId, currentTime);
+    if (lockMeta.active && !lockMeta.ownedByCurrentAdmin) {
+      throw createHttpError(`该试卷已由${lockMeta.reviewerName || "其他老师"}领取，请稍后再试`, 409);
+    }
+
+    const nextLockToken = lockMeta.ownedByCurrentAdmin ? `${record.manualReviewLockToken ?? ""}`.trim() : buildManualReviewLockToken();
+    const lockExpiresAt = new Date(currentTime.getTime() + MANUAL_REVIEW_LOCK_MINUTES * 60 * 1000);
+
+    await tx.mockExamRecord.update({
+      where: { id: record.id },
+      data: {
+        manualReviewerId: adminId,
+        manualReviewerName: adminName,
+        manualReviewLockToken: nextLockToken,
+        manualReviewClaimedAt: currentTime,
+        manualReviewLockExpiresAt: lockExpiresAt,
+      },
+    });
+
+    return getReviewRecordWithPaper(tx, record.id);
+  });
+
+export const renewMockExamReviewLock = async ({
+  db,
+  recordId,
+  adminId,
+  lockToken,
+  currentTime = new Date(),
+}) =>
+  db.$transaction(async (tx) => {
+    const record = await getReviewRecordWithPaper(tx, recordId);
+    if (!record) {
+      throw createHttpError("考试记录不存在", 404);
+    }
+
+    assertReviewRecordCanBeManuallyHandled(record);
+
+    if (!isManualReviewLockedByAdmin(record, adminId, currentTime)) {
+      throw createHttpError("该试卷的批改锁已失效，请重新领取", 409);
+    }
+
+    if (`${record?.manualReviewLockToken ?? ""}`.trim() !== `${lockToken ?? ""}`.trim()) {
+      throw createHttpError("该试卷的批改锁已更新，请重新领取", 409);
+    }
+
+    await tx.mockExamRecord.update({
+      where: { id: record.id },
+      data: {
+        manualReviewLockExpiresAt: new Date(currentTime.getTime() + MANUAL_REVIEW_LOCK_MINUTES * 60 * 1000),
+      },
+    });
+
+    return getReviewRecordWithPaper(tx, record.id);
+  });
+
+export const releaseMockExamReviewLock = async ({
+  db,
+  recordId,
+  adminId,
+  lockToken,
+  currentTime = new Date(),
+}) =>
+  db.$transaction(async (tx) => {
+    const record = await getReviewRecordWithPaper(tx, recordId);
+    if (!record) {
+      throw createHttpError("考试记录不存在", 404);
+    }
+
+    assertReviewRecordCanBeManuallyHandled(record);
+
+    if (!isManualReviewLockedByAdmin(record, adminId, currentTime)) {
+      return getReviewRecordWithPaper(tx, record.id);
+    }
+
+    if (`${record?.manualReviewLockToken ?? ""}`.trim() !== `${lockToken ?? ""}`.trim()) {
+      return getReviewRecordWithPaper(tx, record.id);
+    }
+
+    await tx.mockExamRecord.update({
+      where: { id: record.id },
+      data: clearManualReviewLockData(),
+    });
+
+    return getReviewRecordWithPaper(tx, record.id);
+  });
+
 export const reviewMockExamRecord = async ({
   db,
   recordId,
+  adminId,
+  lockToken,
+  version,
   questionScores = [],
   currentTime = new Date(),
 }) =>
@@ -2859,19 +3089,10 @@ export const reviewMockExamRecord = async ({
       throw createHttpError("考试记录不存在", 404);
     }
 
-    if (record.status !== "submitted") {
-      throw createHttpError("该考试记录尚未交卷", 409);
-    }
+    assertManualReviewAccess({ record, adminId, lockToken, version, currentTime });
 
     const paper = getRecordPaper(record);
     const subjectiveQuestions = (paper?.questions ?? []).filter((question) => isSubjectiveQuestion(question));
-    if (subjectiveQuestions.length === 0) {
-      throw createHttpError("该考试记录不需要主观题批改", 400);
-    }
-
-    if (!isReviewEnabledForPaper(paper)) {
-      throw createHttpError("该试卷未开启人工批改", 400);
-    }
 
     const scoreMap = new Map();
     const subQuestionScoreMap = new Map();
@@ -3072,6 +3293,9 @@ export const reviewMockExamRecord = async ({
         reviewedAt: currentTime,
         reviewWorkflowStatus: "manual_pending",
         publishedAt: null,
+        manualReviewVersion: {
+          increment: 1,
+        },
       },
     });
 
@@ -3081,6 +3305,9 @@ export const reviewMockExamRecord = async ({
 export const publishMockExamReviewRecord = async ({
   db,
   recordId,
+  adminId,
+  lockToken,
+  version,
   currentTime = new Date(),
 }) =>
   db.$transaction(async (tx) => {
@@ -3089,18 +3316,9 @@ export const publishMockExamReviewRecord = async ({
       throw createHttpError("考试记录不存在", 404);
     }
 
-    if (record.status !== "submitted") {
-      throw createHttpError("该考试记录尚未交卷", 409);
-    }
+    assertManualReviewAccess({ record, adminId, lockToken, version, currentTime });
 
     const paper = getRecordPaper(record);
-    if (!isReviewEnabledForPaper(paper)) {
-      throw createHttpError("该试卷未开启批改，无需发送", 400);
-    }
-
-    if (getSubjectiveQuestionCount(paper?.questions ?? []) <= 0) {
-      throw createHttpError("该考试记录不需要主观题批改", 400);
-    }
 
     const workflowStatus = getMockExamRecordReviewWorkflowStatus(record);
     if (workflowStatus !== "manual_pending" && workflowStatus !== "published") {
@@ -3116,6 +3334,10 @@ export const publishMockExamReviewRecord = async ({
       data: {
         reviewWorkflowStatus: "published",
         publishedAt: currentTime,
+        manualReviewVersion: {
+          increment: 1,
+        },
+        ...clearManualReviewLockData(),
       },
     });
 

@@ -5,6 +5,7 @@ import { config as runtimeConfig } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
 import {
   addAdminMockExamPaperQuestionsFromBank,
+  claimMockExamReviewRecord,
   createAdminMockExamPaper,
   deleteAdminMockExamPaper,
   getAdminMockExamPaperDetail,
@@ -13,7 +14,9 @@ import {
   listAdminMockExamPapers,
   listMockExamReviewRecords,
   publishMockExamReviewRecord,
+  releaseMockExamReviewLock,
   removeAdminMockExamPaperQuestion,
+  renewMockExamReviewLock,
   reviewMockExamRecord,
   serializeMockExamReviewDetail,
   updateAdminMockExamPaper,
@@ -645,6 +648,7 @@ mockExamAdminRouter.get("/reviews", async (req, res) => {
       keyword: `${req.query?.keyword ?? ""}`.trim(),
       reviewStatus: `${req.query?.reviewStatus ?? "ai_pending"}`.trim(),
       paperId: `${req.query?.paperId ?? ""}`.trim(),
+      currentAdminId: `${req.auth?.adminId ?? ""}`.trim(),
       page,
       pageSize,
     });
@@ -662,6 +666,7 @@ mockExamAdminRouter.get("/reviews/papers", async (req, res) => {
       await listMockExamReviewPaperSummaries({
         db: prisma,
         keyword: `${req.query?.keyword ?? ""}`.trim(),
+        currentAdminId: `${req.auth?.adminId ?? ""}`.trim(),
       }),
     );
   } catch (error) {
@@ -676,9 +681,77 @@ mockExamAdminRouter.get("/reviews/:recordId", async (req, res) => {
       recordId: `${req.params.recordId ?? ""}`.trim(),
     });
 
-    return ok(res, serializeMockExamReviewDetail(record));
+    return ok(
+      res,
+      serializeMockExamReviewDetail(record, new Date(), {
+        currentAdminId: req.auth?.adminId,
+      }),
+    );
   } catch (error) {
     return fail(res, error.message || "加载批改详情失败", error.statusCode || 400);
+  }
+});
+
+mockExamAdminRouter.post("/reviews/:recordId/claim", async (req, res) => {
+  try {
+    const record = await claimMockExamReviewRecord({
+      db: prisma,
+      recordId: `${req.params.recordId ?? ""}`.trim(),
+      adminId: `${req.auth?.adminId ?? ""}`.trim(),
+      adminName: `${req.auth?.admin?.name ?? req.auth?.admin?.account ?? "批改老师"}`.trim(),
+    });
+
+    return ok(
+      res,
+      serializeMockExamReviewDetail(record, new Date(), {
+        currentAdminId: req.auth?.adminId,
+      }),
+      "试卷已领取",
+    );
+  } catch (error) {
+    return fail(res, error.message || "领取试卷失败", error.statusCode || 400);
+  }
+});
+
+mockExamAdminRouter.post("/reviews/:recordId/renew-lock", async (req, res) => {
+  try {
+    const record = await renewMockExamReviewLock({
+      db: prisma,
+      recordId: `${req.params.recordId ?? ""}`.trim(),
+      adminId: `${req.auth?.adminId ?? ""}`.trim(),
+      lockToken: `${req.body?.lockToken ?? ""}`.trim(),
+    });
+
+    return ok(
+      res,
+      serializeMockExamReviewDetail(record, new Date(), {
+        currentAdminId: req.auth?.adminId,
+      }),
+      "批改锁已续期",
+    );
+  } catch (error) {
+    return fail(res, error.message || "续期批改锁失败", error.statusCode || 400);
+  }
+});
+
+mockExamAdminRouter.post("/reviews/:recordId/release-lock", async (req, res) => {
+  try {
+    const record = await releaseMockExamReviewLock({
+      db: prisma,
+      recordId: `${req.params.recordId ?? ""}`.trim(),
+      adminId: `${req.auth?.adminId ?? ""}`.trim(),
+      lockToken: `${req.body?.lockToken ?? ""}`.trim(),
+    });
+
+    return ok(
+      res,
+      serializeMockExamReviewDetail(record, new Date(), {
+        currentAdminId: req.auth?.adminId,
+      }),
+      "批改锁已释放",
+    );
+  } catch (error) {
+    return fail(res, error.message || "释放批改锁失败", error.statusCode || 400);
   }
 });
 
@@ -736,10 +809,19 @@ mockExamAdminRouter.post("/reviews/:recordId/score", async (req, res) => {
     const record = await reviewMockExamRecord({
       db: prisma,
       recordId: `${req.params.recordId ?? ""}`.trim(),
+      adminId: `${req.auth?.adminId ?? ""}`.trim(),
+      lockToken: `${req.body?.lockToken ?? ""}`.trim(),
+      version: req.body?.version,
       questionScores: req.body?.items,
     });
 
-    return ok(res, serializeMockExamReviewDetail(record), "批改结果已保存");
+    return ok(
+      res,
+      serializeMockExamReviewDetail(record, new Date(), {
+        currentAdminId: req.auth?.adminId,
+      }),
+      "批改结果已保存",
+    );
   } catch (error) {
     return fail(res, error.message || "保存批改结果失败", error.statusCode || 400);
   }
@@ -750,9 +832,18 @@ mockExamAdminRouter.post("/reviews/:recordId/publish", async (req, res) => {
     const record = await publishMockExamReviewRecord({
       db: prisma,
       recordId: `${req.params.recordId ?? ""}`.trim(),
+      adminId: `${req.auth?.adminId ?? ""}`.trim(),
+      lockToken: `${req.body?.lockToken ?? ""}`.trim(),
+      version: req.body?.version,
     });
 
-    return ok(res, serializeMockExamReviewDetail(record), "批改结果已发送给学生");
+    return ok(
+      res,
+      serializeMockExamReviewDetail(record, new Date(), {
+        currentAdminId: req.auth?.adminId,
+      }),
+      "批改结果已发送给学生",
+    );
   } catch (error) {
     return fail(res, error.message || "发送批改结果失败", error.statusCode || 400);
   }
@@ -768,7 +859,13 @@ mockExamAdminRouter.post("/reviews/:recordId/ai-score", async (req, res) => {
       allowRuleFallback: false,
     });
 
-    return ok(res, serializeMockExamReviewDetail(record), "批改结果已生成");
+    return ok(
+      res,
+      serializeMockExamReviewDetail(record, new Date(), {
+        currentAdminId: req.auth?.adminId,
+      }),
+      "批改结果已生成",
+    );
   } catch (error) {
     return fail(res, error.message || "批改失败", error.statusCode || 400);
   }

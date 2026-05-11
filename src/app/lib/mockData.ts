@@ -825,7 +825,18 @@ export interface UserMockExamHistoryItem {
 
 export type AdminMockExamPaperType = "objective" | "subjective";
 export type AdminMockExamPaperStatus = "draft" | "published";
-export type AdminMockExamReviewStatus = "ai_pending" | "ai_processing" | "manual_pending" | "published";
+export type AdminMockExamReviewStatus = "ai_pending" | "ai_processing" | "manual_reviewing" | "manual_pending" | "published";
+
+export interface AdminMockExamManualReviewLock {
+  active: boolean;
+  ownedByCurrentAdmin: boolean;
+  reviewerId: string;
+  reviewerName: string;
+  lockToken: string;
+  claimedAt: string;
+  expiresAt: string;
+  version: number;
+}
 
 export interface AdminMockExamPaperSummary {
   id: string;
@@ -928,6 +939,7 @@ export interface AdminMockExamReviewSummary {
   reviewedAt: string;
   publishedAt: string;
   reviewStatus: AdminMockExamReviewStatus;
+  manualReviewLock: AdminMockExamManualReviewLock;
   user: {
     id: string;
     phone: string;
@@ -957,6 +969,7 @@ export interface AdminMockExamReviewListPayload {
     total: number;
     aiPending: number;
     aiProcessing: number;
+    manualReviewing: number;
     manualPending: number;
     published: number;
   };
@@ -967,6 +980,7 @@ export interface AdminMockExamReviewPaperSummary extends AdminMockExamPaperSumma
     total: number;
     aiPending: number;
     aiProcessing: number;
+    manualReviewing: number;
     manualPending: number;
     published: number;
   };
@@ -979,6 +993,7 @@ export interface AdminMockExamReviewPaperListPayload {
     totalRecords: number;
     aiPending: number;
     aiProcessing: number;
+    manualReviewing: number;
     manualPending: number;
     published: number;
   };
@@ -986,6 +1001,7 @@ export interface AdminMockExamReviewPaperListPayload {
 
 export interface AdminMockExamReviewDetail extends MockExamRecordDetail {
   reviewStatus: AdminMockExamReviewStatus;
+  manualReviewLock: AdminMockExamManualReviewLock;
   user: {
     id: string;
     phone: string;
@@ -2124,6 +2140,12 @@ export const mockApi = {
     ),
   getAdminMockExamReviewDetail: (recordId: string) =>
     request<AdminMockExamReviewDetail>(`/api/admin/mock-exams/reviews/${recordId}`, { auth: "admin" }),
+  claimAdminMockExamReview: (recordId: string) =>
+    postJson<AdminMockExamReviewDetail>(`/api/admin/mock-exams/reviews/${recordId}/claim`, {}, "admin"),
+  renewAdminMockExamReviewLock: (recordId: string, lockToken: string) =>
+    postJson<AdminMockExamReviewDetail>(`/api/admin/mock-exams/reviews/${recordId}/renew-lock`, { lockToken }, "admin"),
+  releaseAdminMockExamReviewLock: (recordId: string, lockToken: string) =>
+    postJson<AdminMockExamReviewDetail>(`/api/admin/mock-exams/reviews/${recordId}/release-lock`, { lockToken }, "admin"),
   getAdminMockExamAiReviewConfig: () =>
     request<MockExamAiReviewConfig>("/api/admin/mock-exams/settings/ai-review", { auth: "admin" }),
   updateAdminMockExamAiReviewConfig: (payload: MockExamAiReviewConfig) =>
@@ -2134,10 +2156,12 @@ export const mockApi = {
     patchJson<MockExamLaunchConfig>("/api/admin/mock-exams/settings/launch", payload, "admin"),
   aiScoreAdminMockExamReview: (recordId: string) =>
     postJson<AdminMockExamReviewDetail>(`/api/admin/mock-exams/reviews/${recordId}/ai-score`, {}, "admin"),
-  submitAdminMockExamReview: (recordId: string, items: AdminMockExamReviewQuestionScoreInput[]) =>
-    postJson<AdminMockExamReviewDetail>(`/api/admin/mock-exams/reviews/${recordId}/score`, { items }, "admin"),
-  publishAdminMockExamReview: (recordId: string) =>
-    postJson<AdminMockExamReviewDetail>(`/api/admin/mock-exams/reviews/${recordId}/publish`, {}, "admin"),
+  submitAdminMockExamReview: (
+    recordId: string,
+    payload: { items: AdminMockExamReviewQuestionScoreInput[]; lockToken: string; version: number },
+  ) => postJson<AdminMockExamReviewDetail>(`/api/admin/mock-exams/reviews/${recordId}/score`, payload, "admin"),
+  publishAdminMockExamReview: (recordId: string, payload: { lockToken: string; version: number }) =>
+    postJson<AdminMockExamReviewDetail>(`/api/admin/mock-exams/reviews/${recordId}/publish`, payload, "admin"),
   uploadQuestionBankLessonAudio: (file: File) =>
     uploadSingleFile<{ objectKey: string; url: string; readableUrl?: string; durationSeconds?: number }>(
       "/api/admin/mock-exams/question-bank/upload-lesson-audio",

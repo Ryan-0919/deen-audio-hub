@@ -30,6 +30,7 @@ const PAGE_SIZE = 20;
 const reviewStatusMeta: Record<AdminMockExamReviewStatus, { label: string; className: string }> = {
   ai_pending: { label: "待批改", className: "bg-amber-100 text-amber-800" },
   ai_processing: { label: "批改中", className: "bg-sky-100 text-sky-700" },
+  manual_reviewing: { label: "我正在批改", className: "bg-rose-100 text-rose-700" },
   manual_pending: { label: "待人工发送", className: "bg-violet-100 text-violet-700" },
   published: { label: "已发送", className: "bg-emerald-100 text-emerald-700" },
 };
@@ -54,6 +55,13 @@ const reviewStageCards: Array<{
     description: "正在分析答案并生成批注",
     activeClassName: "border-sky-300 bg-sky-50 text-sky-900 shadow-[0_18px_40px_rgba(14,165,233,0.10)]",
     idleClassName: "border-slate-200 bg-white text-slate-700 hover:border-sky-200 hover:bg-sky-50/60",
+  },
+  {
+    status: "manual_reviewing",
+    label: "我正在批改",
+    description: "已经领取，当前由你继续编辑",
+    activeClassName: "border-rose-300 bg-rose-50 text-rose-900 shadow-[0_18px_40px_rgba(244,63,94,0.10)]",
+    idleClassName: "border-slate-200 bg-white text-slate-700 hover:border-rose-200 hover:bg-rose-50/60",
   },
   {
     status: "manual_pending",
@@ -83,6 +91,7 @@ const EMPTY_PAPERS: AdminMockExamReviewPaperListPayload = {
     totalRecords: 0,
     aiPending: 0,
     aiProcessing: 0,
+    manualReviewing: 0,
     manualPending: 0,
     published: 0,
   },
@@ -91,7 +100,7 @@ const EMPTY_PAPERS: AdminMockExamReviewPaperListPayload = {
 const EMPTY_REVIEWS = {
   list: [] as AdminMockExamReviewSummary[],
   pagination: { total: 0, page: 1, pageSize: PAGE_SIZE, totalPages: 1 },
-  summary: { total: 0, aiPending: 0, aiProcessing: 0, manualPending: 0, published: 0 },
+  summary: { total: 0, aiPending: 0, aiProcessing: 0, manualReviewing: 0, manualPending: 0, published: 0 },
 };
 
 const normalizeReviewStatus = (status: string | null | undefined): AdminMockExamReviewStatus | null => {
@@ -128,6 +137,7 @@ const buildFallbackReviewPaperPayload = (
         total: 0,
         aiPending: 0,
         aiProcessing: 0,
+        manualReviewing: 0,
         manualPending: 0,
         published: 0,
       },
@@ -140,6 +150,7 @@ const buildFallbackReviewPaperPayload = (
       totalRecords: 0,
       aiPending: 0,
       aiProcessing: 0,
+      manualReviewing: 0,
       manualPending: 0,
       published: 0,
     },
@@ -262,13 +273,14 @@ const getPaperStageCount = (paper: AdminMockExamReviewPaperSummary | null, statu
 
   if (status === "ai_pending") return paper.reviewSummary.aiPending;
   if (status === "ai_processing") return paper.reviewSummary.aiProcessing;
+  if (status === "manual_reviewing") return paper.reviewSummary.manualReviewing;
   if (status === "manual_pending") return paper.reviewSummary.manualPending;
   return paper.reviewSummary.published;
 };
 
 const getDefaultReviewStatus = (paper: AdminMockExamReviewPaperSummary | null): AdminMockExamReviewStatus => {
   if (!paper) return "manual_pending";
-  return reviewStageCards.find((item) => getPaperStageCount(paper, item.status) > 0)?.status ?? "manual_pending";
+  return reviewStageCards.find((item) => getPaperStageCount(paper, item.status) > 0)?.status ?? "ai_pending";
 };
 
 type SubjectiveQuestion = AdminMockExamReviewDetail["questions"][number];
@@ -1342,8 +1354,10 @@ export function MockExamReviewList() {
   const [saving, setSaving] = useState(false);
   const [aiScoring, setAiScoring] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [claimingRecordId, setClaimingRecordId] = useState("");
   const [uploadingVoiceQuestionId, setUploadingVoiceQuestionId] = useState("");
   const [selectedDetail, setSelectedDetail] = useState<AdminMockExamReviewDetail | null>(null);
+  const renewLockTimerRef = useRef<number | null>(null);
   const [drafts, setDrafts] = useState<DraftState>({
     scores: {},
     comments: {},
@@ -1356,6 +1370,8 @@ export function MockExamReviewList() {
     reviewVoices: {},
   });
   const deferredKeyword = useDeferredValue(keyword.trim());
+  const currentLockToken = selectedDetail?.manualReviewLock?.lockToken ?? "";
+  const currentLockVersion = selectedDetail?.manualReviewLock?.version ?? 0;
 
   const activePaper = useMemo(() => papers.list.find((item) => item.id === paperId) ?? null, [paperId, papers.list]);
   const subjectiveQuestions = useMemo(
@@ -1420,16 +1436,35 @@ export function MockExamReviewList() {
     setPage(1);
   }, [deferredKeyword, reviewStatus, paperId]);
 
+  const stopRenewLock = () => {
+    if (renewLockTimerRef.current !== null) {
+      window.clearInterval(renewLockTimerRef.current);
+      renewLockTimerRef.current = null;
+    }
+  };
+
+  const releaseCurrentLock = async () => {
+    if (!selectedDetail?.id || !currentLockToken) return;
+
+    try {
+      await mockApi.releaseAdminMockExamReviewLock(selectedDetail.id, currentLockToken);
+    } catch (_error) {
+      // ignore
+    }
+  };
+
   const loadDetail = async (recordId: string) => {
     try {
       setDetailLoading(true);
-      const detail = await mockApi.getAdminMockExamReviewDetail(recordId);
+      setClaimingRecordId(recordId);
+      const detail = await mockApi.claimAdminMockExamReview(recordId);
       setSelectedDetail(detail);
       setDrafts(buildDraftState(detail));
       setDetailOpen(true);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "加载批改详情失败");
+      toast.error(error instanceof Error ? error.message : "领取试卷失败");
     } finally {
+      setClaimingRecordId("");
       setDetailLoading(false);
     }
   };
@@ -1455,6 +1490,32 @@ export function MockExamReviewList() {
     });
     setReviews(nextReviews);
   };
+
+  useEffect(() => {
+    stopRenewLock();
+
+    if (!detailOpen || !selectedDetail?.id || !selectedDetail.manualReviewLock?.ownedByCurrentAdmin || !currentLockToken) {
+      return undefined;
+    }
+
+    renewLockTimerRef.current = window.setInterval(() => {
+      void mockApi
+        .renewAdminMockExamReviewLock(selectedDetail.id, currentLockToken)
+        .then((detail) => {
+          setSelectedDetail(detail);
+        })
+        .catch((error) => {
+          stopRenewLock();
+          toast.error(error instanceof Error ? error.message : "批改锁已失效，请重新进入");
+          setDetailOpen(false);
+          setSelectedDetail(null);
+        });
+    }, 60 * 1000);
+
+    return () => {
+      stopRenewLock();
+    };
+  }, [currentLockToken, detailOpen, selectedDetail?.id, selectedDetail?.manualReviewLock?.ownedByCurrentAdmin]);
 
   const handleSave = async () => {
     if (!selectedDetail) return;
@@ -1490,7 +1551,11 @@ export function MockExamReviewList() {
       }));
 
       setSaving(true);
-      const detail = await mockApi.submitAdminMockExamReview(selectedDetail.id, items);
+      const detail = await mockApi.submitAdminMockExamReview(selectedDetail.id, {
+        items,
+        lockToken: currentLockToken,
+        version: currentLockVersion,
+      });
       setSelectedDetail(detail);
       setDrafts(buildDraftState(detail));
       toast.success("批改结果已保存到待发送队列");
@@ -1522,7 +1587,10 @@ export function MockExamReviewList() {
     if (!selectedDetail) return;
     try {
       setPublishing(true);
-      const detail = await mockApi.publishAdminMockExamReview(selectedDetail.id);
+      const detail = await mockApi.publishAdminMockExamReview(selectedDetail.id, {
+        lockToken: currentLockToken,
+        version: currentLockVersion,
+      });
       setSelectedDetail(detail);
       setDrafts(buildDraftState(detail));
       toast.success("已发送给学生");
@@ -1725,6 +1793,8 @@ export function MockExamReviewList() {
                     reviews.list.map((item) => {
                       const statusMeta = getReviewStatusMeta(item.reviewStatus);
                       const normalizedStatus = normalizeReviewStatus(item.reviewStatus);
+                      const lockedByOther = item.manualReviewLock.active && !item.manualReviewLock.ownedByCurrentAdmin;
+                      const isClaiming = claimingRecordId === item.id;
 
                       return (
                         <TableRow key={item.id}>
@@ -1732,6 +1802,7 @@ export function MockExamReviewList() {
                             <div className="space-y-1">
                               <p>{item.user.phone}</p>
                               <Badge className={statusMeta.className}>{statusMeta.label}</Badge>
+                              {lockedByOther ? <p className="text-xs text-rose-600">{item.manualReviewLock.reviewerName || "其他老师"}正在批改</p> : null}
                             </div>
                           </TableCell>
                           <TableCell>{item.subjectiveQuestionCount}</TableCell>
@@ -1739,8 +1810,13 @@ export function MockExamReviewList() {
                           <TableCell>{item.submittedAt || "-"}</TableCell>
                           <TableCell>{item.publishedAt || item.reviewedAt || item.submittedAt || "-"}</TableCell>
                           <TableCell className="text-right">
-                            <Button variant="outline" size="sm" onClick={() => void loadDetail(item.id)}>
-                              {normalizedStatus === "published" ? "查看批改" : "进入处理"}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={isClaiming || lockedByOther}
+                              onClick={() => void loadDetail(item.id)}
+                            >
+                              {isClaiming ? "领取中..." : normalizedStatus === "published" ? "查看批改" : "进入处理"}
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -1754,7 +1830,17 @@ export function MockExamReviewList() {
         </CardContent>
       </Card>
 
-      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+      <Dialog
+        open={detailOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            stopRenewLock();
+            void releaseCurrentLock();
+            setSelectedDetail(null);
+          }
+          setDetailOpen(open);
+        }}
+      >
         <DialogContent className="flex h-[calc(100vh-2rem)] w-[min(96vw,1600px)] max-w-none flex-col overflow-hidden p-0 sm:max-w-none">
           <DialogHeader className="border-b border-slate-200 px-6 py-5">
             <DialogTitle>主观题批改</DialogTitle>
@@ -1948,7 +2034,17 @@ export function MockExamReviewList() {
           </div>
 
           <DialogFooter className="border-t border-slate-200 px-6 py-4">
-            <Button variant="outline" onClick={() => setDetailOpen(false)}>关闭</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                stopRenewLock();
+                void releaseCurrentLock();
+                setSelectedDetail(null);
+                setDetailOpen(false);
+              }}
+            >
+              关闭
+            </Button>
             <Button variant="outline" disabled={detailLoading || aiScoring || !selectedDetail} onClick={() => void handleAiScore()}>
               {aiScoring ? "批改中..." : "重新批改"}
             </Button>
