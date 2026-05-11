@@ -22,6 +22,14 @@ export interface User {
   deviceCount: number;
   coursePermissions: string[];
   mockExamPermissions: string[];
+  mockExamPermissionConfigs?: UserMockExamPermissionConfig[];
+}
+
+export interface UserMockExamPermissionConfig {
+  paperId: string;
+  manualAttemptLimit: number | null;
+  manualAttemptUsed: number;
+  currentRecordStartedAt: string;
 }
 
 export interface Course {
@@ -872,6 +880,7 @@ export interface MockExamPermissionOption {
   phase: string;
   status: AdminMockExamPaperStatus;
   reviewEnabled: boolean;
+  maxAttempts?: number;
 }
 
 export interface AdminMockExamPaperListPayload {
@@ -2543,6 +2552,18 @@ export const mockApi = {
     patchJson<{ success: boolean }>(`/api/admin/users/${userId}/password`, { password }, "admin"),
   batchAddUserPermissions: (userIds: string[], courseIds: string[], mockExamPaperIds: string[] = []) =>
     postJson<{ success: boolean }>("/api/admin/users/batch-permissions", { userIds, courseIds, mockExamPaperIds }, "admin"),
+  resetUserMockExamAttempts: (userId: string, paperId: string) =>
+    postJson<{ paperId: string; manualAttemptLimit: number | null; manualAttemptUsed: number }>(
+      `/api/admin/users/${userId}/mock-exam-permissions/${paperId}/reset-attempts`,
+      {},
+      "admin",
+    ),
+  resetUserMockExamTime: (userId: string, paperId: string) =>
+    postJson<{ paperId: string; recordId: string; currentRecordStartedAt: string }>(
+      `/api/admin/users/${userId}/mock-exam-permissions/${paperId}/reset-time`,
+      {},
+      "admin",
+    ),
   toggleUserStatus: (userId: string, status: UserStatus) =>
     patchJson<{ success: boolean }>(`/api/admin/users/${userId}/status`, { status }, "admin"),
   batchToggleUserStatus: (userIds: string[], status: UserStatus) =>

@@ -679,6 +679,9 @@ const createMockExamPermissionLinks = async (userId, paperIds) => {
     data: normalizedPaperIds.map((paperId) => ({
       userId,
       paperId,
+      manualAttemptLimit: null,
+      manualAttemptUsed: 0,
+      currentRecordStartedAt: null,
     })),
     skipDuplicates: true,
   });
@@ -1181,6 +1184,7 @@ adminRouter.get("/users/mock-exam-papers", async (_req, res) => {
       phase: true,
       status: true,
       reviewEnabled: true,
+      maxAttempts: true,
     },
   });
 
@@ -1196,6 +1200,7 @@ adminRouter.get("/users/mock-exam-papers", async (_req, res) => {
       phase: paper.phase ?? "",
       status: paper.status,
       reviewEnabled: Boolean(paper.reviewEnabled),
+      maxAttempts: Number(paper.maxAttempts ?? 0),
     })),
   );
 });
@@ -1215,6 +1220,7 @@ adminRouter.get("/mock-exam-papers", async (_req, res) => {
       phase: true,
       status: true,
       reviewEnabled: true,
+      maxAttempts: true,
     },
   });
 
@@ -1230,6 +1236,7 @@ adminRouter.get("/mock-exam-papers", async (_req, res) => {
       phase: paper.phase ?? "",
       status: paper.status,
       reviewEnabled: Boolean(paper.reviewEnabled),
+      maxAttempts: Number(paper.maxAttempts ?? 0),
     })),
   );
 });
@@ -1402,6 +1409,175 @@ adminRouter.patch("/users/:userId/permissions", async (req, res) => {
   });
 
   return ok(res, { success: true }, "课程权限已更新");
+});
+
+adminRouter.post("/users/:userId/mock-exam-permissions/:paperId/reset-attempts", async (req, res) => {
+  const { userId, paperId } = req.params;
+  const targetUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, phone: true },
+  });
+
+  if (!targetUser) {
+    return fail(res, "用户不存在", 404);
+  }
+
+  const permission = await prisma.userMockExamPermission.findUnique({
+    where: {
+      userId_paperId: {
+        userId,
+        paperId,
+      },
+    },
+    include: {
+      paper: {
+        select: {
+          id: true,
+          title: true,
+          maxAttempts: true,
+        },
+      },
+    },
+  });
+
+  if (!permission) {
+    return fail(res, "该用户未开通此试卷权限", 404);
+  }
+
+  const updated = await prisma.userMockExamPermission.update({
+    where: {
+      userId_paperId: {
+        userId,
+        paperId,
+      },
+    },
+    data: {
+      manualAttemptUsed: 0,
+      manualAttemptLimit: Number(permission.paper?.maxAttempts ?? 0) > 0 ? Number(permission.paper.maxAttempts) : null,
+    },
+  });
+
+  recordAdminAction(req, {
+    action: "user.mock_exam.reset_attempts",
+    entityType: "user",
+    entityId: targetUser.id,
+    entityName: targetUser.phone,
+    detail: {
+      paperId,
+      paperTitle: permission.paper?.title ?? "",
+      originalPaperMaxAttempts: Number(permission.paper?.maxAttempts ?? 0),
+      nextManualAttemptLimit: updated.manualAttemptLimit,
+      nextManualAttemptUsed: Number(updated.manualAttemptUsed ?? 0),
+    },
+  });
+
+  return ok(
+    res,
+    {
+      paperId,
+      manualAttemptLimit: updated.manualAttemptLimit ?? null,
+      manualAttemptUsed: Number(updated.manualAttemptUsed ?? 0),
+    },
+    "考试次数已重置",
+  );
+});
+
+adminRouter.post("/users/:userId/mock-exam-permissions/:paperId/reset-time", async (req, res) => {
+  const { userId, paperId } = req.params;
+  const currentTime = new Date();
+  const targetUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, phone: true },
+  });
+
+  if (!targetUser) {
+    return fail(res, "用户不存在", 404);
+  }
+
+  const permission = await prisma.userMockExamPermission.findUnique({
+    where: {
+      userId_paperId: {
+        userId,
+        paperId,
+      },
+    },
+    include: {
+      paper: {
+        select: {
+          id: true,
+          title: true,
+        },
+      },
+    },
+  });
+
+  if (!permission) {
+    return fail(res, "该用户未开通此试卷权限", 404);
+  }
+
+  const activeRecord = await prisma.mockExamRecord.findFirst({
+    where: {
+      userId,
+      paperId,
+      status: "in_progress",
+    },
+    orderBy: {
+      updatedAt: "desc",
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!activeRecord) {
+    return fail(res, "当前没有可重置时间的进行中考试", 400);
+  }
+
+  await prisma.mockExamRecord.update({
+    where: {
+      id: activeRecord.id,
+    },
+    data: {
+      consumedSeconds: 0,
+      startedAt: currentTime,
+      isPaused: false,
+    },
+  });
+
+  await prisma.userMockExamPermission.update({
+    where: {
+      userId_paperId: {
+        userId,
+        paperId,
+      },
+    },
+    data: {
+      currentRecordStartedAt: currentTime,
+    },
+  });
+
+  recordAdminAction(req, {
+    action: "user.mock_exam.reset_time",
+    entityType: "user",
+    entityId: targetUser.id,
+    entityName: targetUser.phone,
+    detail: {
+      paperId,
+      paperTitle: permission.paper?.title ?? "",
+      recordId: activeRecord.id,
+      resetAt: currentTime.toISOString(),
+    },
+  });
+
+  return ok(
+    res,
+    {
+      paperId,
+      recordId: activeRecord.id,
+      currentRecordStartedAt: currentTime.toISOString(),
+    },
+    "考试时间已重置",
+  );
 });
 
 adminRouter.post("/users/batch-permissions", async (req, res) => {
@@ -2577,11 +2753,11 @@ adminRouter.post("/courses/:courseId/tags/:tagId/audios/upload", uploadCourseAud
     return fail(res, "课程内直传音频时，请同步填写文案", 400);
   }
 
-  const folder = await prisma.audioFolder.findUnique({
+  const folder = await prisma.audioFolder.upsert({
     where: { name: "课程直传" },
+    update: {},
+    create: { name: "课程直传" },
   });
-
-  if (!folder) return fail(res, "课程直传文件夹不存在", 400);
 
   const lastRelation = await prisma.courseAudio.findFirst({
     where: { courseId, tagId },

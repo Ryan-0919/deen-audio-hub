@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import { CircleAlert, KeyRound, Laptop, Loader2, Plus, ShieldCheck, ShieldOff, Trash2, Upload, UserPlus } from "lucide-react";
+import { CircleAlert, KeyRound, Laptop, Loader2, Plus, RefreshCcw, ShieldCheck, ShieldOff, Trash2, Upload, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "../../components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { Textarea } from "../../components/ui/textarea";
-import { Course, Device, MockExamPermissionOption, User, UserSummary, mockApi } from "../../lib/mockData";
+import { Course, Device, MockExamPermissionOption, User, UserMockExamPermissionConfig, UserSummary, mockApi } from "../../lib/mockData";
 
 type UserStatusFilter = "all" | "active" | "disabled";
 type UserCourseFilter = "all" | string;
@@ -48,6 +48,7 @@ export function UserList() {
   const [showPermissionDialog, setShowPermissionDialog] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [showBatchPermissionDialog, setShowBatchPermissionDialog] = useState(false);
+  const [showMockExamResetDialog, setShowMockExamResetDialog] = useState(false);
   const [showDeviceSheet, setShowDeviceSheet] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [newPhone, setNewPhone] = useState("");
@@ -62,10 +63,15 @@ export function UserList() {
   const [batchPermissionMockExamPapers, setBatchPermissionMockExamPapers] = useState<string[]>([]);
   const [batchImportResult, setBatchImportResult] = useState<BatchImportResult | null>(null);
   const [batchImporting, setBatchImporting] = useState(false);
+  const [resettingPaperId, setResettingPaperId] = useState("");
   const pageSize = 20;
   const deferredSearchPhone = useDeferredValue(searchPhone.trim());
   const courseNameMap = useMemo(() => new Map(courses.map((course) => [course.id, course.name])), [courses]);
   const mockExamPaperNameMap = useMemo(() => new Map(mockExamPapers.map((paper) => [paper.id, paper.title])), [mockExamPapers]);
+  const selectedUserMockExamConfigMap = useMemo(
+    () => new Map((selectedUser?.mockExamPermissionConfigs ?? []).map((item) => [item.paperId, item])),
+    [selectedUser],
+  );
   const allCurrentPageSelected = users.length > 0 && users.every((user) => selectedUserIds.includes(user.id));
 
   const loadSummary = async () => { try { setSummary(await mockApi.getUserSummary()); } catch (error) { toast.error(error instanceof Error ? error.message : "加载用户汇总失败"); } };
@@ -148,7 +154,29 @@ export function UserList() {
     const removeMockExamPapers = currentMockExamPermissions.filter((id) => !singleSelectedMockExamPapers.includes(id));
     try {
       await mockApi.updateUserPermissions(selectedUser.id, addCourses, removeCourses, addMockExamPapers, removeMockExamPapers);
-      patchUsers([selectedUser.id], (user) => ({ ...user, coursePermissions: [...singleSelectedCourses], mockExamPermissions: [...singleSelectedMockExamPapers] }));
+      patchUsers([selectedUser.id], (user) => {
+        const nextConfigMap = new Map((user.mockExamPermissionConfigs ?? []).map((item) => [item.paperId, item]));
+        addMockExamPapers.forEach((paperId) => {
+          if (!nextConfigMap.has(paperId)) {
+            nextConfigMap.set(paperId, {
+              paperId,
+              manualAttemptLimit: null,
+              manualAttemptUsed: 0,
+              currentRecordStartedAt: "",
+            });
+          }
+        });
+        removeMockExamPapers.forEach((paperId) => {
+          nextConfigMap.delete(paperId);
+        });
+
+        return {
+          ...user,
+          coursePermissions: [...singleSelectedCourses],
+          mockExamPermissions: [...singleSelectedMockExamPapers],
+          mockExamPermissionConfigs: Array.from(nextConfigMap.values()),
+        };
+      });
       setShowPermissionDialog(false);
       toast.success("用户权限已更新");
     }
@@ -218,6 +246,57 @@ export function UserList() {
     catch (error) { toast.error(error instanceof Error ? error.message : "清空设备失败"); }
   };
 
+  const handleResetMockExamAttempts = async (paperId: string) => {
+    if (!selectedUser) return;
+    setResettingPaperId(`attempts:${paperId}`);
+    try {
+      const result = await mockApi.resetUserMockExamAttempts(selectedUser.id, paperId);
+      patchUsers([selectedUser.id], (user) => ({
+        ...user,
+        mockExamPermissionConfigs: (user.mockExamPermissionConfigs ?? []).map((item) =>
+          item.paperId === paperId
+            ? {
+                ...item,
+                manualAttemptLimit: result.manualAttemptLimit,
+                manualAttemptUsed: result.manualAttemptUsed,
+              }
+            : item,
+        ),
+      }));
+      toast.success("考试次数已重置");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "重置考试次数失败");
+    } finally {
+      setResettingPaperId("");
+    }
+  };
+
+  const handleResetMockExamTime = async (paperId: string) => {
+    if (!selectedUser) return;
+    setResettingPaperId(`time:${paperId}`);
+    try {
+      const result = await mockApi.resetUserMockExamTime(selectedUser.id, paperId);
+      patchUsers([selectedUser.id], (user) => ({
+        ...user,
+        mockExamPermissionConfigs: (user.mockExamPermissionConfigs ?? []).map((item) =>
+          item.paperId === paperId
+            ? {
+                ...item,
+                currentRecordStartedAt: result.currentRecordStartedAt,
+              }
+            : item,
+        ),
+      }));
+      toast.success("考试时间已重置");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "重置考试时间失败");
+    } finally {
+      setResettingPaperId("");
+    }
+  };
+
+  const getMockExamConfig = (paperId: string): UserMockExamPermissionConfig | undefined => selectedUserMockExamConfigMap.get(paperId);
+
   if (loading) return <div className="p-8 text-slate-500">用户数据加载中...</div>;
 
   return <>
@@ -251,7 +330,7 @@ export function UserList() {
         <div className="overflow-hidden rounded-2xl border border-slate-200"><Table>
           <TableHeader><TableRow><TableHead className="w-12"><Checkbox checked={allCurrentPageSelected} onCheckedChange={(checked) => checked === true ? setSelectedUserIds(Array.from(new Set([...selectedUserIds, ...users.map((user) => user.id)]))) : setSelectedUserIds((prev) => prev.filter((id) => !users.some((user) => user.id === id)))} /></TableHead><TableHead>手机号</TableHead><TableHead>注册日期</TableHead><TableHead>上次登录</TableHead><TableHead>课程权限</TableHead><TableHead>试卷权限</TableHead><TableHead>设备数</TableHead><TableHead>状态</TableHead><TableHead className="text-right">操作</TableHead></TableRow></TableHeader>
           <TableBody>
-            {users.map((user) => <TableRow key={user.id}><TableCell><Checkbox checked={selectedUserIds.includes(user.id)} onCheckedChange={(checked) => setSelectedUserIds((prev) => checked === true ? Array.from(new Set([...prev, user.id])) : prev.filter((id) => id !== user.id))} /></TableCell><TableCell className="font-medium text-slate-900">{user.phone}</TableCell><TableCell>{user.registeredAt}</TableCell><TableCell>{user.lastLogin || "-"}</TableCell><TableCell><div className="flex max-w-[260px] flex-wrap gap-2 whitespace-normal">{user.coursePermissions.length === 0 ? <span className="text-sm text-slate-400">暂无权限</span> : user.coursePermissions.map((courseId) => <Badge key={courseId} variant="secondary" className="bg-blue-50 text-blue-700">{courseNameMap.get(courseId) ?? courseId}</Badge>)}</div></TableCell><TableCell><div className="flex max-w-[260px] flex-wrap gap-2 whitespace-normal">{(user.mockExamPermissions?.length ?? 0) === 0 ? <span className="text-sm text-slate-400">暂无权限</span> : user.mockExamPermissions.map((paperId) => <Badge key={paperId} variant="secondary" className="bg-violet-50 text-violet-700">{mockExamPaperNameMap.get(paperId) ?? paperId}</Badge>)}</div></TableCell><TableCell><Button variant="outline" size="sm" onClick={() => void handleViewDevices(user)}><Laptop className="mr-2 size-4" />{user.deviceCount}/{DEVICE_LIMIT}</Button></TableCell><TableCell><Badge variant="secondary" className={statusMeta[user.status].className}>{statusMeta[user.status].label}</Badge></TableCell><TableCell className="text-right"><div className="flex justify-end gap-2"><Button variant="outline" size="sm" onClick={() => { setSelectedUser(user); setSingleSelectedCourses(user.coursePermissions); setSingleSelectedMockExamPapers(user.mockExamPermissions ?? []); setShowPermissionDialog(true); }}>编辑权限</Button><Button variant="outline" size="sm" onClick={() => { setSelectedUser(user); setNewPassword("den2024"); setShowPasswordDialog(true); }}><KeyRound className="mr-2 size-4" />改密码</Button><Button variant="outline" size="sm" onClick={() => void handleSingleStatus(user)}>{user.status === "active" ? "停用" : "启用"}</Button><Button variant="destructive" size="sm" onClick={() => void handleSingleDelete(user.id)}>删除</Button></div></TableCell></TableRow>)}
+            {users.map((user) => <TableRow key={user.id}><TableCell><Checkbox checked={selectedUserIds.includes(user.id)} onCheckedChange={(checked) => setSelectedUserIds((prev) => checked === true ? Array.from(new Set([...prev, user.id])) : prev.filter((id) => id !== user.id))} /></TableCell><TableCell className="font-medium text-slate-900">{user.phone}</TableCell><TableCell>{user.registeredAt}</TableCell><TableCell>{user.lastLogin || "-"}</TableCell><TableCell><div className="flex max-w-[260px] flex-wrap gap-2 whitespace-normal">{user.coursePermissions.length === 0 ? <span className="text-sm text-slate-400">暂无权限</span> : user.coursePermissions.map((courseId) => <Badge key={courseId} variant="secondary" className="bg-blue-50 text-blue-700">{courseNameMap.get(courseId) ?? courseId}</Badge>)}</div></TableCell><TableCell><div className="flex max-w-[260px] flex-wrap gap-2 whitespace-normal">{(user.mockExamPermissions?.length ?? 0) === 0 ? <span className="text-sm text-slate-400">暂无权限</span> : user.mockExamPermissions.map((paperId) => <Badge key={paperId} variant="secondary" className="bg-violet-50 text-violet-700">{mockExamPaperNameMap.get(paperId) ?? paperId}</Badge>)}</div></TableCell><TableCell><Button variant="outline" size="sm" onClick={() => void handleViewDevices(user)}><Laptop className="mr-2 size-4" />{user.deviceCount}/{DEVICE_LIMIT}</Button></TableCell><TableCell><Badge variant="secondary" className={statusMeta[user.status].className}>{statusMeta[user.status].label}</Badge></TableCell><TableCell className="text-right"><div className="flex justify-end gap-2"><Button variant="outline" size="sm" onClick={() => { setSelectedUser(user); setSingleSelectedCourses(user.coursePermissions); setSingleSelectedMockExamPapers(user.mockExamPermissions ?? []); setShowPermissionDialog(true); }}>编辑权限</Button><Button variant="outline" size="sm" onClick={() => { setSelectedUser(user); setShowMockExamResetDialog(true); }}><RefreshCcw className="mr-2 size-4" />重置机考</Button><Button variant="outline" size="sm" onClick={() => { setSelectedUser(user); setNewPassword("den2024"); setShowPasswordDialog(true); }}><KeyRound className="mr-2 size-4" />改密码</Button><Button variant="outline" size="sm" onClick={() => void handleSingleStatus(user)}>{user.status === "active" ? "停用" : "启用"}</Button><Button variant="destructive" size="sm" onClick={() => void handleSingleDelete(user.id)}>删除</Button></div></TableCell></TableRow>)}
             {users.length === 0 ? <TableRow><TableCell colSpan={9} className="py-16 text-center text-slate-500">暂无符合条件的用户</TableCell></TableRow> : null}
           </TableBody>
         </Table></div>
@@ -264,6 +343,7 @@ export function UserList() {
     <Dialog open={showBatchDialog} onOpenChange={(open) => { if (!batchImporting) setShowBatchDialog(open); }}><DialogContent className="max-w-5xl"><DialogHeader><DialogTitle>批量导入用户</DialogTitle><DialogDescription>支持 Excel 导入或手动粘贴手机号，并同步分配课程权限、试卷权限。</DialogDescription></DialogHeader><div className="space-y-5 py-4"><div className="space-y-2"><Label htmlFor="batch-user-excel">Excel 文件</Label><Input id="batch-user-excel" key={batchExcelFile ? `${batchExcelFile.name}-${batchExcelFile.lastModified}` : "empty"} type="file" accept=".xls,.xlsx" disabled={batchImporting} onChange={(event) => { setBatchExcelFile(event.target.files?.[0] ?? null); setBatchImportResult(null); }} /><p className="text-xs leading-5 text-slate-500">只读取第 1 个工作表的第 1 列。</p>{batchExcelFile ? <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700"><p>已选文件：{batchExcelFile.name}</p><Button type="button" variant="ghost" disabled={batchImporting} className="mt-2 h-auto px-0 text-sm text-slate-500 hover:bg-transparent hover:text-slate-900" onClick={() => setBatchExcelFile(null)}>移除文件</Button></div> : null}</div><div className="space-y-2"><Label>手动粘贴手机号</Label><Textarea value={batchPhones} disabled={batchImporting} onChange={(event) => { setBatchPhones(event.target.value); setBatchImportResult(null); }} placeholder={"每行一个手机号\n13800138000\n13900139000"} rows={8} /></div><div className="grid gap-4 md:grid-cols-2"><div className="space-y-3"><Label>课程权限</Label>{renderCourseOptions(batchSelectedCourses, setBatchSelectedCourses)}</div><div className="space-y-3"><Label>试卷权限</Label>{renderMockExamPaperOptions(batchSelectedMockExamPapers, setBatchSelectedMockExamPapers)}</div></div>{batchImporting ? <div className="flex items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700"><Loader2 className="size-4 animate-spin" /><span>正在导入，请稍候...</span></div> : null}{batchImportResult ? <div className="space-y-3 rounded-2xl bg-slate-50 p-4"><div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"><span>导入完成</span><span>{batchImportResult.parsedCount ? `共解析 ${batchImportResult.parsedCount} 条` : "结果已生成"}</span></div><div className={`grid gap-3 ${batchImportResult.parsedCount ? "md:grid-cols-4" : "md:grid-cols-3"}`}>{batchImportResult.parsedCount ? <div className="rounded-xl bg-white px-4 py-3"><p className="text-xs text-slate-500">解析条数</p><p className="mt-2 text-2xl font-semibold text-slate-900">{batchImportResult.parsedCount}</p></div> : null}<div className="rounded-xl bg-white px-4 py-3"><p className="text-xs text-slate-500">新增用户</p><p className="mt-2 text-2xl font-semibold text-slate-900">{batchImportResult.createdCount}</p></div><div className="rounded-xl bg-white px-4 py-3"><p className="text-xs text-slate-500">追加权限</p><p className="mt-2 text-2xl font-semibold text-slate-900">{batchImportResult.appendedCount}</p></div><div className="rounded-xl bg-white px-4 py-3"><p className="text-xs text-slate-500">失败数量</p><p className="mt-2 text-2xl font-semibold text-slate-900">{batchImportResult.failed.length}</p></div></div>{batchImportResult.failed.length > 0 ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><p className="font-medium">失败手机号</p><p className="mt-2 break-all leading-6">{batchImportResult.failed.join("、")}</p></div> : null}</div> : null}</div><DialogFooter><Button variant="outline" disabled={batchImporting} onClick={() => setShowBatchDialog(false)}>取消</Button><Button disabled={batchImporting} onClick={() => void handleBatchImport()}>{batchImporting ? <><Loader2 className="mr-2 size-4 animate-spin" />导入中...</> : "开始导入"}</Button></DialogFooter></DialogContent></Dialog>
 
     <Dialog open={showPermissionDialog} onOpenChange={setShowPermissionDialog}><DialogContent className="max-w-4xl"><DialogHeader><DialogTitle>编辑用户权限</DialogTitle><DialogDescription>{selectedUser?.phone ?? ""}</DialogDescription></DialogHeader><div className="grid gap-4 py-4 md:grid-cols-2"><div className="space-y-3"><Label>课程权限</Label>{renderCourseOptions(singleSelectedCourses, setSingleSelectedCourses)}</div><div className="space-y-3"><Label>试卷权限</Label>{renderMockExamPaperOptions(singleSelectedMockExamPapers, setSingleSelectedMockExamPapers)}</div></div><DialogFooter><Button variant="outline" onClick={() => setShowPermissionDialog(false)}>取消</Button><Button onClick={() => void handleSavePermissions()}>保存权限</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={showMockExamResetDialog} onOpenChange={setShowMockExamResetDialog}><DialogContent className="max-w-4xl"><DialogHeader><DialogTitle>重置机考权限</DialogTitle><DialogDescription>{selectedUser?.phone ?? ""}</DialogDescription></DialogHeader><div className="space-y-4 py-4">{selectedUser && (selectedUser.mockExamPermissions?.length ?? 0) > 0 ? selectedUser.mockExamPermissions.map((paperId) => { const paper = mockExamPapers.find((item) => item.id === paperId); const config = getMockExamConfig(paperId); const resettingAttempts = resettingPaperId === `attempts:${paperId}`; const resettingTime = resettingPaperId === `time:${paperId}`; return <div key={paperId} className="rounded-2xl border border-slate-200 p-4"><div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between"><div className="min-w-0"><p className="text-sm font-semibold text-slate-900">{paper?.title ?? mockExamPaperNameMap.get(paperId) ?? paperId}</p><p className="mt-1 text-xs leading-6 text-slate-500">{[paper?.paperTypeLabel, paper?.year ? `${paper.year}` : "", paper?.phase, (paper?.maxAttempts ?? 0) > 0 ? `原始限制 ${paper?.maxAttempts} 次` : "原始限制 不限次"].filter(Boolean).join(" · ")}</p><p className="mt-2 text-xs leading-6 text-slate-500">{`已用次数：${config?.manualAttemptUsed ?? 0}`}{config?.currentRecordStartedAt ? ` · 当前考试开始于：${config.currentRecordStartedAt}` : " · 当前无进行中考试"}</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" disabled={resettingAttempts || !!resettingPaperId} onClick={() => void handleResetMockExamAttempts(paperId)}>{resettingAttempts ? <Loader2 className="mr-2 size-4 animate-spin" /> : <RefreshCcw className="mr-2 size-4" />}重置次数</Button><Button variant="outline" size="sm" disabled={resettingTime || !!resettingPaperId} onClick={() => void handleResetMockExamTime(paperId)}>{resettingTime ? <Loader2 className="mr-2 size-4 animate-spin" /> : <RefreshCcw className="mr-2 size-4" />}重置时间</Button></div></div></div>; }) : <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-10 text-center text-sm text-slate-400">该用户暂无试卷权限</div>}</div><DialogFooter><Button variant="outline" onClick={() => setShowMockExamResetDialog(false)}>关闭</Button></DialogFooter></DialogContent></Dialog>
     <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}><DialogContent><DialogHeader><DialogTitle>修改密码</DialogTitle><DialogDescription>用户默认密码为 den2024。</DialogDescription></DialogHeader><div className="space-y-2 py-4"><Label htmlFor="new-password">新密码</Label><Input id="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></div><DialogFooter><Button variant="outline" onClick={() => setShowPasswordDialog(false)}>取消</Button><Button onClick={() => void handleChangePassword()}>确认修改</Button></DialogFooter></DialogContent></Dialog>
     <Dialog open={showBatchPermissionDialog} onOpenChange={setShowBatchPermissionDialog}><DialogContent className="max-w-4xl"><DialogHeader><DialogTitle>批量加权限</DialogTitle><DialogDescription>当前已选 {selectedUserIds.length} 位用户。</DialogDescription></DialogHeader><div className="grid gap-4 py-4 md:grid-cols-2"><div className="space-y-3"><Label>课程权限</Label>{renderCourseOptions(batchPermissionCourses, setBatchPermissionCourses)}</div><div className="space-y-3"><Label>试卷权限</Label>{renderMockExamPaperOptions(batchPermissionMockExamPapers, setBatchPermissionMockExamPapers)}</div></div><DialogFooter><Button variant="outline" onClick={() => setShowBatchPermissionDialog(false)}>取消</Button><Button onClick={() => void handleBatchAddCourses()}>确认加权限</Button></DialogFooter></DialogContent></Dialog>
 

@@ -2069,7 +2069,7 @@ const assertMockExamPaperPermission = async ({ db, userId, paperId }) => {
   }
 
   if (!paper.permissionRequired) {
-    return;
+    return null;
   }
 
   const permission = await db.userMockExamPermission.findUnique({
@@ -2081,12 +2081,17 @@ const assertMockExamPaperPermission = async ({ db, userId, paperId }) => {
     },
     select: {
       paperId: true,
+      manualAttemptLimit: true,
+      manualAttemptUsed: true,
+      currentRecordStartedAt: true,
     },
   });
 
   if (!permission) {
     throw createHttpError("你暂未开通这张试卷", 403);
   }
+
+  return permission;
 };
 
 const getReviewRecordWithPaper = (db, recordId) =>
@@ -2348,6 +2353,16 @@ export const finalizeMockExamRecord = async ({ db, recordId, userId, currentTime
       },
     });
 
+    await tx.userMockExamPermission.updateMany({
+      where: {
+        userId,
+        paperId: record.paperId,
+      },
+      data: {
+        currentRecordStartedAt: null,
+      },
+    });
+
     return getRecordWithPaper(tx, record.id);
   });
 
@@ -2429,7 +2444,7 @@ export const pauseMockExamRecord = async ({ db, recordId, userId, currentTime = 
 
 export const startMockExamRecord = async ({ db, paperId, userId, currentTime = new Date() }) => {
   await syncExpiredMockExamRecords({ db, userId, currentTime });
-  await assertMockExamPaperPermission({
+  const permission = await assertMockExamPaperPermission({
     db,
     userId,
     paperId,
@@ -2517,8 +2532,12 @@ export const startMockExamRecord = async ({ db, paperId, userId, currentTime = n
     },
   });
 
-  const maxAttempts = Number(paper.maxAttempts ?? 0);
-  if (maxAttempts > 0 && attemptCount >= maxAttempts) {
+  const permissionAttemptLimit = Number(permission?.manualAttemptLimit ?? 0);
+  const permissionAttemptUsed = Number(permission?.manualAttemptUsed ?? 0);
+  const maxAttempts = permissionAttemptLimit > 0 ? permissionAttemptLimit : Number(paper.maxAttempts ?? 0);
+  const effectiveAttemptCount = permissionAttemptLimit > 0 ? permissionAttemptUsed : attemptCount;
+
+  if (maxAttempts > 0 && effectiveAttemptCount >= maxAttempts) {
     throw createHttpError("该试卷已达到最大考试次数，不能再次进入", 403);
   }
 
@@ -2540,6 +2559,21 @@ export const startMockExamRecord = async ({ db, paperId, userId, currentTime = n
         isPaused: false,
       },
     });
+
+    if (permission) {
+      await db.userMockExamPermission.update({
+        where: {
+          userId_paperId: {
+            userId,
+            paperId,
+          },
+        },
+        data: {
+          manualAttemptUsed: permissionAttemptLimit > 0 ? effectiveAttemptCount + 1 : 0,
+          currentRecordStartedAt: currentTime,
+        },
+      });
+    }
 
     return getMockExamRecordForUser({
       db,
