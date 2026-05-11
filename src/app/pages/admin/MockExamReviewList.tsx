@@ -286,6 +286,58 @@ const getDefaultReviewStatus = (paper: AdminMockExamReviewPaperSummary | null): 
 type SubjectiveQuestion = AdminMockExamReviewDetail["questions"][number];
 type SubjectiveSubQuestion = SubjectiveQuestion["subjectiveSubQuestions"][number];
 
+function QuestionReviewVoicePanel({
+  reviewVoice,
+  reviewVoiceUploading,
+  onReviewVoiceUpload,
+  onReviewVoiceClear,
+}: {
+  reviewVoice: EditableReviewVoice;
+  reviewVoiceUploading: boolean;
+  onReviewVoiceUpload: (event: ChangeEvent<HTMLInputElement>) => void;
+  onReviewVoiceClear: () => void;
+}) {
+  const voiceInputRef = useRef<HTMLInputElement | null>(null);
+  const reviewVoiceSource = reviewVoice.source ?? (reviewVoice.url ? "review" : undefined);
+
+  return (
+    <section className="mt-1 rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div>
+          <h4 className="text-base font-semibold text-slate-900">本题语音点评</h4>
+          <p className="mt-1 text-sm text-slate-500">
+            {reviewVoiceSource === "lesson"
+              ? "当前默认复用题目已关联音频，无需重复上传；如需替换，可重新上传覆盖。"
+              : "同一道大题只保留这一份语音点评，也可直接复用题目已关联音频。"}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <input ref={voiceInputRef} type="file" accept="audio/*" className="hidden" onChange={onReviewVoiceUpload} />
+          <Button type="button" variant="outline" onClick={() => voiceInputRef.current?.click()} disabled={reviewVoiceUploading}>
+            <Upload className="mr-2 size-4" />
+            {reviewVoiceUploading ? "上传中..." : reviewVoiceSource === "lesson" ? "重新上传覆盖" : "上传语音"}
+          </Button>
+          <Button type="button" variant="outline" className="text-red-500 hover:text-red-600" onClick={onReviewVoiceClear} disabled={!reviewVoice.url && !reviewVoice.objectKey}>
+            <Trash2 className="mr-2 size-4" />
+            {reviewVoiceSource === "lesson" ? "取消覆盖" : "清空"}
+          </Button>
+        </div>
+      </div>
+      <div className="mt-4 rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-7 text-slate-600">
+        {reviewVoice.url ? (
+          <div className="space-y-2">
+            <div>{reviewVoiceSource === "lesson" ? "已关联题目音频" : "已上传语音点评"}</div>
+            <div>时长：{reviewVoice.durationSeconds > 0 ? `${reviewVoice.durationSeconds} 秒` : "未识别"}</div>
+            <audio controls src={reviewVoice.url} className="w-full" />
+          </div>
+        ) : (
+          <div>当前还没有可播放音频，可直接上传老师点评语音。</div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 const createDraftAnswerMark = (highlight = ""): EditableAnswerMark => ({
   id: `draft_mark_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
   highlight,
@@ -1116,22 +1168,10 @@ function InlineSubQuestionReviewWorkbench({
   scoreValue,
   abilityValue,
   commentValue,
-  referenceValue,
-  rubricGuidanceValue,
-  rubricPoints,
-  missedPoints,
-  reviewVoice,
-  reviewVoiceUploading,
-  onReviewVoiceUpload,
-  onReviewVoiceClear,
   marks,
   onScoreChange,
   onAbilityChange,
   onCommentChange,
-  onReferenceChange,
-  onRubricGuidanceChange,
-  onRubricPointsChange,
-  onMissedPointsChange,
   onMarksChange,
 }: {
   question: SubjectiveQuestion;
@@ -1139,40 +1179,17 @@ function InlineSubQuestionReviewWorkbench({
   scoreValue: string;
   abilityValue: string;
   commentValue: string;
-  referenceValue: string;
-  rubricGuidanceValue: string;
-  rubricPoints: EditableRubricPoint[];
-  missedPoints: EditableMissedPoint[];
-  reviewVoice: EditableReviewVoice;
-  reviewVoiceUploading: boolean;
-  onReviewVoiceUpload: (event: ChangeEvent<HTMLInputElement>) => void;
-  onReviewVoiceClear: () => void;
   marks: EditableAnswerMark[];
   onScoreChange: (value: string) => void;
   onAbilityChange: (value: string) => void;
   onCommentChange: (value: string) => void;
-  onReferenceChange: (value: string) => void;
-  onRubricGuidanceChange: (value: string) => void;
-  onRubricPointsChange: (points: EditableRubricPoint[]) => void;
-  onMissedPointsChange: (points: EditableMissedPoint[]) => void;
   onMarksChange: (marks: EditableAnswerMark[]) => void;
 }) {
-  const voiceInputRef = useRef<HTMLInputElement | null>(null);
   const hasAnswer = Boolean(subQuestion.answer?.trim());
   const maxScore = subQuestion.maxScore ?? question.score;
   const commentLength = commentValue.trim().length;
   const localWrongMarks = marks.filter((mark) => mark.status === "wrong").length;
   const localPositiveMarks = marks.filter((mark) => mark.status !== "wrong").length;
-  const reviewVoiceSource = reviewVoice.source ?? (reviewVoice.url ? "review" : undefined);
-  const previewRubricPoints = normalizeDraftRubricPointsForSave(rubricPoints);
-  const previewMissedPoints = normalizeDraftMissedPointsForSave(missedPoints);
-  const awardedRubricCount = previewRubricPoints.filter((point) => Number(point.awardedScore ?? 0) > 0).length;
-  const previewSubQuestion = {
-    ...subQuestion,
-    rubricGuidance: rubricGuidanceValue,
-    rubricPoints: previewRubricPoints,
-    missedPoints: previewMissedPoints,
-  };
 
   return (
     <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_14px_36px_rgba(15,23,42,0.04)]">
@@ -1333,6 +1350,130 @@ function InlineSubQuestionReviewWorkbench({
           <AnswerMarkEditor answer={subQuestion.answer || ""} marks={marks} onChange={onMarksChange} />
           <RubricPointEditor points={rubricPoints} onChange={onRubricPointsChange} />
           <MissedPointEditor points={missedPoints} onChange={onMissedPointsChange} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CompactInlineSubQuestionReviewWorkbench({
+  question,
+  subQuestion,
+  scoreValue,
+  abilityValue,
+  commentValue,
+  marks,
+  onScoreChange,
+  onAbilityChange,
+  onCommentChange,
+  onMarksChange,
+}: {
+  question: SubjectiveQuestion;
+  subQuestion: SubjectiveSubQuestion;
+  scoreValue: string;
+  abilityValue: string;
+  commentValue: string;
+  marks: EditableAnswerMark[];
+  onScoreChange: (value: string) => void;
+  onAbilityChange: (value: string) => void;
+  onCommentChange: (value: string) => void;
+  onMarksChange: (marks: EditableAnswerMark[]) => void;
+}) {
+  const hasAnswer = Boolean(subQuestion.answer?.trim());
+  const maxScore = subQuestion.maxScore ?? question.score;
+  const commentLength = commentValue.trim().length;
+  const wrongMarkCount = marks.filter((mark) => mark.status === "wrong").length;
+  const positiveMarkCount = marks.filter((mark) => mark.status !== "wrong").length;
+
+  return (
+    <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_14px_36px_rgba(15,23,42,0.04)]">
+      <div className="border-b border-slate-100 pb-5">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge className="bg-blue-50 text-blue-700">{subQuestion.title}</Badge>
+              <Badge className="bg-amber-50 text-amber-800">本问满分 {maxScore} 分</Badge>
+              <Badge className="bg-white text-slate-600">{hasAnswer ? "已作答" : "未作答"}</Badge>
+            </div>
+            {subQuestion.placeholder ? <p className="mt-2 text-sm leading-7 text-slate-500">{subQuestion.placeholder}</p> : null}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3 xl:w-[330px]">
+            <WorkbenchMetric label="本问得分" value={`${scoreValue || 0} 分`} tone="amber" />
+            <WorkbenchMetric label="作答字数" value={`${subQuestion.wordCount || 0} 字`} tone="blue" />
+            <WorkbenchMetric label="批注数量" value={`${marks.length} 条`} tone="emerald" />
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-5 2xl:grid-cols-[minmax(0,1.08fr)_minmax(420px,0.92fr)]">
+        <div className="space-y-5">
+          <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h4 className="text-base font-semibold text-slate-900">学员作答（当前得分：{scoreValue || 0}分）</h4>
+                <p className="mt-1 text-sm text-slate-500">这里只保留答案展示和划线结果，不再重复显示预览、采分点编辑、遗漏点编辑和小问语音。</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className="bg-white text-slate-600">错误批注 {wrongMarkCount}</Badge>
+                <Badge className="bg-white text-slate-600">得分批注 {positiveMarkCount}</Badge>
+              </div>
+            </div>
+            <div className="mt-4 rounded-[22px] border border-dashed border-slate-200 bg-slate-50/60 px-4 py-4">
+              <div className="max-h-[430px] overflow-y-auto pr-1">
+                <AnnotatedAnswerText
+                  answer={subQuestion.answer || ""}
+                  marks={marks.map((mark) => ({
+                    id: mark.id,
+                    highlight: mark.highlight,
+                    comment: mark.comment,
+                    status: mark.status,
+                    score: mark.status === "score" && Number.isFinite(Number(mark.score)) ? Number(mark.score) : undefined,
+                  }))}
+                  paragraphClassName="whitespace-pre-wrap text-[16px] leading-[2.15] text-slate-800"
+                />
+              </div>
+            </div>
+            <div className="mt-4 rounded-[22px] bg-slate-50 px-4 py-3 text-[15px] leading-8 text-slate-700">
+              {subQuestion.answer || "学生未作答"}
+            </div>
+          </section>
+
+          <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h4 className="text-base font-semibold text-slate-900">老师点评</h4>
+                <p className="mt-1 text-sm text-slate-500">这里保留整问点评，学生端就按这里展示。</p>
+              </div>
+              <Badge className="bg-slate-100 text-slate-700">当前 {commentLength} 字</Badge>
+            </div>
+            <Textarea className="mt-4 min-h-[220px] text-[15px] leading-7" value={commentValue} onChange={(event) => onCommentChange(event.target.value)} />
+          </section>
+        </div>
+
+        <div className="space-y-5 2xl:sticky 2xl:top-4 2xl:self-start">
+          <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h4 className="text-base font-semibold text-slate-900">录分信息</h4>
+                <p className="mt-1 text-sm text-slate-500">这里只保留录分和批注编辑，减少批改时的干扰。</p>
+              </div>
+              <Badge className="bg-slate-100 text-slate-700">工作区</Badge>
+            </div>
+
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div>
+                <p className="mb-2 text-sm font-semibold text-slate-900">本问得分</p>
+                <Input className="h-12 text-base" value={scoreValue} onChange={(event) => onScoreChange(event.target.value)} />
+              </div>
+              <div>
+                <p className="mb-2 text-sm font-semibold text-slate-900">能力标签</p>
+                <Input className="h-12 text-base" value={abilityValue} onChange={(event) => onAbilityChange(event.target.value)} />
+              </div>
+            </div>
+          </section>
+
+          <AnswerMarkEditor answer={subQuestion.answer || ""} marks={marks} onChange={onMarksChange} />
         </div>
       </div>
     </div>
@@ -1956,24 +2097,23 @@ export function MockExamReviewList() {
                     </div>
 
                     <div className="space-y-4 px-5 py-4">
+                      <QuestionReviewVoicePanel
+                        reviewVoice={drafts.reviewVoices[question.id] ?? { url: "", objectKey: "", durationSeconds: 0 }}
+                        reviewVoiceUploading={uploadingVoiceQuestionId === question.id}
+                        onReviewVoiceUpload={(event) => void handleReviewVoiceUpload(event, question.id)}
+                        onReviewVoiceClear={() => handleReviewVoiceClear(question.id)}
+                      />
+
                       {question.subjectiveSubQuestions.map((subQuestion) => {
                         const key = getSubQuestionKey(question.id, subQuestion.id);
                         return (
-                          <InlineSubQuestionReviewWorkbench
+                          <CompactInlineSubQuestionReviewWorkbench
                             key={subQuestion.id}
                             question={question}
                             subQuestion={subQuestion}
                             scoreValue={drafts.scores[key] ?? ""}
                             abilityValue={drafts.abilities[key] ?? ""}
                             commentValue={drafts.comments[key] ?? ""}
-                            referenceValue={drafts.references[key] ?? ""}
-                            rubricGuidanceValue={drafts.rubricGuidance[key] ?? ""}
-                            rubricPoints={drafts.rubricPoints[key] ?? []}
-                            missedPoints={drafts.missedPoints[key] ?? []}
-                            reviewVoice={drafts.reviewVoices[question.id] ?? { url: "", objectKey: "", durationSeconds: 0 }}
-                            reviewVoiceUploading={uploadingVoiceQuestionId === question.id}
-                            onReviewVoiceUpload={(event) => void handleReviewVoiceUpload(event, question.id)}
-                            onReviewVoiceClear={() => handleReviewVoiceClear(question.id)}
                             marks={drafts.marks[key] ?? []}
                             onScoreChange={(value) =>
                               setDrafts((current) => ({
@@ -1991,30 +2131,6 @@ export function MockExamReviewList() {
                               setDrafts((current) => ({
                                 ...current,
                                 comments: { ...current.comments, [key]: value },
-                              }))
-                            }
-                            onReferenceChange={(value) =>
-                              setDrafts((current) => ({
-                                ...current,
-                                references: { ...current.references, [key]: value },
-                              }))
-                            }
-                            onRubricGuidanceChange={(value) =>
-                              setDrafts((current) => ({
-                                ...current,
-                                rubricGuidance: { ...current.rubricGuidance, [key]: value },
-                              }))
-                            }
-                            onRubricPointsChange={(value) =>
-                              setDrafts((current) => ({
-                                ...current,
-                                rubricPoints: { ...current.rubricPoints, [key]: value },
-                              }))
-                            }
-                            onMissedPointsChange={(value) =>
-                              setDrafts((current) => ({
-                                ...current,
-                                missedPoints: { ...current.missedPoints, [key]: value },
                               }))
                             }
                             onMarksChange={(value) =>
