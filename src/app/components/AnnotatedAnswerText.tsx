@@ -339,8 +339,11 @@ const scoreImageWidth = (digit: string) => {
 const getScoreImagesWidth = (scoreText: string) =>
   scoreText.split("").reduce((sum, digit) => sum + (/\d/.test(digit) ? scoreImageWidth(digit) : 16), 0) + 24;
 
+const getPositiveScoreText = (mark: ResolvedMark) =>
+  Number.isFinite(mark.score) && Number(mark.score ?? 0) > 0 ? `${Number(mark.score ?? 0)}` : "";
+
 const getPositiveIndicatorWidth = (mark: ResolvedMark) => {
-  const hasScore = mark.status === "score" && Number.isFinite(mark.score) && Number(mark.score ?? 0) > 0;
+  const hasScore = Boolean(getPositiveScoreText(mark));
   return 20 + (hasScore ? 8 + getScoreImagesWidth(`${Number(mark.score ?? 0)}`) : 0);
 };
 
@@ -441,7 +444,7 @@ function PositiveMarkIndicators({ positiveMarks }: { positiveMarks: ResolvedMark
   return (
     <span className="inline-flex items-end gap-[6px] align-baseline">
       {positiveMarks.map((mark) => {
-        const scoreText = mark.status === "score" && Number.isFinite(mark.score) && Number(mark.score ?? 0) > 0 ? `${Number(mark.score ?? 0)}` : "";
+        const scoreText = getPositiveScoreText(mark);
         return (
           <span
             key={mark.id}

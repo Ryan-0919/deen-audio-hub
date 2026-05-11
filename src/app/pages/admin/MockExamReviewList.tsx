@@ -204,6 +204,29 @@ type EditableReviewVoice = {
 
 const getSubQuestionKey = (questionId: string, subQuestionId: string) => `${questionId}::${subQuestionId}`;
 
+const parseInteger = (value: string | number | null | undefined) => {
+  const normalized = Number.parseInt(`${value ?? ""}`.trim(), 10);
+  return Number.isInteger(normalized) ? normalized : 0;
+};
+
+const sumPositiveMarkScores = (marks: EditableAnswerMark[]) =>
+  (Array.isArray(marks) ? marks : []).reduce((sum, mark) => {
+    if (mark.status !== "correct") {
+      return sum;
+    }
+    return sum + Math.max(0, parseInteger(mark.score));
+  }, 0);
+
+const sumAwardedRubricScores = (points: EditableRubricPoint[]) =>
+  (Array.isArray(points) ? points : []).reduce((sum, point) => sum + Math.max(0, parseInteger(point.awardedScore)), 0);
+
+const getDraftSubQuestionScore = (drafts: DraftState, questionId: string, subQuestionId: string) => {
+  const key = getSubQuestionKey(questionId, subQuestionId);
+  const markScore = sumPositiveMarkScores(drafts.marks[key] ?? []);
+  const rubricScore = sumAwardedRubricScores(drafts.rubricPoints[key] ?? []);
+  return Math.max(markScore, rubricScore);
+};
+
 const buildDraftState = (detail: AdminMockExamReviewDetail): DraftState => {
   const scores: Record<string, string> = {};
   const comments: Record<string, string> = {};
@@ -234,7 +257,18 @@ const buildDraftState = (detail: AdminMockExamReviewDetail): DraftState => {
 
     for (const subQuestion of question.subjectiveSubQuestions) {
       const key = getSubQuestionKey(question.id, subQuestion.id);
-      scores[key] = `${subQuestion.score ?? 0}`;
+      const initialMarkScore = (subQuestion.answerMarks ?? []).reduce((sum, mark) => {
+        if (mark.status !== "correct" && mark.status !== "score") {
+          return sum;
+        }
+        const numericScore = Number(mark.score);
+        return sum + (Number.isFinite(numericScore) ? Math.max(0, numericScore) : 0);
+      }, 0);
+      const initialRubricScore = (subQuestion.rubricPoints ?? []).reduce((sum, point) => {
+        const numericScore = Number(point.awardedScore);
+        return sum + (Number.isFinite(numericScore) ? Math.max(0, numericScore) : 0);
+      }, 0);
+      scores[key] = `${Math.max(initialMarkScore, initialRubricScore, Number(subQuestion.score ?? 0) || 0)}`;
       comments[key] = subQuestion.reviewComment ?? "";
       references[key] = subQuestion.referenceAnswer ?? "";
       abilities[key] = subQuestion.abilityLabel ?? subQuestion.title ?? "";
@@ -350,9 +384,11 @@ const getQuestionAnchorId = (questionId: string) => `review-question-${questionI
 
 const getQuestionDraftScore = (question: SubjectiveQuestion, drafts: DraftState) =>
   question.subjectiveSubQuestions.reduce((sum, subQuestion) => {
-    const next = Number.parseInt(drafts.scores[getSubQuestionKey(question.id, subQuestion.id)] ?? "0", 10);
-    return sum + (Number.isFinite(next) ? next : 0);
+    return sum + getDraftSubQuestionScore(drafts, question.id, subQuestion.id);
   }, 0);
+
+const getDraftSubjectiveTotalScore = (questions: SubjectiveQuestion[], drafts: DraftState) =>
+  questions.reduce((sum, question) => sum + getQuestionDraftScore(question, drafts), 0);
 
 const getReviewSourceLabel = (source?: AdminMockExamReviewDetail["reviewSource"]) => {
   if (source === "ai") return "远程阅卷";
@@ -1362,7 +1398,6 @@ function CompactInlineSubQuestionReviewWorkbench({
   abilityValue,
   commentValue,
   marks,
-  onScoreChange,
   onAbilityChange,
   onCommentChange,
   onMarksChange,
@@ -1373,7 +1408,6 @@ function CompactInlineSubQuestionReviewWorkbench({
   abilityValue: string;
   commentValue: string;
   marks: EditableAnswerMark[];
-  onScoreChange: (value: string) => void;
   onAbilityChange: (value: string) => void;
   onCommentChange: (value: string) => void;
   onMarksChange: (marks: EditableAnswerMark[]) => void;
@@ -1513,7 +1547,7 @@ function CompactInlineSubQuestionReviewWorkbench({
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <div>
                 <p className="mb-2 text-sm font-semibold text-slate-900">本问得分</p>
-                <Input className="h-12 text-base" value={scoreValue} onChange={(event) => onScoreChange(event.target.value)} />
+                <Input className="h-12 text-base" value={scoreValue} readOnly />
               </div>
               <div>
                 <p className="mb-2 text-sm font-semibold text-slate-900">能力标签</p>
@@ -1742,6 +1776,11 @@ export function MockExamReviewList() {
     () => (selectedDetail?.questions ?? []).filter((item) => item.type === "subjective_case"),
     [selectedDetail],
   );
+  const draftSubjectiveTotalScore = useMemo(() => getDraftSubjectiveTotalScore(subjectiveQuestions, drafts), [subjectiveQuestions, drafts]);
+  const draftOverallTotalScore = useMemo(
+    () => (selectedDetail?.scoring.objectiveScore ?? 0) + draftSubjectiveTotalScore,
+    [draftSubjectiveTotalScore, selectedDetail?.scoring.objectiveScore],
+  );
 
   useEffect(() => {
     const loadPapers = async () => {
@@ -1892,7 +1931,7 @@ export function MockExamReviewList() {
         reviewVoiceDurationSeconds: Number(drafts.reviewVoices[question.id]?.durationSeconds ?? 0) || 0,
         subQuestions: question.subjectiveSubQuestions.map((subQuestion) => {
           const key = getSubQuestionKey(question.id, subQuestion.id);
-          const score = Number.parseInt(drafts.scores[key] ?? "0", 10);
+          const score = getDraftSubQuestionScore(drafts, question.id, subQuestion.id);
           if (!Number.isInteger(score)) {
             throw new Error(`第 ${question.sortOrder} 题的小问分数必须是整数`);
           }
@@ -2248,8 +2287,13 @@ export function MockExamReviewList() {
                         />
                         <DetailSummaryCard
                           label="主观得分"
-                          value={`${selectedDetail.scoring.subjectiveScore} 分`}
+                          value={`${draftSubjectiveTotalScore} 分`}
                           hint={`共 ${selectedDetail.scoring.subjectiveQuestionCount} 道主观题`}
+                        />
+                        <DetailSummaryCard
+                          label="当前总分"
+                          value={`${draftOverallTotalScore} / ${selectedDetail.paper.totalScore}`}
+                          hint={`客观题 ${selectedDetail.scoring.objectiveScore} 分 + 主观题 ${draftSubjectiveTotalScore} 分`}
                         />
                         <DetailSummaryCard
                           label="交卷信息"
@@ -2334,16 +2378,10 @@ export function MockExamReviewList() {
                             key={subQuestion.id}
                             question={question}
                             subQuestion={subQuestion}
-                            scoreValue={drafts.scores[key] ?? ""}
+                            scoreValue={`${getDraftSubQuestionScore(drafts, question.id, subQuestion.id)}`}
                             abilityValue={drafts.abilities[key] ?? ""}
                             commentValue={drafts.comments[key] ?? ""}
                             marks={drafts.marks[key] ?? []}
-                            onScoreChange={(value) =>
-                              setDrafts((current) => ({
-                                ...current,
-                                scores: { ...current.scores, [key]: value },
-                              }))
-                            }
                             onAbilityChange={(value) =>
                               setDrafts((current) => ({
                                 ...current,

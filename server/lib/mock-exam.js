@@ -667,7 +667,10 @@ const serializeQuestion = (question, answer, revealAnswer) => {
         skippedReviewReason: `${reviewItem?.skippedReviewReason ?? ""}`.trim(),
         answerMarks: normalizeAnswerMarks(reviewItem?.answerMarks).map((mark) => ({
           ...mark,
-          comment: mark.status === "wrong" ? normalizeAiMarkComment(mark.comment ?? "") : sanitizeReviewExposureText(`${mark.comment ?? ""}`.trim()),
+          comment:
+            mark.status === "wrong"
+              ? normalizeAiMarkComment(mark.comment ?? "")
+              : sanitizeReviewExposureText(normalizeDisplayText(`${mark.comment ?? ""}`.trim())),
         })),
       };
     }),
