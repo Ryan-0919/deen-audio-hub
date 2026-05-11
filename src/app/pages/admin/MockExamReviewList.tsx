@@ -244,7 +244,7 @@ const buildDraftState = (detail: AdminMockExamReviewDetail): DraftState => {
         highlight: mark.highlight ?? "",
         comment: mark.comment ?? "",
         status: mark.status === "wrong" ? "wrong" : mark.status === "neutral" ? "neutral" : "correct",
-        score: Number.isFinite(Number(mark.score)) ? `${Number(mark.score)}` : "",
+        score: mark.score === null || mark.score === undefined || `${mark.score}`.trim() === "" ? "" : Number.isFinite(Number(mark.score)) ? `${Number(mark.score)}` : "",
       }));
       rubricPoints[key] = (subQuestion.rubricPoints ?? []).map((point, index) => ({
         id: point.id || `${key}_rubric_${index + 1}`,
@@ -1564,7 +1564,7 @@ function CompactInlineSubQuestionReviewWorkbench({
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-semibold text-slate-900">批注 {index + 1}</p>
-                          {mark.status === "correct" && mark.score ? (
+                          {mark.status === "correct" && Number(mark.score) > 0 ? (
                             <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">+{mark.score}分</span>
                           ) : null}
                         </div>

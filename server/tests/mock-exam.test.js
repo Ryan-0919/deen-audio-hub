@@ -1846,6 +1846,158 @@ test("aiReviewMockExamRecord auto builds wrong marks for missed rubric points", 
   assert.equal(normalizedMarks.some((item) => item.status === "wrong"), true);
 });
 
+test("aiReviewMockExamRecord upgrades positive correct marks to scored marks", async () => {
+  const question = createQuestion({
+    id: "subjective_ai_marks_correct_to_score",
+    type: "subjective_case",
+    stem: "è¯·åˆ†æžåˆåŒæ•ˆåŠ›ã€‚",
+    score: 3,
+    correctAnswerJson: "[]",
+    options: [],
+    questionMetaJson: JSON.stringify({
+      subQuestions: [
+        {
+          id: "sq_ai_marks_correct_to_score",
+          title: "é—®é¢˜(1)",
+          placeholder: "è¯·ä½œç­”",
+          rubricPoints: [
+            {
+              id: "point_correct_to_score_1",
+              title: "è¯´æ˜ŽåˆåŒæœ‰æ•ˆ",
+              score: 3,
+              keywords: ["åˆåŒæœ‰æ•ˆ"],
+            },
+          ],
+        },
+      ],
+    }),
+  });
+
+  let savedAnswer = {
+    id: "answer_ai_marks_correct_to_score",
+    questionId: question.id,
+    answerJson: JSON.stringify({
+      sq_ai_marks_correct_to_score: "æœ¬æ¡ˆåˆåŒæœ‰æ•ˆï¼Œåº”ç»§ç»­å±¥è¡Œã€‚",
+    }),
+    reviewJson: null,
+    score: 0,
+  };
+
+  let savedRecord = {
+    id: "record_ai_marks_correct_to_score",
+    status: "submitted",
+    totalScore: 0,
+    reviewedAt: null,
+    paper: {
+      id: "paper_ai_marks_correct_to_score",
+      code: "paper_ai_marks_correct_to_score",
+      title: "AI Correct To Score Paper",
+      phase: "ä¸»è§‚é¢˜",
+      totalScore: 3,
+      passScore: 2,
+      questions: [question],
+    },
+    answers: [savedAnswer],
+    user: { id: "user_ai_marks_correct_to_score", phone: "13800000016" },
+  };
+
+  const fakeDb = {
+    $transaction: async (callback) =>
+      callback({
+        mockExamRecord: {
+          findUnique: async () => savedRecord,
+          update: async ({ data }) => {
+            savedRecord = {
+              ...savedRecord,
+              totalScore: data.totalScore,
+              reviewedAt: data.reviewedAt,
+            };
+            return savedRecord;
+          },
+        },
+        mockExamAnswer: {
+          update: async ({ data }) => {
+            savedAnswer = {
+              ...savedAnswer,
+              score: data.score,
+              reviewJson: data.reviewJson,
+            };
+            savedRecord = {
+              ...savedRecord,
+              answers: [savedAnswer],
+            };
+            return savedAnswer;
+          },
+        },
+      }),
+  };
+
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              subQuestions: [
+                {
+                  id: "sq_ai_marks_correct_to_score",
+                  score: 3,
+                  reviewComment: "ç»“è®ºå†™åˆ°äº†ï¼Œä½†è¿˜å¯ä»¥æŠŠä¾æ®æ‰£å¾—æ›´ç´§ã€‚",
+                  rubricPoints: [
+                    {
+                      id: "point_correct_to_score_1",
+                      title: "è¯´æ˜ŽåˆåŒæœ‰æ•ˆ",
+                      score: 3,
+                      description: "",
+                      keywords: ["åˆåŒæœ‰æ•ˆ"],
+                      hit: true,
+                      awardedScore: 3,
+                      matchedText: "åˆåŒæœ‰æ•ˆ",
+                    },
+                  ],
+                  missedPoints: [],
+                  answerMarks: [
+                    {
+                      id: "mark_correct_without_score",
+                      highlight: "åˆåŒæœ‰æ•ˆ",
+                      comment: "è¿™ä¸€ç‚¹ç­”åˆ°äº†",
+                      status: "correct",
+                      score: null,
+                    },
+                  ],
+                },
+              ],
+            }),
+          },
+        },
+      ],
+    }),
+  });
+
+  try {
+    await aiReviewMockExamRecord({
+      db: fakeDb,
+      recordId: savedRecord.id,
+      runtimeConfig: {
+        provider: "openai-compatible",
+        baseUrl: "https://example.com/v1",
+        apiKey: "test-key",
+        model: "test-model",
+        timeoutMs: 1000,
+      },
+    });
+  } finally {
+    global.fetch = originalFetch;
+  }
+
+  const normalizedReview = JSON.parse(savedAnswer.reviewJson);
+  const positiveMark = normalizedReview.subQuestions?.[0]?.answerMarks?.find((item) => item.status === "score");
+  assert.equal(Boolean(positiveMark), true);
+  assert.equal(positiveMark?.score, 3);
+});
+
 test("aiReviewMockExamRecord sends one AI request per subjective question with all subquestions", async () => {
   const question = createQuestion({
     id: "subjective_ai_batch_1",

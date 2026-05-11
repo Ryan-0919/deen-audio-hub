@@ -829,6 +829,14 @@ const normalizeAnswerMarks = (value) => {
     .filter((item) => item.highlight);
 };
 
+const hasPositiveMarkWithScore = (marks) =>
+  (Array.isArray(marks) ? marks : []).some(
+    (mark) =>
+      (mark?.status === "score" || mark?.status === "correct") &&
+      Number.isFinite(Number(mark?.score)) &&
+      Number(mark?.score ?? 0) > 0,
+  );
+
 const escapeRegExp = (value) => `${value ?? ""}`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const findAnswerHighlight = (answerText, candidate) => {
@@ -989,7 +997,7 @@ const canAutoRepairAnswerMarks = ({ answerMarks, answerText, score, maxScore }) 
   const normalizedMarks = normalizeAnswerMarks(answerMarks);
 
   if (safeScore > 0) {
-    const hasPositiveMark = normalizedMarks.some((mark) => mark.status === "score" || mark.status === "correct");
+    const hasPositiveMark = hasPositiveMarkWithScore(normalizedMarks);
     if (!hasPositiveMark && answerText.trim()) {
       return true;
     }
@@ -1046,8 +1054,17 @@ const ensurePositiveMarkForAwardedScore = ({ marks, answerText, rubricPoints, sc
     return dedupeAnswerMarks(marks);
   }
 
-  if (marks.some((item) => item.status === "score" || item.status === "correct")) {
-    return dedupeAnswerMarks(marks);
+  const normalizedMarks = marks.map((item) =>
+    item.status === "score" || item.status === "correct"
+      ? {
+          ...item,
+          status: "score",
+        }
+      : item,
+  );
+
+  if (hasPositiveMarkWithScore(normalizedMarks)) {
+    return dedupeAnswerMarks(normalizedMarks);
   }
 
   const hitPoint = (Array.isArray(rubricPoints) ? rubricPoints : []).find(
@@ -1064,7 +1081,7 @@ const ensurePositiveMarkForAwardedScore = ({ marks, answerText, rubricPoints, sc
   );
 
   if (!fallbackHighlight) {
-    return dedupeAnswerMarks(marks);
+    return dedupeAnswerMarks(normalizedMarks);
   }
 
   return dedupeAnswerMarks([
@@ -1075,7 +1092,7 @@ const ensurePositiveMarkForAwardedScore = ({ marks, answerText, rubricPoints, sc
       status: "score",
       score: safeScore,
     },
-    ...marks,
+    ...normalizedMarks,
   ]);
 };
 
@@ -1767,7 +1784,7 @@ const buildAiPrompt = ({ question, answer, allocations }) => {
         "missedPoints é‡Œåªèƒ½å†™å­¦ç”Ÿå®Œå…¨æ²¡æœ‰ç­”åˆ°çš„ç‚¹ï¼Œä¸èƒ½æŠŠå·²ç»ä½œç­”ä½†ç­”é”™ã€ç­”åã€ç­”åçš„å†…å®¹ç®—ä½œé—æ¼ç‚¹",
         "å¦‚æžœå‘½ä¸­è¯„åˆ†ç‚¹ï¼Œhit=trueï¼Œå¹¶å°½é‡å¡«å†™ matchedText",
         "answerMarks ä¸­çš„ highlight å¿…é¡»ç›´æŽ¥æˆªå–è‡ªè€ƒç”ŸåŽŸç­”æ¡ˆï¼Œä¸èƒ½æ”¹å†™ã€ä¸èƒ½æ¦‚æ‹¬ã€ä¸èƒ½æœæ’°",
-        "å¦‚æžœæ˜¯æ­£å‘å‘½ä¸­é‡‡åˆ†ç‚¹ï¼Œä¼˜å…ˆä½¿ç”¨ status=scoreï¼Œå¹¶å¡«å†™å¯¹åº”å¾—åˆ†",
+        "å¦‚æžœæ˜¯æ­£å‘å‘½ä¸­é‡‡åˆ†ç‚¹ï¼Œå¿…é¡»ä½¿ç”¨ status=scoreï¼Œå¹¶å¡«å†™å¯¹åº”å¾—åˆ†ï¼Œä¸å…è®¸åªç»™ correct ä¸å†™åˆ†å€¼",
         "å¦‚æžœå­˜åœ¨æœªå‘½ä¸­çš„è¯„åˆ†ç‚¹ã€é—æ¼è®ºè¯ã€ç¼ºå¤±è§„åˆ™æˆ–å¤±åˆ†å†…å®¹ï¼Œå¿…é¡»è‡³å°‘è¿”å›ž 1 æ¡ status=wrong çš„ answerMarksï¼Œcomment å¿…é¡»ç›´æŽ¥è¯´æ˜Žé—æ¼äº†ä»€ä¹ˆ",
         "å¦‚æžœå°é—® score å°äºŽ maxScoreï¼Œåˆ™è¯¥å°é—®çš„ answerMarks ä¸­å¿…é¡»è‡³å°‘åŒ…å« 1 æ¡ status=wrong",
         "å¦‚æžœæŒ‡å‡ºæ˜Žæ˜¾å¤±åˆ†æˆ–é”™è¯¯è¡¨è¿°ï¼Œå¿…é¡»ä½¿ç”¨ status=wrongï¼›å¦‚æžœæ˜Žç¡®è¡¨è¿°æ­£ç¡®ä¸”éœ€è¦å•ç‹¬æ ‡å‡ºï¼Œå¯ä½¿ç”¨ status=correct",
@@ -1806,7 +1823,7 @@ const buildAiPrompt = ({ question, answer, allocations }) => {
     "reviewComment å¯ä»¥æŒ‰â€œæ ¸å¿ƒå¤±åˆ†ç‚¹ã€é‡‡åˆ†ç‚¹åˆ†æžã€æ€ç»´è¯Šæ–­ã€å¯æ‰§è¡Œå»ºè®®â€è¿™å‡ ä¸ªå±‚æ¬¡æ¥ç»„ç»‡ï¼Œä½†è¯­æ°”å¿…é¡»åƒè€å¸ˆåœ¨è®²é¢˜ï¼Œä¸èƒ½å†™æˆç”Ÿç¡¬æ¨¡æ¿ã€‚",
     "reviewComment åœ¨â€œå¯æ‰§è¡Œå»ºè®®â€éƒ¨åˆ†è¦è‡ªç„¶å‘Šè¯‰å­¦ç”Ÿç¬¬ä¸€æ­¥åšä»€ä¹ˆã€ç¬¬äºŒæ­¥åšä»€ä¹ˆã€ç¬¬ä¸‰æ­¥åšä»€ä¹ˆã€‚",
     "å¿…é¡»è‡ªå·±å®Œæˆæ­£å‘å’Œè´Ÿå‘æ ‡æ³¨ï¼Œä¸è¦åªç»™æ€»åˆ†ä¸æ‰“æ ‡è®°ã€‚",
-    "åªè¦å‘½ä¸­äº†é‡‡åˆ†ç‚¹ï¼Œå°±è¦åœ¨å¯¹åº”åŽŸæ–‡ä¸Šç”Ÿæˆ status=score æˆ– status=correct çš„ answerMarksï¼Œè®©å‰ç«¯æ˜¾ç¤ºå¯¹å·ã€‚",
+    "åªè¦å‘½ä¸­äº†é‡‡åˆ†ç‚¹ï¼Œå°±è¦åœ¨å¯¹åº”åŽŸæ–‡ä¸Šç”Ÿæˆ status=score çš„ answerMarksï¼Œå¹¶å¡«å†™å…·ä½“å¾—åˆ†ï¼Œä¸èƒ½åªç»™å¯¹å·ä¸å†™åˆ†ã€‚",
     "åªè¦å­˜åœ¨é”™è¯¯ã€é—æ¼ã€ç­”åæˆ–å¤±åˆ†å†…å®¹ï¼Œå°±è¦åœ¨å¯¹åº”åŽŸæ–‡ä¸Šç”Ÿæˆ status=wrong çš„ answerMarksï¼Œè®©å‰ç«¯æ˜¾ç¤ºå‰å·ã€‚",
   );
   payload.outputRequirements.constraints.push(
@@ -1869,10 +1886,10 @@ const buildAiPromptV2 = ({ question, answer, allocations, runtimeConfig }) => {
     "如果学生已经写了相关内容，只是写错、答偏、论证错误或表述错误，不要把它放进 missedPoints，而要作为错误点写进 wrong 标注和总点评。",
     "命中采分点时，hit 必须为 true，并尽量填写 matchedText。",
     "answerMarks 中的 highlight 必须直接截取自考生原答案，不能改写、不能概括、不能杜撰。",
-    "正向命中采分点时优先使用 status=score，并填写对应得分。",
+    "正向命中采分点时必须使用 status=score，并填写对应得分。",
     "如果存在遗漏采分点、错误论证或明显失分内容，必须至少返回 1 条 status=wrong 的 answerMarks。",
     "如果某小问 score 小于 maxScore，则该小问 answerMarks 中必须至少包含 1 条 status=wrong。",
-    "如果某小问 score > 0，则该小问 answerMarks 中必须至少包含 1 条 status=score 或 status=correct。",
+    "如果某小问 score > 0，则该小问 answerMarks 中必须至少包含 1 条 status=score，且该标注必须带具体分值。",
     "如果命中了多个采分点，answerMarks 中应尽量分别标出多个正向命中位置。",
     "如果学生只写了一个很短的结论句，但这个结论本身与本题采分点一致，可以给该结论句正向标注；失分之处主要通过 wrong 标注去指出缺少的理由、依据或本案分析，不要把正确结论本身硬打成 wrong。",
     "如果学生写出的结论句本身就是错的，或者方向和本题标准答案相反，则应直接对该结论句给 wrong 标注。",
@@ -2052,7 +2069,7 @@ const assertValidAiSubQuestionResult = ({ item, allocation, fallbackTitle, fallb
     throw createHttpError(`批改返回的遗漏点与满分结果不一致：${fallbackTitle || allocation?.id || "unknown"}`, 502);
   }
   const rawAnswerMarks = normalizeAnswerMarks(item?.answerMarks);
-  const hasPositiveMark = rawAnswerMarks.some((mark) => mark.status === "score" || mark.status === "correct");
+  const hasPositiveMark = hasPositiveMarkWithScore(rawAnswerMarks);
   const hasWrongMark = rawAnswerMarks.some((mark) => mark.status === "wrong");
 
   if (rawScore > 0 && !hasPositiveMark && !canAutoRepairAnswerMarks({ answerMarks: rawAnswerMarks, answerText: fallbackAnswerText, score: rawScore, maxScore })) {
