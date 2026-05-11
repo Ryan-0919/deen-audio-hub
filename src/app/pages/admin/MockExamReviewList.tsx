@@ -227,6 +227,11 @@ const getDraftSubQuestionScore = (drafts: DraftState, questionId: string, subQue
   return Math.max(markScore, rubricScore);
 };
 
+const getManualDraftSubQuestionScore = (drafts: DraftState, questionId: string, subQuestionId: string) => {
+  const key = getSubQuestionKey(questionId, subQuestionId);
+  return parseInteger(drafts.scores[key]);
+};
+
 const buildDraftState = (detail: AdminMockExamReviewDetail): DraftState => {
   const scores: Record<string, string> = {};
   const comments: Record<string, string> = {};
@@ -384,7 +389,7 @@ const getQuestionAnchorId = (questionId: string) => `review-question-${questionI
 
 const getQuestionDraftScore = (question: SubjectiveQuestion, drafts: DraftState) =>
   question.subjectiveSubQuestions.reduce((sum, subQuestion) => {
-    return sum + getDraftSubQuestionScore(drafts, question.id, subQuestion.id);
+    return sum + getManualDraftSubQuestionScore(drafts, question.id, subQuestion.id);
   }, 0);
 
 const getDraftSubjectiveTotalScore = (questions: SubjectiveQuestion[], drafts: DraftState) =>
@@ -1398,6 +1403,7 @@ function CompactInlineSubQuestionReviewWorkbench({
   abilityValue,
   commentValue,
   marks,
+  onScoreChange,
   onAbilityChange,
   onCommentChange,
   onMarksChange,
@@ -1408,6 +1414,7 @@ function CompactInlineSubQuestionReviewWorkbench({
   abilityValue: string;
   commentValue: string;
   marks: EditableAnswerMark[];
+  onScoreChange: (value: string) => void;
   onAbilityChange: (value: string) => void;
   onCommentChange: (value: string) => void;
   onMarksChange: (marks: EditableAnswerMark[]) => void;
@@ -1547,7 +1554,7 @@ function CompactInlineSubQuestionReviewWorkbench({
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <div>
                 <p className="mb-2 text-sm font-semibold text-slate-900">本问得分</p>
-                <Input className="h-12 text-base" value={scoreValue} readOnly />
+                <Input className="h-12 text-base" value={scoreValue} onChange={(event) => onScoreChange(event.target.value)} />
               </div>
               <div>
                 <p className="mb-2 text-sm font-semibold text-slate-900">能力标签</p>
@@ -1931,7 +1938,7 @@ export function MockExamReviewList() {
         reviewVoiceDurationSeconds: Number(drafts.reviewVoices[question.id]?.durationSeconds ?? 0) || 0,
         subQuestions: question.subjectiveSubQuestions.map((subQuestion) => {
           const key = getSubQuestionKey(question.id, subQuestion.id);
-          const score = getDraftSubQuestionScore(drafts, question.id, subQuestion.id);
+          const score = parseInteger(drafts.scores[key]);
           if (!Number.isInteger(score)) {
             throw new Error(`第 ${question.sortOrder} 题的小问分数必须是整数`);
           }
@@ -2378,10 +2385,16 @@ export function MockExamReviewList() {
                             key={subQuestion.id}
                             question={question}
                             subQuestion={subQuestion}
-                            scoreValue={`${getDraftSubQuestionScore(drafts, question.id, subQuestion.id)}`}
+                            scoreValue={drafts.scores[key] ?? ""}
                             abilityValue={drafts.abilities[key] ?? ""}
                             commentValue={drafts.comments[key] ?? ""}
                             marks={drafts.marks[key] ?? []}
+                            onScoreChange={(value) =>
+                              setDrafts((current) => ({
+                                ...current,
+                                scores: { ...current.scores, [key]: value },
+                              }))
+                            }
                             onAbilityChange={(value) =>
                               setDrafts((current) => ({
                                 ...current,
