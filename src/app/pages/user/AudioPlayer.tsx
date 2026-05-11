@@ -458,35 +458,10 @@ export function AudioPlayer() {
         </section>
 
         <div className="mt-5 grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
-          <section className="overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] shadow-[0_24px_90px_rgba(0,0,0,0.20)] backdrop-blur-[20px] md:hidden">
-            <div className="flex flex-col gap-3 border-b border-white/8 px-4 py-4">
-              <div>
-                <div className="text-[11px] uppercase tracking-[0.28em] text-white/36">SCRIPT PANEL</div>
-                <h2 className="mt-2 text-[24px] font-semibold tracking-[-0.05em] text-white">课程文稿</h2>
-              </div>
-
-              <div className="text-sm leading-7 text-white/48">
-                {audio.script ? "边听边看，按自己的学习节奏通读课程文稿。" : "当前音频暂无文稿内容。"}
-              </div>
-            </div>
-
-            <div className="p-3">
-              <div className="min-h-[240px] overflow-hidden rounded-[20px] border border-white/8 bg-black/18">
-                <div className="max-h-[46vh] overflow-y-auto px-4 py-4 text-[14px] leading-7 text-white/72">
-                  {audio.script ? (
-                    <div className="whitespace-pre-wrap">{audio.script}</div>
-                  ) : (
-                    <div className="flex min-h-[220px] items-center justify-center text-center text-sm text-white/38">暂无文稿内容</div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </section>
-
           <aside className="space-y-5 xl:sticky xl:top-8 xl:h-fit">
             <section className="overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] p-4 shadow-[0_24px_90px_rgba(0,0,0,0.20)] backdrop-blur-[20px] md:rounded-[30px] md:p-6">
               <div className="flex flex-col items-center text-center">
-                <div className="relative flex size-[180px] items-center justify-center md:size-[260px]">
+                <div className="relative flex size-[148px] items-center justify-center md:size-[260px]">
                   <div className="absolute inset-6 rounded-full bg-[radial-gradient(circle,rgba(96,165,250,0.18),transparent_68%)] blur-3xl" />
                   <div
                     className={cn(
@@ -508,6 +483,20 @@ export function AudioPlayer() {
                 <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm">
                   <span className="rounded-full border border-[#73a9ff]/20 bg-[#3f6fff]/14 px-3 py-1.5 text-[#9bc3ff]">{tag.name}</span>
                   <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-white/68">{playerStatus}</span>
+                </div>
+              </div>
+            </section>
+
+            <section className="overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] shadow-[0_24px_90px_rgba(0,0,0,0.20)] backdrop-blur-[20px] md:hidden">
+              <div className="p-3">
+                <div className="min-h-[240px] overflow-hidden rounded-[20px] border border-white/8 bg-black/18">
+                  <div className="max-h-[46vh] overflow-y-auto px-4 py-4 text-[14px] leading-7 text-white/72">
+                    {audio.script ? (
+                      <div className="whitespace-pre-wrap">{audio.script}</div>
+                    ) : (
+                      <div className="flex min-h-[220px] items-center justify-center text-center text-sm text-white/38">暂无文稿内容</div>
+                    )}
+                  </div>
                 </div>
               </div>
             </section>
