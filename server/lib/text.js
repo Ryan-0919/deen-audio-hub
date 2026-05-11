@@ -1,10 +1,11 @@
 const hasLatinMojibake = (value = "") => /[À-ÿ]/.test(value);
+const hasCjk = (value = "") => /[\u3400-\u9fff]/.test(value);
 
 export const normalizeDisplayText = (value = "") => {
   const text = `${value}`.trim();
   if (!text) return "";
 
-  if (!hasLatinMojibake(text)) {
+  if (!hasLatinMojibake(text) || hasCjk(text)) {
     return text.normalize("NFC");
   }
 

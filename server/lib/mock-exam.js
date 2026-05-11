@@ -1,6 +1,7 @@
 import { formatDateTime } from "./time.js";
 import { getReadableObjectUrl } from "./upload.js";
 import { humanizeAiReviewComment, normalizeAiMarkComment, sanitizeReviewExposureText } from "./mock-exam-ai-review.js";
+import { normalizeDisplayText } from "./text.js";
 
 const DEFAULT_OBJECTIVE_PAPER_COVER = "/mock-exam/default-objective-cover.svg";
 const DEFAULT_SUBJECTIVE_PAPER_COVER = "/mock-exam/default-subjective-cover.svg";
@@ -35,6 +36,8 @@ const createHttpError = (message, statusCode = 400) => {
   error.statusCode = statusCode;
   return error;
 };
+
+const getManualReviewerDisplayName = (value) => normalizeDisplayText(`${value ?? ""}`.trim()) || "其他老师";
 
 const MANUAL_REVIEW_LOCK_MINUTES = 15;
 
@@ -739,7 +742,7 @@ const getManualReviewLockMeta = (record, adminId = "", currentTime = new Date())
     active,
     ownedByCurrentAdmin,
     reviewerId: active ? `${record?.manualReviewerId ?? ""}`.trim() : "",
-    reviewerName: active ? `${record?.manualReviewerName ?? ""}`.trim() : "",
+    reviewerName: active ? getManualReviewerDisplayName(record?.manualReviewerName) : "",
     lockToken: ownedByCurrentAdmin ? `${record?.manualReviewLockToken ?? ""}`.trim() : "",
     claimedAt: active && record?.manualReviewClaimedAt ? formatDateTime(record.manualReviewClaimedAt) : "",
     expiresAt: active && record?.manualReviewLockExpiresAt ? formatDateTime(record.manualReviewLockExpiresAt) : "",
@@ -2949,7 +2952,7 @@ const assertManualReviewAccess = ({ record, adminId, lockToken, version, current
   if (!isManualReviewLockedByAdmin(record, adminId, currentTime)) {
     const lockMeta = getManualReviewLockMeta(record, adminId, currentTime);
     if (lockMeta.active && !lockMeta.ownedByCurrentAdmin) {
-      throw createHttpError(`该试卷正在由${lockMeta.reviewerName || "其他老师"}批改，请稍后再试`, 409);
+      throw createHttpError(`该试卷正在由${getManualReviewerDisplayName(lockMeta.reviewerName)}批改，请稍后再试`, 409);
     }
     throw createHttpError("请先领取这份试卷后再进行批改", 409);
   }
@@ -2990,7 +2993,7 @@ export const claimMockExamReviewRecord = async ({
 
     const lockMeta = getManualReviewLockMeta(record, adminId, currentTime);
     if (lockMeta.active && !lockMeta.ownedByCurrentAdmin) {
-      throw createHttpError(`该试卷已由${lockMeta.reviewerName || "其他老师"}领取，请稍后再试`, 409);
+      throw createHttpError(`该试卷已由${getManualReviewerDisplayName(lockMeta.reviewerName)}领取，请稍后再试`, 409);
     }
 
     const nextLockToken = lockMeta.ownedByCurrentAdmin ? `${record.manualReviewLockToken ?? ""}`.trim() : buildManualReviewLockToken();
