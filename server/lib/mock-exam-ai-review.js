@@ -1,10 +1,13 @@
 ﻿import { config } from "./config.js";
+import { normalizeDisplayText } from "./text.js";
 
 const subjectiveQuestionType = "subjective_case";
-const normalizeMultilineText = (value) => `${value ?? ""}`.replace(/\r\n/g, "\n").trim();
+const normalizeMultilineText = (value) => normalizeDisplayText(`${value ?? ""}`.replace(/\r\n/g, "\n")).trim();
 const AI_REVIEW_COMMENT_MAX_LENGTH = 180;
 const AI_REVIEW_MARK_COMMENT_MAX_LENGTH = 60;
 const SUBJECTIVE_REVIEW_MIN_MEANINGFUL_LENGTH = 6;
+const KEYWORD_SPLIT_PATTERN = /[\n,，、；;]/;
+const SENTENCE_SPLIT_PATTERN = /[。；;！!？?\n]/;
 const SUBJECTIVE_REVIEW_LOW_QUALITY_PATTERNS = [
   /^无$/i,
   /^不会$/i,
@@ -395,7 +398,7 @@ const parseJsonSafely = (value, fallback) => {
   }
 };
 
-const normalizeText = (value) => `${value ?? ""}`.replace(/\r\n/g, "\n").trim();
+const normalizeText = (value) => normalizeDisplayText(`${value ?? ""}`.replace(/\r\n/g, "\n")).trim();
 const normalizeSubjectiveAnswerForDetection = (value) =>
   normalizeText(value)
     .replace(/[，,。！？；、\s]+/g, "")
@@ -672,7 +675,7 @@ const normalizeAiReviewResponsePayload = (value) => {
 const normalizeKeywords = (value) =>
   Array.from(
     new Set(
-      (Array.isArray(value) ? value : `${value ?? ""}`.split(/[\n,ï¼Œã€ï¼›;]/))
+      (Array.isArray(value) ? value : `${value ?? ""}`.split(KEYWORD_SPLIT_PATTERN))
         .map((item) => `${item ?? ""}`.trim())
         .filter(Boolean),
     ),
@@ -862,7 +865,7 @@ const findAnswerHighlight = (answerText, candidate) => {
   }
 
   const sentenceCandidates = normalizedAnswer
-    .split(/[ã€‚ï¼›;ï¼!ï¼Ÿ?\n]/)
+    .split(SENTENCE_SPLIT_PATTERN)
     .map((item) => item.trim())
     .filter(Boolean);
 
@@ -1014,38 +1017,7 @@ const canAutoRepairAnswerMarks = ({ answerMarks, answerText, score, maxScore }) 
 };
 
 const ensureWrongMarkForPartialScore = ({ marks, answerText, reviewComment, score, maxScore }) => {
-  if (marks.some((item) => item.status === "wrong")) {
-    return dedupeAnswerMarks(marks);
-  }
-
-  const safeScore = Number(score ?? 0);
-  const safeMaxScore = Number(maxScore ?? 0);
-  if (!(safeMaxScore > 0) || safeScore >= safeMaxScore) {
-    return dedupeAnswerMarks(marks);
-  }
-
-  if (shouldRelaxWrongMarkRequirement({ marks, answerText, score: safeScore, maxScore: safeMaxScore })) {
-    return dedupeAnswerMarks(marks);
-  }
-
-  const fallbackHighlight = findAnswerHighlight(
-    answerText,
-    answerText.split(/[Ã£â‚¬â€šÃ¯Â¼â€º;Ã¯Â¼Â!Ã¯Â¼Å¸?\n]/).find((item) => item.trim()) || answerText.slice(0, 24),
-  );
-  if (!fallbackHighlight) {
-    return dedupeAnswerMarks(marks);
-  }
-
-  return dedupeAnswerMarks([
-    ...marks,
-    {
-      id: "ai_forced_wrong_1",
-      highlight: fallbackHighlight,
-      comment: normalizeAiMarkComment(reviewComment || "你这里还有失分点没答出来，建议把对应结论或依据补完整。"),
-      status: "wrong",
-      score: null,
-    },
-  ]);
+  return dedupeAnswerMarks(marks);
 };
 
 const ensurePositiveMarkForAwardedScore = ({ marks, answerText, rubricPoints, score }) => {
@@ -1076,7 +1048,7 @@ const ensurePositiveMarkForAwardedScore = ({ marks, answerText, rubricPoints, sc
     hitPoint?.matchedText ||
       hitPoint?.title ||
       (Array.isArray(hitPoint?.keywords) ? hitPoint.keywords[0] : "") ||
-      answerText.split(/[ã€‚ï¼›;ï¼!ï¼Ÿ?\n]/).find((item) => item.trim()) ||
+      answerText.split(SENTENCE_SPLIT_PATTERN).find((item) => item.trim()) ||
       answerText.slice(0, 24),
   );
 
@@ -1088,7 +1060,7 @@ const ensurePositiveMarkForAwardedScore = ({ marks, answerText, rubricPoints, sc
     {
       id: "ai_forced_score_1",
       highlight: fallbackHighlight,
-      comment: hitPoint?.title ? `è¿™ä¸€ç‚¹ç­”åˆ°äº†â€œ${hitPoint.title}â€ï¼Œåº”ç»™åˆ†ã€‚` : "è¿™ä¸€å¤„å†…å®¹å‘½ä¸­äº†å¾—åˆ†ç‚¹ï¼Œåº”ç»™åˆ†ã€‚",
+      comment: normalizeAiMarkComment(hitPoint?.title ? `这一点答到了“${hitPoint.title}”，应给分。` : "这一处内容命中了得分点，应给分。"),
       status: "score",
       score: safeScore,
     },
@@ -1112,40 +1084,9 @@ const buildFallbackAiAnswerMarks = ({ answerText, rubricPoints, reviewComment })
     marks.push({
       id: `ai_score_${index + 1}`,
       highlight,
-      comment: point.title || "å‘½ä¸­è¯„åˆ†ç‚¹",
+      comment: normalizeAiMarkComment(point.title || "命中评分点"),
       status: "score",
       score: Number(point.awardedScore ?? 0) || null,
-    });
-  });
-
-  const answerSentences = answerText
-    .split(/[ã€‚ï¼›;ï¼!ï¼Ÿ?\n]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-  rubricPoints.forEach((point, index) => {
-    if (point.hit) {
-      return;
-    }
-
-    const fallbackSentence =
-      answerSentences.find((sentence) => {
-        const compactSentence = sentence.replace(/\s+/g, "");
-        return compactSentence.length >= 6;
-      }) || answerSentences[0] || "";
-    const highlight = findAnswerHighlight(answerText, fallbackSentence || point.title || (point.keywords ?? [])[0] || "");
-    if (!highlight) {
-      return;
-    }
-
-    marks.push({
-      id: `ai_wrong_${index + 1}`,
-      highlight,
-      comment: normalizeAiMarkComment(
-        point.title ? `你这里漏掉了“${point.title}”，建议直接补上对应结论或依据。` : reviewComment || "你这里论证还不够完整，建议把关键依据补出来。",
-      ),
-      status: "wrong",
-      score: null,
     });
   });
 
@@ -1153,24 +1094,7 @@ const buildFallbackAiAnswerMarks = ({ answerText, rubricPoints, reviewComment })
     return dedupeAnswerMarks(marks);
   }
 
-  if (!answerText.trim()) {
-    return [];
-  }
-
-  const fallbackHighlight = findAnswerHighlight(answerText, answerText.split(/[ã€‚ï¼›;ï¼!ï¼Ÿ?\n]/).find((item) => item.trim()) || answerText.slice(0, 18));
-  if (!fallbackHighlight) {
-    return [];
-  }
-
-  return [
-    {
-      id: "ai_comment_1",
-      highlight: fallbackHighlight,
-      comment: reviewComment || "ä½ è¿™é‡Œè¿˜å¯ä»¥ç»§ç»­è¡¥å¼ºï¼Œå»ºè®®å¯¹ç…§é‡‡åˆ†ç‚¹æŠŠç¼ºçš„ç»“è®ºã€ä¾æ®æˆ–è®ºè¯è¡¥ä¸Šã€‚",
-      status: "wrong",
-      score: null,
-    },
-  ];
+  return [];
 };
 
 const isSubjectiveQuestion = (question) => `${question?.type ?? ""}`.trim() === subjectiveQuestionType;
@@ -1462,7 +1386,7 @@ const buildMissedPoints = (rubricPoints, reviewComment = "") =>
     .filter((point) => !point?.hit)
     .map((point, index) => ({
       id: `${point?.id ?? `missed_${index + 1}`}`.trim(),
-      title: normalizeText(point?.title) || `é—æ¼ç‚¹ ${index + 1}`,
+      title: normalizeText(point?.title) || `遗漏点 ${index + 1}`,
       description: normalizeText(point?.description) || reviewComment || "",
       score: Number(point?.score ?? 0) || 0,
     }))
@@ -1480,27 +1404,21 @@ const isGenericWrongMarkComment = (comment, reviewComment) => {
     return true;
   }
 
-  return ["å¤±åˆ†ç‚¹æœªè¦†ç›–", "éœ€è¦ç»“åˆè¯„åˆ†ç‚¹ç»§ç»­å®Œå–„", "æœªè¦†ç›–å¾—åˆ†ç‚¹", "è®ºè¯ä»éœ€è¡¥å¼º"].some((keyword) =>
+  return ["失分点未覆盖", "需要结合评分点继续完善", "未覆盖得分点", "论证仍需补强"].some((keyword) =>
     normalizedComment.includes(keyword),
   );
 };
 
 const normalizeWrongMarkComments = ({ marks, rubricPoints, reviewComment }) => {
-  const missedPoints = getMissedRubricPoints(rubricPoints);
-  let wrongPointIndex = 0;
-
   return marks.map((mark) => {
     if (mark.status !== "wrong") {
       return mark;
     }
 
-    const matchedPoint = missedPoints[Math.min(wrongPointIndex, Math.max(missedPoints.length - 1, 0))];
-    wrongPointIndex += 1;
-
     return {
       ...mark,
       comment: isGenericWrongMarkComment(mark.comment, reviewComment)
-        ? buildWrongPointComment(matchedPoint)
+        ? normalizeAiMarkComment("你这里这句话判断或表述不对，建议对照题干和规则，把对应结论、依据重新核对后再改。")
         : normalizeText(mark.comment),
     };
   });
@@ -1586,40 +1504,6 @@ const buildAnswerMarks = (pointResults, answerText, reviewComment = "") => {
       status: "score",
       score: point.awardedScore,
     }));
-
-  const answerSentences = `${answerText ?? ""}`
-    .split(/[Ã£â‚¬â€šÃ¯Â¼â€º;Ã¯Â¼Â!Ã¯Â¼Å¸?\n]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-  pointResults
-    .filter((point) => !point.hit)
-    .forEach((point, index) => {
-      const pointHint = point.title || (point.keywords ?? [])[0] || "";
-      const focusedSentence =
-        answerSentences.find((sentence) => {
-          const compactSentence = sentence.replace(/\s+/g, "");
-          if (!compactSentence || compactSentence.length < 2) {
-            return false;
-          }
-          if (pointHint && compactSentence.includes(pointHint.replace(/\s+/g, ""))) {
-            return true;
-          }
-          return compactSentence.length >= 6 && !pointResults.some((hitPoint) => hitPoint.hit && hitPoint.matchedText && compactSentence.includes(hitPoint.matchedText.replace(/\s+/g, "")));
-        }) || "";
-      const highlight = findAnswerHighlight(answerText, pointHint || focusedSentence || answerText.slice(0, 24));
-      if (!highlight) {
-        return;
-      }
-
-      marks.push({
-        id: `ai_wrong_${index + 1}`,
-        highlight,
-        comment: point.title ? `ä½ è¿™é‡Œæ¼æŽ‰äº†â€œ${point.title}â€è¿™ä¸ªå¾—åˆ†ç‚¹ï¼Œå»ºè®®è¡¥ä¸Šå¯¹åº”å†…å®¹ã€‚` : reviewComment || "ä½ è¿™é‡Œè¿˜æœ‰å¤±åˆ†ç‚¹æ²¡æœ‰è¦†ç›–ï¼Œå»ºè®®æŠŠå¯¹åº”è¦ç‚¹è¡¥å®Œæ•´ã€‚",
-        status: "wrong",
-        score: null,
-      });
-    });
 
   return dedupeAnswerMarks(marks);
 };
@@ -1898,11 +1782,11 @@ const buildAiPromptV2 = ({ question, answer, allocations, runtimeConfig }) => {
     "wrong 标注应尽量落在出错词语、出错短句或最靠近错误的那一段原文上，不要用很长的 highlight 去笼统表示“这段有问题”。",
     "能用 matchedText 精准定位的，highlight 就围绕 matchedText 取最小必要原文，不要额外扩写前后无关文字。",
     "正向命中采分点时必须使用 status=score，并填写对应得分。",
-    "如果存在遗漏采分点、错误论证或明显失分内容，必须至少返回 1 条 status=wrong 的 answerMarks。",
-    "如果某小问 score 小于 maxScore，则该小问 answerMarks 中必须至少包含 1 条 status=wrong。",
+    "如果只是漏写了某个采分点、理由层次或本案分析，没有在答案里出现对应错误表述，则不要为了提示遗漏而强行生成 wrong 标注；这类内容只写进 missedPoints 和 reviewComment。",
+    "只有当学生原答案里出现了明确的错误结论、错误判断、错误表述或答偏内容时，才生成 status=wrong 的 answerMarks，并在 comment 里指出错在哪里。",
     "如果某小问 score > 0，则该小问 answerMarks 中必须至少包含 1 条 status=score，且该标注必须带具体分值。",
     "如果命中了多个采分点，answerMarks 中应尽量分别标出多个正向命中位置。",
-    "如果学生只写了一个很短的结论句，但这个结论本身与本题采分点一致，可以给该结论句正向标注；失分之处主要通过 wrong 标注去指出缺少的理由、依据或本案分析，不要把正确结论本身硬打成 wrong。",
+    "如果学生只写了一个很短的结论句，但这个结论本身与本题采分点一致，可以给该结论句正向标注；缺少的理由、依据或本案分析只放进 missedPoints 和 reviewComment，不要把正确结论本身打成 wrong。",
     "如果学生写出的结论句本身就是错的，或者方向和本题标准答案相反，则应直接对该结论句给 wrong 标注。",
     "reviewComment 不要复述学生原答案。",
     "reviewComment 要根据学生这道题的实际作答状态调整语气和重点：全错时重在指出错因，只写结论时重在告诉他该补什么，方向对但理由弱时重在指出缺失层次，接近满分时既要点出答得好的地方，也要告诉他怎样写会更稳、更完整。",
@@ -2081,24 +1965,9 @@ const assertValidAiSubQuestionResult = ({ item, allocation, fallbackTitle, fallb
   }
   const rawAnswerMarks = normalizeAnswerMarks(item?.answerMarks);
   const hasPositiveMark = hasPositiveMarkWithScore(rawAnswerMarks);
-  const hasWrongMark = rawAnswerMarks.some((mark) => mark.status === "wrong");
 
   if (rawScore > 0 && !hasPositiveMark && !canAutoRepairAnswerMarks({ answerMarks: rawAnswerMarks, answerText: fallbackAnswerText, score: rawScore, maxScore })) {
     throw createHttpError(`批改返回缺少正向标注：${fallbackTitle || allocation?.id || "unknown"}`, 502);
-  }
-
-  if (
-    rawScore < maxScore &&
-    !hasWrongMark &&
-    !canAutoRepairAnswerMarks({ answerMarks: rawAnswerMarks, answerText: fallbackAnswerText, score: rawScore, maxScore }) &&
-    !shouldRelaxWrongMarkRequirement({
-      marks: rawAnswerMarks,
-      answerText: fallbackAnswerText,
-      score: rawScore,
-      maxScore,
-    })
-  ) {
-    throw createHttpError(`批改返回缺少失分标注：${fallbackTitle || allocation?.id || "unknown"}`, 502);
   }
 };
 
@@ -2501,4 +2370,5 @@ export const normalizeAiReviewReport = (reviewJson) => {
       : [],
   };
 };
+
 
