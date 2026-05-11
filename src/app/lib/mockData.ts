@@ -735,7 +735,7 @@ export interface MockExamSubjectiveAnswerMark {
   id: string;
   highlight: string;
   comment: string;
-  status?: "correct" | "wrong" | "score";
+  status?: "correct" | "wrong" | "score" | "neutral";
   score?: number;
 }
 

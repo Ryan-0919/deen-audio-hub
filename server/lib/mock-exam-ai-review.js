@@ -808,10 +808,12 @@ const normalizeAnswerMarks = (value) => {
   return value
     .map((item, index) => {
       const rawStatus = `${item?.status ?? item?.type ?? ""}`.trim().toLowerCase();
-      const normalizedStatus = ["correct", "wrong", "score"].includes(rawStatus)
+      const normalizedStatus = ["correct", "wrong", "score", "neutral"].includes(rawStatus)
         ? rawStatus
         : ["positive", "hit", "award"].includes(rawStatus)
           ? "score"
+          : ["neutral", "missed", "omit"].includes(rawStatus)
+            ? "neutral"
           : ["incorrect", "error", "negative"].includes(rawStatus)
             ? "wrong"
             : "wrong";

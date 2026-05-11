@@ -1,4 +1,4 @@
-import { ArrowLeft, LoaderCircle, Plus, Search, Send, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, Check, LoaderCircle, Minus, Plus, Search, Send, Trash2, Upload, X } from "lucide-react";
 import type { ChangeEvent, ReactNode } from "react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
@@ -173,7 +173,7 @@ type EditableAnswerMark = {
   id: string;
   highlight: string;
   comment: string;
-  status: "correct" | "wrong" | "score";
+  status: "correct" | "wrong" | "score" | "neutral";
   score: string;
 };
 
@@ -243,7 +243,7 @@ const buildDraftState = (detail: AdminMockExamReviewDetail): DraftState => {
         id: mark.id || `${key}_mark_${index + 1}`,
         highlight: mark.highlight ?? "",
         comment: mark.comment ?? "",
-        status: mark.status === "correct" || mark.status === "score" ? mark.status : "wrong",
+        status: mark.status === "correct" || mark.status === "score" || mark.status === "neutral" ? mark.status : "wrong",
         score: Number.isFinite(Number(mark.score)) ? `${Number(mark.score)}` : "",
       }));
       rubricPoints[key] = (subQuestion.rubricPoints ?? []).map((point, index) => ({
@@ -338,11 +338,11 @@ function QuestionReviewVoicePanel({
   );
 }
 
-const createDraftAnswerMark = (highlight = ""): EditableAnswerMark => ({
+const createDraftAnswerMark = (highlight = "", status: EditableAnswerMark["status"] = "wrong"): EditableAnswerMark => ({
   id: `draft_mark_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
   highlight,
   comment: "",
-  status: "wrong",
+  status,
   score: "",
 });
 
@@ -1383,7 +1383,61 @@ function CompactInlineSubQuestionReviewWorkbench({
   const maxScore = subQuestion.maxScore ?? question.score;
   const commentLength = commentValue.trim().length;
   const wrongMarkCount = marks.filter((mark) => mark.status === "wrong").length;
-  const positiveMarkCount = marks.filter((mark) => mark.status !== "wrong").length;
+  const positiveMarkCount = marks.filter((mark) => mark.status === "correct" || mark.status === "score").length;
+  const [selectionHint, setSelectionHint] = useState("");
+  const markTypeMeta: Array<{
+    value: EditableAnswerMark["status"];
+    label: string;
+    shortLabel: string;
+    className: string;
+    icon: ReactNode;
+  }> = [
+    {
+      value: "correct",
+      label: "对勾",
+      shortLabel: "对",
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100",
+      icon: <Check className="size-4" />,
+    },
+    {
+      value: "wrong",
+      label: "叉号",
+      shortLabel: "错",
+      className: "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100",
+      icon: <X className="size-4" />,
+    },
+    {
+      value: "neutral",
+      label: "横杠",
+      shortLabel: "漏",
+      className: "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100",
+      icon: <Minus className="size-4" />,
+    },
+    {
+      value: "score",
+      label: "加分",
+      shortLabel: "分",
+      className: "border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100",
+      icon: <Plus className="size-4" />,
+    },
+  ];
+
+  const appendMarkFromSelection = (status: EditableAnswerMark["status"]) => {
+    const selection = typeof window !== "undefined" ? window.getSelection()?.toString().trim() ?? "" : "";
+    if (!selection) {
+      toast.error("请先在左侧学员作答里选中要标注的文字");
+      return;
+    }
+    if (subQuestion.answer && !subQuestion.answer.includes(selection)) {
+      toast.error("标注内容必须来自学员原答案");
+      return;
+    }
+    onMarksChange([...marks, createDraftAnswerMark(selection, status)]);
+    setSelectionHint(selection);
+  };
+
+  const updateMark = (markId: string, updater: (mark: EditableAnswerMark) => EditableAnswerMark) =>
+    onMarksChange(marks.map((item) => (item.id === markId ? updater(item) : item)));
 
   return (
     <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_14px_36px_rgba(15,23,42,0.04)]">
@@ -1473,7 +1527,132 @@ function CompactInlineSubQuestionReviewWorkbench({
             </div>
           </section>
 
-          <AnswerMarkEditor answer={subQuestion.answer || ""} marks={marks} onChange={onMarksChange} />
+          <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+            <div>
+              <h4 className="text-base font-semibold text-slate-900">局部批注</h4>
+              <p className="mt-1 text-sm text-slate-500">先在左侧选中一段文字，再点下面的对勾、叉号、横杠或加分，系统会自动生成一条局部批注。</p>
+              {selectionHint ? <p className="mt-2 text-xs text-blue-600">最近一次选中：{selectionHint}</p> : null}
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-4">
+              {markTypeMeta.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => appendMarkFromSelection(item.value)}
+                  className={`inline-flex h-11 items-center justify-center gap-2 rounded-2xl border text-sm font-medium transition ${item.className}`}
+                >
+                  {item.icon}
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-4 space-y-4">
+              {marks.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm leading-7 text-slate-500">
+                  当前还没有局部批注。你可以先选中左侧答案中的一段文字，再点上面的批注按钮。
+                </div>
+              ) : (
+                marks.map((mark, index) => (
+                  <div key={mark.id} className="rounded-[22px] border border-slate-200 bg-slate-50/60 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-slate-900">批注 {index + 1}</p>
+                        <span
+                          className={`inline-flex min-w-[34px] items-center justify-center rounded-full px-2 py-1 text-xs font-semibold ${
+                            mark.status === "correct"
+                              ? "bg-emerald-50 text-emerald-700"
+                              : mark.status === "wrong"
+                                ? "bg-rose-50 text-rose-700"
+                                : mark.status === "neutral"
+                                  ? "bg-amber-50 text-amber-700"
+                                  : "bg-sky-50 text-sky-700"
+                          }`}
+                        >
+                          {markTypeMeta.find((item) => item.value === mark.status)?.shortLabel ?? "批"}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onMarksChange(marks.filter((item) => item.id !== mark.id))}
+                        className="inline-flex items-center gap-1 text-sm text-slate-500 transition hover:text-rose-600"
+                      >
+                        <Trash2 className="size-4" />
+                        删除
+                      </button>
+                    </div>
+
+                    <div className="mt-4 space-y-4">
+                      <div>
+                        <p className="mb-2 text-sm font-semibold text-slate-900">对应原文</p>
+                        <Textarea
+                          className="min-h-[78px] rounded-2xl border-slate-200 bg-white text-[15px] leading-7"
+                          value={mark.highlight}
+                          onChange={(event) => updateMark(mark.id, (item) => ({ ...item, highlight: event.target.value }))}
+                        />
+                      </div>
+
+                      <div>
+                        <p className="mb-2 text-sm font-semibold text-slate-900">批注类型</p>
+                        <div className="grid gap-2 sm:grid-cols-4">
+                          {markTypeMeta.map((item) => (
+                            <button
+                              key={`${mark.id}_${item.value}`}
+                              type="button"
+                              onClick={() =>
+                                updateMark(mark.id, (current) => ({
+                                  ...current,
+                                  status: item.value,
+                                  score: item.value === "score" ? current.score : "",
+                                }))
+                              }
+                              className={`inline-flex h-10 items-center justify-center gap-2 rounded-2xl border text-sm font-medium transition ${
+                                mark.status === item.value ? item.className : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                              }`}
+                            >
+                              {item.icon}
+                              <span>{item.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {mark.status === "score" ? (
+                        <div>
+                          <p className="mb-2 text-sm font-semibold text-slate-900">加分数值</p>
+                          <Input
+                            className="h-11 rounded-2xl bg-white"
+                            value={mark.score}
+                            onChange={(event) => updateMark(mark.id, (item) => ({ ...item, score: event.target.value }))}
+                            placeholder="如 1"
+                          />
+                        </div>
+                      ) : null}
+
+                      <div>
+                        <p className="mb-2 text-sm font-semibold text-slate-900">局部评语</p>
+                        <Textarea
+                          className="min-h-[120px] rounded-2xl border-slate-200 bg-white text-[15px] leading-7"
+                          value={mark.comment}
+                          onChange={(event) => updateMark(mark.id, (item) => ({ ...item, comment: event.target.value }))}
+                          placeholder={
+                            mark.status === "wrong"
+                              ? "这里具体错在哪、漏了什么，以及建议怎么改"
+                              : mark.status === "neutral"
+                                ? "这里没有答到哪个点，建议补哪一层"
+                                : mark.status === "score"
+                                  ? "补充这段为什么可以得分"
+                                  : "补充这段答得好的地方"
+                          }
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
         </div>
       </div>
     </div>

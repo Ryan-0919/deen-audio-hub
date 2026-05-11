@@ -302,7 +302,7 @@ const normalizeAnswerMarks = (value) => {
 
   return value
     .map((item, index) => {
-      const normalizedStatus = ["correct", "wrong", "score"].includes(`${item?.status ?? ""}`.trim()) ? `${item?.status}`.trim() : "wrong";
+      const normalizedStatus = ["correct", "wrong", "score", "neutral"].includes(`${item?.status ?? ""}`.trim()) ? `${item?.status}`.trim() : "wrong";
       const rawScore = Number(item?.score);
       return {
         id: `${item?.id ?? `mark_${index + 1}`}`.trim(),

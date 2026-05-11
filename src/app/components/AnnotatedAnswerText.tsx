@@ -15,7 +15,7 @@ type ResolvedMark = {
   id: string;
   highlight: string;
   comment: string;
-  status: "correct" | "wrong" | "score";
+  status: "correct" | "wrong" | "score" | "neutral";
   score?: number;
   originalIndex: number;
 };
@@ -63,7 +63,7 @@ const normalizeMarks = (marks?: MockExamSubjectiveAnswerMark[]) =>
         id: item.id || `mark_${index + 1}`,
         highlight,
         comment: item.comment ?? "",
-        status: item.status === "correct" || item.status === "score" ? item.status : "wrong",
+        status: item.status === "correct" || item.status === "score" || item.status === "neutral" ? item.status : "wrong",
         score: Number.isFinite(Number(item.score)) ? Number(item.score) : undefined,
         originalIndex: index,
       } satisfies ResolvedMark;
@@ -73,7 +73,8 @@ const normalizeMarks = (marks?: MockExamSubjectiveAnswerMark[]) =>
 const statusPriority = (status: ResolvedMark["status"]) => {
   if (status === "score") return 0;
   if (status === "correct") return 1;
-  return 2;
+  if (status === "neutral") return 2;
+  return 3;
 };
 
 const MARK_EDGE_TRIM_PATTERN = /[\s，,。！？；;、：:“”"'‘’（）()【】《》]/u;
@@ -313,12 +314,21 @@ const buildSegmentsFromPositionedMarks = (value: string, sourceMarks: TrackedMar
 
 const getMarkMeta = (marks: ResolvedMark[]) => {
   const wrongMarks = marks.filter((item) => item.status === "wrong");
-  const positiveMarks = marks.filter((item) => item.status !== "wrong");
+  const positiveMarks = marks.filter((item) => item.status === "correct" || item.status === "score");
+  const neutralMarks = marks.filter((item) => item.status === "neutral");
 
   return {
-    status: wrongMarks.length > 0 && positiveMarks.length > 0 ? "mixed" : wrongMarks.length > 0 ? "wrong" : "correct",
+    status:
+      wrongMarks.length > 0 && (positiveMarks.length > 0 || neutralMarks.length > 0)
+        ? "mixed"
+        : wrongMarks.length > 0
+          ? "wrong"
+          : positiveMarks.length > 0
+            ? "correct"
+            : "neutral",
     wrongMarks,
     positiveMarks,
+    neutralMarks,
   };
 };
 
@@ -337,6 +347,9 @@ const getPositiveIndicatorWidth = (mark: ResolvedMark) => {
 
 const getPositiveIndicatorsWidth = (positiveMarks: ResolvedMark[]) =>
   positiveMarks.reduce((sum, mark, index) => sum + getPositiveIndicatorWidth(mark) + (index > 0 ? 6 : 0), 0);
+
+const getNeutralIndicatorsWidth = (neutralMarks: ResolvedMark[]) =>
+  neutralMarks.reduce((sum, _mark, index) => sum + 20 + (index > 0 ? 6 : 0), 0);
 
 const buildUnderlineLayers = ({
   marks,
@@ -361,13 +374,18 @@ const getTrailingReservedWidth = ({
   status,
   wrongMarks,
   positiveMarks,
+  neutralMarks,
 }: ReturnType<typeof getMarkMeta>) => {
   if (status === "wrong") {
     return wrongMarks.length > 0 ? 30 : 0;
   }
   const positiveWidth = positiveMarks.length > 0 ? getPositiveIndicatorsWidth(positiveMarks) : 0;
+  const neutralWidth = neutralMarks.length > 0 ? getNeutralIndicatorsWidth(neutralMarks) : 0;
   if (status === "mixed") {
-    return (wrongMarks.length > 0 ? 30 : 0) + positiveWidth;
+    return (wrongMarks.length > 0 ? 30 : 0) + neutralWidth + positiveWidth;
+  }
+  if (neutralMarks.length > 0) {
+    return neutralWidth;
   }
   if (positiveMarks.length > 0) {
     return positiveWidth;
@@ -441,6 +459,28 @@ function PositiveMarkIndicators({ positiveMarks }: { positiveMarks: ResolvedMark
           </span>
         );
       })}
+    </span>
+  );
+}
+
+function NeutralMarkIndicators({ neutralMarks }: { neutralMarks: ResolvedMark[] }) {
+  if (neutralMarks.length === 0) {
+    return null;
+  }
+
+  return (
+    <span className="inline-flex items-end gap-[6px] align-baseline">
+      {neutralMarks.map((mark) => (
+        <span
+          key={mark.id}
+          className="inline-flex items-end align-baseline"
+          style={{ marginBottom: `${getMarkTrackOffset(mark)}px` }}
+        >
+          <span className="inline-flex h-[20px] w-[20px] items-center justify-center rounded-full bg-[#f0a52b] text-[16px] font-semibold leading-none text-white">
+            -
+          </span>
+        </span>
+      ))}
     </span>
   );
 }
@@ -549,11 +589,14 @@ const renderMarkedCore = ({
   segment: Extract<Segment, { type: "mark" }>;
 }) => {
   const endingMarkIds = new Set(segment.endingMarks.map((mark) => mark.id));
-  const { status, wrongMarks, positiveMarks } = getMarkMeta(segment.marks);
+  const { status, wrongMarks, positiveMarks, neutralMarks } = getMarkMeta(segment.marks);
   const endingWrongMarks = wrongMarks
     .filter((mark) => endingMarkIds.has(mark.id))
     .sort((left, right) => (left as TrackedMark).trackIndex - (right as TrackedMark).trackIndex || left.originalIndex - right.originalIndex);
   const endingPositiveMarks = positiveMarks
+    .filter((mark) => endingMarkIds.has(mark.id))
+    .sort((left, right) => (left as TrackedMark).trackIndex - (right as TrackedMark).trackIndex || left.originalIndex - right.originalIndex);
+  const endingNeutralMarks = neutralMarks
     .filter((mark) => endingMarkIds.has(mark.id))
     .sort((left, right) => (left as TrackedMark).trackIndex - (right as TrackedMark).trackIndex || left.originalIndex - right.originalIndex);
   const underlineLayers = buildUnderlineLayers({
@@ -562,9 +605,17 @@ const renderMarkedCore = ({
   const maxTrackIndex = segment.marks.reduce((max, mark) => Math.max(max, mark.trackIndex), -1);
   const underlinePaddingBottom = maxTrackIndex >= 0 ? 2 + maxTrackIndex * 4 : 2;
   const trailingReservedWidth = getTrailingReservedWidth({
-    status: endingWrongMarks.length > 0 && endingPositiveMarks.length > 0 ? "mixed" : endingWrongMarks.length > 0 ? "wrong" : "correct",
+    status:
+      endingWrongMarks.length > 0 && (endingPositiveMarks.length > 0 || endingNeutralMarks.length > 0)
+        ? "mixed"
+        : endingWrongMarks.length > 0
+          ? "wrong"
+          : endingPositiveMarks.length > 0
+            ? "correct"
+            : "neutral",
     wrongMarks: endingWrongMarks,
     positiveMarks: endingPositiveMarks,
+    neutralMarks: endingNeutralMarks,
   });
   const wrongMarkerOffset = 4 - trailingReservedWidth;
 
@@ -630,6 +681,7 @@ const renderMarkedCore = ({
       {trailingReservedWidth > 0 ? (
         <span className="absolute bottom-0 right-0 inline-flex items-end gap-[2px] align-baseline">
           {endingWrongMarks.length > 0 ? <WrongMarkIcons wrongMarks={endingWrongMarks} /> : null}
+          {endingNeutralMarks.length > 0 ? <NeutralMarkIndicators neutralMarks={endingNeutralMarks} /> : null}
           {endingPositiveMarks.length > 0 ? <PositiveMarkIndicators positiveMarks={endingPositiveMarks} /> : null}
         </span>
       ) : null}
