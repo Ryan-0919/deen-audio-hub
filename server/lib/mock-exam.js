@@ -309,7 +309,7 @@ const normalizeAnswerMarks = (value) => {
         highlight: `${item?.highlight ?? ""}`.trim(),
         comment: `${item?.comment ?? ""}`.trim(),
         status: normalizedStatus,
-        score: normalizedStatus === "score" && Number.isFinite(rawScore) ? rawScore : null,
+        score: (normalizedStatus === "score" || normalizedStatus === "correct") && Number.isFinite(rawScore) ? rawScore : null,
       };
     })
     .filter((item) => item.highlight);

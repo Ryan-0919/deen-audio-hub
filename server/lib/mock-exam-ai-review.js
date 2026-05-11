@@ -823,7 +823,7 @@ const normalizeAnswerMarks = (value) => {
         highlight: `${item?.highlight ?? item?.selectedText ?? item?.selected_text ?? item?.text ?? ""}`.trim(),
         comment: normalizeAiMarkComment(item?.comment ?? item?.reviewComment ?? item?.review_comment ?? item?.remark ?? ""),
         status: normalizedStatus,
-        score: normalizedStatus === "score" && Number.isFinite(rawScore) ? rawScore : null,
+        score: (normalizedStatus === "score" || normalizedStatus === "correct") && Number.isFinite(rawScore) ? rawScore : null,
       };
     })
     .filter((item) => item.highlight);

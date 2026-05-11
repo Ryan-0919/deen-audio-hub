@@ -63,7 +63,7 @@ const normalizeMarks = (marks?: MockExamSubjectiveAnswerMark[]) =>
         id: item.id || `mark_${index + 1}`,
         highlight,
         comment: item.comment ?? "",
-        status: item.status === "correct" || item.status === "score" || item.status === "neutral" ? item.status : "wrong",
+        status: item.status === "wrong" ? "wrong" : item.status === "neutral" ? "neutral" : "correct",
         score: Number.isFinite(Number(item.score)) ? Number(item.score) : undefined,
         originalIndex: index,
       } satisfies ResolvedMark;
@@ -71,8 +71,7 @@ const normalizeMarks = (marks?: MockExamSubjectiveAnswerMark[]) =>
     .filter((item): item is ResolvedMark => Boolean(item));
 
 const statusPriority = (status: ResolvedMark["status"]) => {
-  if (status === "score") return 0;
-  if (status === "correct") return 1;
+  if (status === "correct" || status === "score") return 0;
   if (status === "neutral") return 2;
   return 3;
 };

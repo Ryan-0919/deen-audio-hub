@@ -243,7 +243,7 @@ const buildDraftState = (detail: AdminMockExamReviewDetail): DraftState => {
         id: mark.id || `${key}_mark_${index + 1}`,
         highlight: mark.highlight ?? "",
         comment: mark.comment ?? "",
-        status: mark.status === "correct" || mark.status === "score" || mark.status === "neutral" ? mark.status : "wrong",
+        status: mark.status === "wrong" ? "wrong" : mark.status === "neutral" ? "neutral" : "correct",
         score: Number.isFinite(Number(mark.score)) ? `${Number(mark.score)}` : "",
       }));
       rubricPoints[key] = (subQuestion.rubricPoints ?? []).map((point, index) => ({
@@ -401,9 +401,9 @@ const normalizeDraftAnswerMarksForSave = ({
         return null;
       }
 
-      if (mark.status === "score") {
+      if (mark.status === "correct") {
         const parsedScore = Number.parseInt(mark.score.trim(), 10);
-        if (!Number.isInteger(parsedScore) || parsedScore < 0) {
+        if (mark.score.trim() && (!Number.isInteger(parsedScore) || parsedScore < 0)) {
           throw new Error(`第 ${questionSortOrder} 题 ${subQuestionTitle} 的第 ${index + 1} 条得分批注分值不合法`);
         }
 
@@ -411,8 +411,8 @@ const normalizeDraftAnswerMarksForSave = ({
           id: mark.id,
           highlight,
           comment,
-          status: "score",
-          score: parsedScore,
+          status: "correct",
+          score: mark.score.trim() ? parsedScore : undefined,
         } satisfies MockExamSubjectiveAnswerMark;
       }
 
@@ -690,7 +690,7 @@ function AnswerMarkEditor({
         <div>
           <h4 className="text-base font-semibold text-slate-900">划线批注编辑</h4>
           <p className="mt-1 text-sm text-slate-500">
-            先在左侧学生答案里选中文字，再点“从选中文字新增”。也可以直接修改已有划线、对勾、叉号和加分批注。
+            先在左侧学生答案里选中文字，再点“从选中文字新增”。也可以直接修改已有划线、对勾、叉号和横杠批注。
           </p>
           {selectionHint ? <p className="mt-2 text-xs text-blue-600">最近一次新增划线：{selectionHint}</p> : null}
         </div>
@@ -745,7 +745,7 @@ function AnswerMarkEditor({
                           onChange(
                             marks.map((item) =>
                               item.id === mark.id
-                                ? { ...item, status: event.target.value as EditableAnswerMark["status"], score: event.target.value === "score" ? item.score : "" }
+                                ? { ...item, status: event.target.value as EditableAnswerMark["status"], score: event.target.value === "correct" ? item.score : "" }
                                 : item,
                             ),
                           )
@@ -753,22 +753,21 @@ function AnswerMarkEditor({
                       >
                         <option value="wrong">叉号</option>
                         <option value="correct">对勾</option>
-                        <option value="score">加分</option>
                       </select>
                     </div>
 
                     <div>
-                      <p className="mb-2 text-sm font-semibold text-slate-900">加分数值</p>
+                      <p className="mb-2 text-sm font-semibold text-slate-900">得分数值</p>
                       <Input
                         className="h-11"
-                        disabled={mark.status !== "score"}
+                        disabled={mark.status !== "correct"}
                         value={mark.score}
                         onChange={(event) =>
                           onChange(
                             marks.map((item) => (item.id === mark.id ? { ...item, score: event.target.value } : item)),
                           )
                         }
-                        placeholder={mark.status === "score" ? "如 1" : "仅加分用"}
+                        placeholder={mark.status === "correct" ? "如 1" : "仅对勾用"}
                       />
                     </div>
                   </div>
@@ -1030,7 +1029,7 @@ function SubQuestionReviewWorkbench({
                     highlight: mark.highlight,
                     comment: mark.comment,
                     status: mark.status,
-                    score: mark.status === "score" && Number.isFinite(Number(mark.score)) ? Number(mark.score) : undefined,
+                    score: Number.isFinite(Number(mark.score)) ? Number(mark.score) : undefined,
                   }))}
                   paragraphClassName="whitespace-pre-wrap text-[16px] leading-[2.15] text-slate-800"
                 />
@@ -1234,7 +1233,7 @@ function InlineSubQuestionReviewWorkbench({
                     highlight: mark.highlight,
                     comment: mark.comment,
                     status: mark.status,
-                    score: mark.status === "score" && Number.isFinite(Number(mark.score)) ? Number(mark.score) : undefined,
+                    score: Number.isFinite(Number(mark.score)) ? Number(mark.score) : undefined,
                   }))}
                   paragraphClassName="whitespace-pre-wrap text-[16px] leading-[2.15] text-slate-800"
                 />
@@ -1383,7 +1382,7 @@ function CompactInlineSubQuestionReviewWorkbench({
   const maxScore = subQuestion.maxScore ?? question.score;
   const commentLength = commentValue.trim().length;
   const wrongMarkCount = marks.filter((mark) => mark.status === "wrong").length;
-  const positiveMarkCount = marks.filter((mark) => mark.status === "correct" || mark.status === "score").length;
+  const positiveMarkCount = marks.filter((mark) => mark.status === "correct").length;
   const [selectionHint, setSelectionHint] = useState("");
   const [editingMarkId, setEditingMarkId] = useState("");
   const markTypeMeta: Array<{
@@ -1414,14 +1413,8 @@ function CompactInlineSubQuestionReviewWorkbench({
       className: "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100",
       icon: <Minus className="size-4" />,
     },
-    {
-      value: "score",
-      label: "加分",
-      shortLabel: "分",
-      className: "border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100",
-      icon: <Plus className="size-4" />,
-    },
   ];
+  const manualMarkTypeMeta = markTypeMeta.filter((item) => item.value !== "score");
 
   const appendMarkFromSelection = (status: EditableAnswerMark["status"]) => {
     const selection = typeof window !== "undefined" ? window.getSelection()?.toString().trim() ?? "" : "";
@@ -1484,7 +1477,7 @@ function CompactInlineSubQuestionReviewWorkbench({
                     highlight: mark.highlight,
                     comment: mark.comment,
                     status: mark.status,
-                    score: mark.status === "score" && Number.isFinite(Number(mark.score)) ? Number(mark.score) : undefined,
+                    score: Number.isFinite(Number(mark.score)) ? Number(mark.score) : undefined,
                   }))}
                   paragraphClassName="whitespace-pre-wrap text-[16px] leading-[2.15] text-slate-800"
                 />
@@ -1532,12 +1525,12 @@ function CompactInlineSubQuestionReviewWorkbench({
           <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
             <div>
               <h4 className="text-base font-semibold text-slate-900">局部批注</h4>
-              <p className="mt-1 text-sm text-slate-500">先在左侧选中一段文字，再点下面的对勾、叉号、横杠或加分，系统会自动生成一条局部批注。</p>
+              <p className="mt-1 text-sm text-slate-500">先在左侧选中一段文字，再点下面的对勾、叉号或横杠，系统会自动生成一条局部批注。对勾本身就可以填写得分。</p>
               {selectionHint ? <p className="mt-2 text-xs text-blue-600">最近一次选中：{selectionHint}</p> : null}
             </div>
 
-            <div className="mt-4 grid gap-2 sm:grid-cols-4">
-              {markTypeMeta.map((item) => (
+            <div className="mt-4 grid gap-2 sm:grid-cols-3">
+              {manualMarkTypeMeta.map((item) => (
                 <button
                   key={item.value}
                   type="button"
@@ -1564,24 +1557,22 @@ function CompactInlineSubQuestionReviewWorkbench({
                         ? "border-rose-100 bg-rose-50/70"
                         : mark.status === "neutral"
                           ? "border-amber-100 bg-amber-50/55"
-                          : mark.status === "score"
-                            ? "border-sky-100 bg-sky-50/55"
-                            : "border-emerald-100 bg-emerald-50/55"
+                          : "border-emerald-100 bg-emerald-50/55"
                     }`}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-semibold text-slate-900">批注 {index + 1}</p>
-                          {mark.status === "score" && mark.score ? (
-                            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-700">+{mark.score}分</span>
+                          {mark.status === "correct" && mark.score ? (
+                            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">+{mark.score}分</span>
                           ) : null}
                         </div>
                         <p className="mt-1 line-clamp-1 text-sm text-slate-700">{mark.highlight || "未填写对应原文"}</p>
                         <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-500">{mark.comment || "暂无局部评语"}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        {markTypeMeta.map((item) => (
+                        {manualMarkTypeMeta.map((item) => (
                           <button
                             key={`${mark.id}_${item.value}`}
                             type="button"
@@ -1589,7 +1580,7 @@ function CompactInlineSubQuestionReviewWorkbench({
                               updateMark(mark.id, (current) => ({
                                 ...current,
                                 status: item.value,
-                                score: item.value === "score" ? current.score : "",
+                                score: item.value === "correct" ? current.score : "",
                               }))
                             }
                             className={`inline-flex h-10 w-10 items-center justify-center rounded-full border transition ${
@@ -1648,8 +1639,8 @@ function CompactInlineSubQuestionReviewWorkbench({
 
               <div>
                 <p className="mb-2 text-sm font-semibold text-slate-900">批注类型</p>
-                <div className="grid gap-2 sm:grid-cols-4">
-                  {markTypeMeta.map((item) => (
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {manualMarkTypeMeta.map((item) => (
                     <button
                       key={`dialog_${editingMark.id}_${item.value}`}
                       type="button"
@@ -1657,7 +1648,7 @@ function CompactInlineSubQuestionReviewWorkbench({
                         updateMark(editingMark.id, (current) => ({
                           ...current,
                           status: item.value,
-                          score: item.value === "score" ? current.score : "",
+                          score: item.value === "correct" ? current.score : "",
                         }))
                       }
                       className={`inline-flex h-10 items-center justify-center gap-2 rounded-full border text-sm font-medium transition ${
@@ -1671,9 +1662,9 @@ function CompactInlineSubQuestionReviewWorkbench({
                 </div>
               </div>
 
-              {editingMark.status === "score" ? (
+              {editingMark.status === "correct" ? (
                 <div>
-                  <p className="mb-2 text-sm font-semibold text-slate-900">加分数值</p>
+                  <p className="mb-2 text-sm font-semibold text-slate-900">得分数值</p>
                   <Input
                     className="h-11 rounded-2xl bg-white"
                     value={editingMark.score}
@@ -1694,9 +1685,7 @@ function CompactInlineSubQuestionReviewWorkbench({
                       ? "这里具体错在哪、漏了什么，以及建议怎么改"
                       : editingMark.status === "neutral"
                         ? "这里没有答到哪个点，建议补哪一层"
-                        : editingMark.status === "score"
-                          ? "补充这段为什么可以得分"
-                          : "补充这段答得好的地方"
+                        : "补充这段为什么可以得分，或者这段答得好的地方"
                   }
                 />
               </div>
