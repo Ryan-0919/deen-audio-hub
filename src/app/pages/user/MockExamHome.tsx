@@ -100,18 +100,6 @@ const buildAttemptsText = (paper: MockExamPaper) =>
     .filter(Boolean)
     .join(" · ");
 
-const buildPaperProgressText = (paper: MockExamPaper) => {
-  if (paper.activeRecord?.canResume) {
-    return `继续上次作答 · 已答 ${paper.activeRecord.answeredCount}/${paper.questionCount} 题`;
-  }
-
-  if (paper.latestRecord) {
-    return `最近一次成绩 ${paper.latestRecord.totalScore}/${paper.totalScore} 分`;
-  }
-
-  return "点击进入考试";
-};
-
 const getActionLabel = (paper: MockExamPaper) => {
   if (paper.activeRecord?.canResume) {
     return "继续作答";
@@ -176,7 +164,6 @@ function PaperCard({
           <span className={cn("text-[10px] font-bold uppercase tracking-wider md:text-[11px]", typeMeta.progressClassName)}>{getActionLabel(paper)}</span>
         </div>
         <h4 className="line-clamp-1 text-[15px] font-bold tracking-tight text-white md:text-[17px]">{paper.title}</h4>
-        <p className={cn("mt-1 line-clamp-2 text-[12px] font-medium md:text-[13px]", typeMeta.progressClassName)}>{buildPaperProgressText(paper)}</p>
         <p className="mt-1 text-[11px] font-medium text-white/34">{buildAttemptsText(paper)}</p>
       </div>
     </motion.button>
