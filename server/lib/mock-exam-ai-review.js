@@ -2264,6 +2264,7 @@ const buildReviewJson = async ({
 export const aiReviewMockExamRecord = async ({
   db,
   recordId,
+  adminId = "",
   currentTime = new Date(),
   runtimeConfig = config.mockExamAiReview,
   allowRuleFallback = false,
@@ -2335,20 +2336,23 @@ export const aiReviewMockExamRecord = async ({
         select: {
           id: true,
           status: true,
+          manualReviewerId: true,
           manualReviewLockToken: true,
         },
       });
 
       if (!latestRecord) {
-        throw createHttpError("è€ƒè¯•è®°å½•ä¸å­˜åœ¨", 404);
+        throw createHttpError("考试记录不存在", 404);
       }
 
       if (latestRecord.status !== "submitted") {
-        throw createHttpError("è¯¥è€ƒè¯•è®°å½•çŠ¶æ€å·²å˜åŒ–ï¼Œè¯·åˆ·æ–°åŽé‡è¯•", 409);
+        throw createHttpError("该考试记录状态已变化，请刷新后重试", 409);
       }
 
-      if (`${latestRecord.manualReviewLockToken ?? ""}`.trim()) {
-        throw createHttpError("è¯¥è¯•å·å·²è¢«äººå·¥é¢†å–ï¼Œæœ¬æ¬¡è‡ªåŠ¨æ‰¹æ”¹å·²ç»ˆæ­¢", 409);
+      const lockToken = `${latestRecord.manualReviewLockToken ?? ""}`.trim();
+      const reviewerId = `${latestRecord.manualReviewerId ?? ""}`.trim();
+      if (lockToken && reviewerId && reviewerId !== `${adminId}`.trim()) {
+        throw createHttpError("该试卷已被人工领取，本次自动批改已终止", 409);
       }
 
       await tx.mockExamRecord.update({
@@ -2396,20 +2400,23 @@ export const aiReviewMockExamRecord = async ({
         select: {
           id: true,
           status: true,
+          manualReviewerId: true,
           manualReviewLockToken: true,
         },
       });
 
       if (!latestRecord) {
-        throw createHttpError("è€ƒè¯•è®°å½•ä¸å­˜åœ¨", 404);
+        throw createHttpError("考试记录不存在", 404);
       }
 
       if (latestRecord.status !== "submitted") {
-        throw createHttpError("è¯¥è€ƒè¯•è®°å½•çŠ¶æ€å·²å˜åŒ–ï¼Œè¯·åˆ·æ–°åŽé‡è¯•", 409);
+        throw createHttpError("该考试记录状态已变化，请刷新后重试", 409);
       }
 
-      if (`${latestRecord.manualReviewLockToken ?? ""}`.trim()) {
-        throw createHttpError("è¯¥è¯•å·å·²è¢«äººå·¥é¢†å–ï¼Œæœ¬æ¬¡è‡ªåŠ¨æ‰¹æ”¹å·²ç»ˆæ­¢", 409);
+      const lockToken = `${latestRecord.manualReviewLockToken ?? ""}`.trim();
+      const reviewerId = `${latestRecord.manualReviewerId ?? ""}`.trim();
+      if (lockToken && reviewerId && reviewerId !== `${adminId}`.trim()) {
+        throw createHttpError("该试卷已被人工领取，本次自动批改已终止", 409);
       }
 
       for (const item of reviewUpdates) {

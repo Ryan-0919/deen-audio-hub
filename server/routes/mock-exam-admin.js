@@ -855,6 +855,7 @@ mockExamAdminRouter.post("/reviews/:recordId/ai-score", async (req, res) => {
     const record = await aiReviewMockExamRecord({
       db: prisma,
       recordId: `${req.params.recordId ?? ""}`.trim(),
+      adminId: `${req.auth?.adminId ?? ""}`.trim(),
       runtimeConfig: aiReviewConfig,
       allowRuleFallback: false,
     });

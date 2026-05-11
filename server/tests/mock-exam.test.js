@@ -2262,6 +2262,157 @@ test("mock exam ai review runtime config can override env defaults", async () =>
   }
 });
 
+test("aiReviewMockExamRecord allows rescore when manual lock belongs to current admin", async () => {
+  const now = new Date("2026-05-11T09:00:00.000Z");
+  const recordId = "record_manual_rescore_self_lock";
+  const answerId = "answer_manual_rescore_self_lock";
+  const questionId = "question_manual_rescore_self_lock";
+  const adminId = "admin_self_lock";
+  const updatedRecords = [];
+  const updatedAnswers = [];
+
+  const record = {
+    id: recordId,
+    status: "submitted",
+    reviewWorkflowStatus: "manual_pending",
+    paper: {
+      questions: [
+        createQuestion({
+          id: questionId,
+          type: "subjective_case",
+          sortOrder: 1,
+          score: 5,
+          prompt: "请分析。",
+          answer: "参考答案",
+          analysis: "采分点",
+          options: [],
+        }),
+      ],
+    },
+    answers: [
+      {
+        id: answerId,
+        questionId,
+        answerText: "可以。",
+        score: 0,
+        reviewJson: null,
+      },
+    ],
+    user: {
+      id: "user_1",
+      phone: "13800000000",
+    },
+  };
+
+  const tx = {
+    mockExamRecord: {
+      findUnique: async ({ select }) => {
+        if (select?.manualReviewLockToken) {
+          return {
+            id: recordId,
+            status: "submitted",
+            manualReviewerId: adminId,
+            manualReviewLockToken: "lock_token_self",
+          };
+        }
+        return record;
+      },
+      update: async ({ data }) => {
+        updatedRecords.push(data);
+        return { ...record, ...data };
+      },
+    },
+    mockExamAnswer: {
+      update: async ({ data }) => {
+        updatedAnswers.push(data);
+        return data;
+      },
+    },
+  };
+
+  const db = {
+    mockExamRecord: {
+      findUnique: async () => record,
+      update: async ({ data }) => {
+        updatedRecords.push(data);
+        return { ...record, ...data };
+      },
+    },
+    $transaction: async (handler) => {
+      if (typeof handler === "function") {
+        return handler(tx);
+      }
+      return handler;
+    },
+  };
+
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              reviewComment: "本题核心在于把结论和依据对应起来。",
+              subQuestions: [
+                {
+                  id: "1",
+                  title: "第1问",
+                  score: 3,
+                  reviewComment: "结论写到了，但依据没有展开。",
+                  missedPoints: ["没有把依据写开"],
+                  rubricPoints: [
+                    {
+                      point: "写出结论",
+                      matched: true,
+                      score: 3,
+                      comment: "结论明确",
+                    },
+                  ],
+                  answerMarks: [
+                    {
+                      quote: "可以",
+                      type: "correct",
+                      comment: "结论点到位",
+                      score: 3,
+                    },
+                  ],
+                },
+              ],
+            }),
+          },
+        },
+      ],
+    }),
+  });
+
+  try {
+    const result = await aiReviewMockExamRecord({
+      db,
+      recordId,
+      adminId,
+      currentTime: now,
+      runtimeConfig: {
+        provider: "openai-compatible",
+        baseUrl: "https://example.com/v1",
+        apiKey: "test-key",
+        model: "test-model",
+        timeoutMs: 1000,
+      },
+      allowRuleFallback: false,
+    });
+
+    assert.equal(updatedAnswers.length, 1);
+    assert.equal(updatedRecords.some((item) => item.reviewWorkflowStatus === "ai_processing"), true);
+    assert.equal(updatedRecords.some((item) => item.reviewWorkflowStatus === "manual_pending"), true);
+    assert.equal(result.id, recordId);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test("listMockExamReviewRecords filters records by paperId", async () => {
   const records = [
     {
