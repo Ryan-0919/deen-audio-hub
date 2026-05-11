@@ -993,6 +993,103 @@ test("reviewMockExamRecord persists subjective answer marks", async () => {
   assert.equal(reviewed.answers[0].reviewJson.includes('"score":12'), true);
 });
 
+test("serializeMockExamReviewDetail prefers manual_pending after save even if current admin still holds lock", () => {
+  const now = new Date("2026-05-11T08:00:00.000Z");
+  const detail = serializeMockExamReviewDetail(
+    {
+      id: "record_manual_pending_status",
+      status: "submitted",
+      attemptNo: 1,
+      questionCount: 1,
+      correctCount: 0,
+      totalScore: 12,
+      allottedSeconds: 3600,
+      consumedSeconds: 1800,
+      startedAt: now,
+      submittedAt: now,
+      reviewedAt: now,
+      publishedAt: null,
+      reviewWorkflowStatus: "manual_pending",
+      manualReviewerId: "admin_1",
+      manualReviewerName: "张老师",
+      manualReviewLockToken: "lock_1",
+      manualReviewClaimedAt: now,
+      manualReviewLockExpiresAt: new Date(now.getTime() + 10 * 60 * 1000),
+      manualReviewVersion: 2,
+      user: {
+        id: "user_1",
+        phone: "13800000000",
+      },
+      paper: {
+        id: "paper_manual_pending_status",
+        code: "TEST-1",
+        title: "测试卷",
+        subtitle: "",
+        coverUrl: "",
+        coverObjectKey: "",
+        phase: "民法",
+        year: 2026,
+        durationMinutes: 60,
+        maxAttempts: 1,
+        reviewEnabled: true,
+        totalScore: 20,
+        questionCount: 1,
+        passScore: 12,
+        description: "",
+        questions: [
+          createQuestion({
+            id: "subjective_manual_pending_status_1",
+            type: "subjective_case",
+            score: 20,
+            correctAnswerJson: "[]",
+            options: [],
+            questionMetaJson: JSON.stringify({
+              subQuestions: [{ id: "sq_pending_1", title: "问题(1)" }],
+            }),
+          }),
+        ],
+      },
+      answers: [
+        {
+          id: "answer_manual_pending_status_1",
+          questionId: "subjective_manual_pending_status_1",
+          answerJson: JSON.stringify({
+            sq_pending_1: "作答内容",
+          }),
+          isCorrect: null,
+          score: 12,
+          reviewJson: JSON.stringify({
+            source: "manual",
+            totalScore: 12,
+            maxScore: 20,
+            subQuestions: [
+              {
+                id: "sq_pending_1",
+                title: "问题(1)",
+                answer: "作答内容",
+                score: 12,
+                maxScore: 20,
+                reviewComment: "点评",
+                referenceAnswer: "参考",
+                reviewSource: "manual",
+                abilityLabel: "问题(1)",
+                rubricGuidance: "",
+                rubricPoints: [],
+                missedPoints: [],
+                answerMarks: [],
+              },
+            ],
+          }),
+        },
+      ],
+    },
+    now,
+    { currentAdminId: "admin_1" },
+  );
+
+  assert.equal(detail.reviewStatus, "manual_pending");
+});
+
 test("aiReviewMockExamRecord persists rubric point hit state", async () => {
   const question = createQuestion({
     id: "subjective_ai_review_1",

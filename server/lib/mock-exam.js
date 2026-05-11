@@ -318,6 +318,63 @@ const normalizeAnswerMarks = (value) => {
     .filter((item) => item.highlight);
 };
 
+const syncAnswerMarkScoresWithExpectedScore = (value, expectedScore) => {
+  const normalizedMarks = normalizeAnswerMarks(value);
+  const safeExpectedScore = Number(expectedScore);
+  const positiveMarks = normalizedMarks.filter((item) => item.status === "correct" || item.status === "score");
+
+  if (positiveMarks.length === 0) {
+    return normalizedMarks;
+  }
+
+  if (!Number.isFinite(safeExpectedScore) || safeExpectedScore < 0) {
+    return normalizedMarks.map((item) =>
+      item.status === "correct" || item.status === "score"
+        ? {
+            ...item,
+            status: "correct",
+            score: item.score ?? null,
+          }
+        : item,
+    );
+  }
+
+  const remainingScores = positiveMarks.map((item) => (Number.isFinite(Number(item.score)) ? Math.max(0, Number(item.score)) : null));
+  let remainingTotal = Math.max(0, Math.round(safeExpectedScore));
+  let unresolvedCount = remainingScores.filter((item) => item === null).length;
+
+  return normalizedMarks.map((item) => {
+    if (item.status !== "correct" && item.status !== "score") {
+      return item;
+    }
+
+    const resolvedScore = Number.isFinite(Number(item.score)) ? Math.max(0, Number(item.score)) : null;
+    if (resolvedScore !== null) {
+      remainingTotal = Math.max(0, remainingTotal - resolvedScore);
+      if (unresolvedCount > 0) {
+        unresolvedCount -= 1;
+      }
+      return {
+        ...item,
+        status: "correct",
+        score: resolvedScore,
+      };
+    }
+
+    const nextScore = unresolvedCount > 0 ? remainingTotal : 0;
+    remainingTotal = Math.max(0, remainingTotal - nextScore);
+    if (unresolvedCount > 0) {
+      unresolvedCount -= 1;
+    }
+
+    return {
+      ...item,
+      status: "correct",
+      score: nextScore,
+    };
+  });
+};
+
 const normalizeRubricKeywords = (value) =>
   Array.from(
     new Set(
@@ -777,8 +834,8 @@ const isMockExamRecordReviewPending = (record) =>
 const getAdminMockExamReviewStatus = (record, adminId = "", currentTime = new Date()) => {
   const workflowStatus = getMockExamRecordReviewWorkflowStatus(record);
   if (workflowStatus === "published") return "published";
-  if (isManualReviewLockedByAdmin(record, adminId, currentTime)) return "manual_reviewing";
   if (workflowStatus === "manual_pending") return "manual_pending";
+  if (isManualReviewLockedByAdmin(record, adminId, currentTime)) return "manual_reviewing";
   if (workflowStatus === "ai_processing") return "ai_processing";
   return "ai_pending";
 };
