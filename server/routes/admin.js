@@ -1320,7 +1320,7 @@ adminRouter.post("/users/batch-import-excel", uploadExcel.single("file"), async 
   try {
     normalizedPhones = await extractPhonesFromExcel({
       fileName: file.originalname,
-      folderId: folder.id,
+      buffer: file.buffer,
     });
   } catch (error) {
     return fail(res, error.message || "Excel 解析失败", 400);
