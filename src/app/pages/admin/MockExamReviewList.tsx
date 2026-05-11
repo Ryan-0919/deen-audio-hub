@@ -1540,7 +1540,7 @@ function CompactInlineSubQuestionReviewWorkbench({
                   key={item.value}
                   type="button"
                   onClick={() => appendMarkFromSelection(item.value)}
-                  className={`inline-flex h-11 items-center justify-center gap-2 rounded-2xl border text-sm font-medium transition ${item.className}`}
+                  className={`inline-flex h-10 items-center justify-center gap-2 rounded-full border text-sm font-medium transition ${item.className}`}
                 >
                   {item.icon}
                   <span>{item.label}</span>
@@ -1555,32 +1555,51 @@ function CompactInlineSubQuestionReviewWorkbench({
                 </div>
               ) : (
                 marks.map((mark, index) => (
-                  <div key={mark.id} className="rounded-[22px] border border-slate-200 bg-slate-50/60 p-4">
+                  <div
+                    key={mark.id}
+                    className={`rounded-[22px] border p-4 ${
+                      mark.status === "wrong"
+                        ? "border-rose-100 bg-rose-50/70"
+                        : mark.status === "neutral"
+                          ? "border-amber-100 bg-amber-50/55"
+                          : mark.status === "score"
+                            ? "border-sky-100 bg-sky-50/55"
+                            : "border-emerald-100 bg-emerald-50/55"
+                    }`}
+                  >
                     <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-slate-900">批注 {index + 1}</p>
                       <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold text-slate-900">批注 {index + 1}</p>
-                        <span
-                          className={`inline-flex min-w-[34px] items-center justify-center rounded-full px-2 py-1 text-xs font-semibold ${
-                            mark.status === "correct"
-                              ? "bg-emerald-50 text-emerald-700"
-                              : mark.status === "wrong"
-                                ? "bg-rose-50 text-rose-700"
-                                : mark.status === "neutral"
-                                  ? "bg-amber-50 text-amber-700"
-                                  : "bg-sky-50 text-sky-700"
-                          }`}
+                        {markTypeMeta.map((item) => (
+                          <button
+                            key={`${mark.id}_${item.value}`}
+                            type="button"
+                            onClick={() =>
+                              updateMark(mark.id, (current) => ({
+                                ...current,
+                                status: item.value,
+                                score: item.value === "score" ? current.score : "",
+                              }))
+                            }
+                            className={`inline-flex h-10 w-10 items-center justify-center rounded-full border transition ${
+                              mark.status === item.value ? item.className : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                            }`}
+                            aria-label={item.label}
+                            title={item.label}
+                          >
+                            {item.icon}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => onMarksChange(marks.filter((item) => item.id !== mark.id))}
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                          aria-label="删除"
+                          title="删除"
                         >
-                          {markTypeMeta.find((item) => item.value === mark.status)?.shortLabel ?? "批"}
-                        </span>
+                          <Trash2 className="size-4" />
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => onMarksChange(marks.filter((item) => item.id !== mark.id))}
-                        className="inline-flex items-center gap-1 text-sm text-slate-500 transition hover:text-rose-600"
-                      >
-                        <Trash2 className="size-4" />
-                        删除
-                      </button>
                     </div>
 
                     <div className="mt-4 space-y-4">
@@ -1591,31 +1610,6 @@ function CompactInlineSubQuestionReviewWorkbench({
                           value={mark.highlight}
                           onChange={(event) => updateMark(mark.id, (item) => ({ ...item, highlight: event.target.value }))}
                         />
-                      </div>
-
-                      <div>
-                        <p className="mb-2 text-sm font-semibold text-slate-900">批注类型</p>
-                        <div className="grid gap-2 sm:grid-cols-4">
-                          {markTypeMeta.map((item) => (
-                            <button
-                              key={`${mark.id}_${item.value}`}
-                              type="button"
-                              onClick={() =>
-                                updateMark(mark.id, (current) => ({
-                                  ...current,
-                                  status: item.value,
-                                  score: item.value === "score" ? current.score : "",
-                                }))
-                              }
-                              className={`inline-flex h-10 items-center justify-center gap-2 rounded-2xl border text-sm font-medium transition ${
-                                mark.status === item.value ? item.className : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                              }`}
-                            >
-                              {item.icon}
-                              <span>{item.label}</span>
-                            </button>
-                          ))}
-                        </div>
                       </div>
 
                       {mark.status === "score" ? (
