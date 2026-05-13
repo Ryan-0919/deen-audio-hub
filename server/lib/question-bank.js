@@ -813,6 +813,38 @@ const toNullableString = (value) => {
   return normalized || null;
 };
 
+const syncSeriesPaperPermissions = async ({ db, paperId, seriesId }) => {
+  const normalizedPaperId = `${paperId ?? ""}`.trim();
+  const normalizedSeriesId = `${seriesId ?? ""}`.trim();
+  if (!normalizedPaperId || !normalizedSeriesId) {
+    return;
+  }
+
+  const seriesPermissionRows = await db.userMockExamSeriesPermission.findMany({
+    where: {
+      seriesId: normalizedSeriesId,
+    },
+    select: {
+      userId: true,
+    },
+  });
+
+  if (seriesPermissionRows.length <= 0) {
+    return;
+  }
+
+  await db.userMockExamPermission.createMany({
+    data: seriesPermissionRows.map((item) => ({
+      userId: item.userId,
+      paperId: normalizedPaperId,
+      manualAttemptLimit: null,
+      manualAttemptUsed: 0,
+      currentRecordStartedAt: null,
+    })),
+    skipDuplicates: true,
+  });
+};
+
 const generatePaperCode = () => `qb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
 const toPaperStatus = (value) => (`${value ?? ""}`.trim() === "published" ? "published" : "draft");
@@ -861,6 +893,7 @@ export const createMockExamPaperFromQuestionBank = async ({ db, itemIds, paper }
   const durationMinutes = Number.parseInt(`${paper?.durationMinutes ?? ""}`.trim(), 10);
   const passScore = Number.parseInt(`${paper?.passScore ?? ""}`.trim(), 10);
   const sortOrder = Number.parseInt(`${paper?.sortOrder ?? ""}`.trim(), 10);
+  const seriesId = `${paper?.seriesId ?? ""}`.trim();
   const totalScore = orderedItems.reduce((sum, item) => sum + Number(item.score ?? 0), 0);
 
   const maxSortPaper = await db.mockExamPaper.findFirst({
@@ -875,6 +908,7 @@ export const createMockExamPaperFromQuestionBank = async ({ db, itemIds, paper }
   try {
     const created = await db.mockExamPaper.create({
       data: {
+        seriesId: seriesId || null,
         code: normalizeText(paper?.code) || generatePaperCode(),
         title,
         subtitle: toNullableString(paper?.subtitle),
@@ -919,6 +953,12 @@ export const createMockExamPaperFromQuestionBank = async ({ db, itemIds, paper }
         totalScore: true,
         questionCount: true,
       },
+    });
+
+    await syncSeriesPaperPermissions({
+      db,
+      paperId: created.id,
+      seriesId,
     });
 
     return {

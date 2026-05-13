@@ -141,6 +141,12 @@ const readPagination = (query) => {
 };
 
 const parseQuestionBankPaperType = (value) => (`${value ?? ""}`.trim() === "subjective" ? "subjective" : "objective");
+const isUniqueConstraintError = (error) => Boolean(error && typeof error === "object" && "code" in error && error.code === "P2002");
+const normalizeSeriesText = (value) => `${value ?? ""}`.replace(/\r\n/g, "\n").trim();
+const toSeriesSortOrder = (value, fallback = 0) => {
+  const parsed = Number.parseInt(`${value ?? ""}`.trim(), 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
 
 const recordAdminAction = (req, payload) => {
   void writeAdminAuditLog(req, payload).catch((error) => {
@@ -158,6 +164,192 @@ mockExamAdminRouter.get("/papers", async (_req, res) => {
   } catch (error) {
     return fail(res, error.message || "加载模考试卷列表失败", error.statusCode || 400);
   }
+});
+
+mockExamAdminRouter.get("/series", async (_req, res) => {
+  try {
+    const list = await prisma.mockExamSeries.findMany({
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        sortOrder: true,
+      },
+    });
+
+    return ok(
+      res,
+      list.map((item) => ({
+        id: item.id,
+        name: item.name,
+        description: item.description ?? "",
+        sortOrder: Number(item.sortOrder ?? 0),
+      })),
+    );
+  } catch (error) {
+    return fail(res, error.message || "加载机考课程失败", error.statusCode || 400);
+  }
+});
+
+mockExamAdminRouter.post("/series", async (req, res) => {
+  const name = normalizeSeriesText(req.body?.name);
+  if (!name) {
+    return fail(res, "机考课程名称不能为空", 400);
+  }
+
+  try {
+    const series = await prisma.mockExamSeries.create({
+      data: {
+        name,
+        description: normalizeSeriesText(req.body?.description) || null,
+        sortOrder: toSeriesSortOrder(req.body?.sortOrder, 0),
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        sortOrder: true,
+      },
+    });
+
+    recordAdminAction(req, {
+      action: "mock_exam_series_create",
+      entityType: "mock_exam_series",
+      entityId: series.id,
+      entityName: series.name,
+      detail: {
+        sortOrder: series.sortOrder,
+      },
+    });
+
+    return ok(
+      res,
+      {
+        id: series.id,
+        name: series.name,
+        description: series.description ?? "",
+        sortOrder: Number(series.sortOrder ?? 0),
+      },
+      "机考课程已创建",
+    );
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return fail(res, "机考课程名称已存在", 400);
+    }
+    return fail(res, error.message || "创建机考课程失败", error.statusCode || 400);
+  }
+});
+
+mockExamAdminRouter.patch("/series/:seriesId", async (req, res) => {
+  const seriesId = `${req.params.seriesId ?? ""}`.trim();
+  const name = normalizeSeriesText(req.body?.name);
+  if (!seriesId) {
+    return fail(res, "缺少机考课程参数", 400);
+  }
+  if (!name) {
+    return fail(res, "机考课程名称不能为空", 400);
+  }
+
+  const existing = await prisma.mockExamSeries.findUnique({
+    where: { id: seriesId },
+    select: { id: true, name: true, sortOrder: true },
+  });
+  if (!existing) {
+    return fail(res, "机考课程不存在", 404);
+  }
+
+  try {
+    const series = await prisma.mockExamSeries.update({
+      where: { id: seriesId },
+      data: {
+        name,
+        description: normalizeSeriesText(req.body?.description) || null,
+        sortOrder: toSeriesSortOrder(req.body?.sortOrder, Number(existing.sortOrder ?? 0)),
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        sortOrder: true,
+      },
+    });
+
+    recordAdminAction(req, {
+      action: "mock_exam_series_update",
+      entityType: "mock_exam_series",
+      entityId: series.id,
+      entityName: series.name,
+      detail: {
+        previousName: existing.name,
+        sortOrder: series.sortOrder,
+      },
+    });
+
+    return ok(
+      res,
+      {
+        id: series.id,
+        name: series.name,
+        description: series.description ?? "",
+        sortOrder: Number(series.sortOrder ?? 0),
+      },
+      "机考课程已更新",
+    );
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return fail(res, "机考课程名称已存在", 400);
+    }
+    return fail(res, error.message || "更新机考课程失败", error.statusCode || 400);
+  }
+});
+
+mockExamAdminRouter.delete("/series/:seriesId", async (req, res) => {
+  const seriesId = `${req.params.seriesId ?? ""}`.trim();
+  if (!seriesId) {
+    return fail(res, "缺少机考课程参数", 400);
+  }
+
+  const series = await prisma.mockExamSeries.findUnique({
+    where: { id: seriesId },
+    include: {
+      _count: {
+        select: {
+          papers: true,
+          permissions: true,
+        },
+      },
+    },
+  });
+
+  if (!series) {
+    return fail(res, "机考课程不存在", 404);
+  }
+
+  if (Number(series._count?.papers ?? 0) > 0) {
+    return fail(res, "该机考课程下还有试卷，不能直接删除", 400);
+  }
+
+  if (Number(series._count?.permissions ?? 0) > 0) {
+    await prisma.userMockExamSeriesPermission.deleteMany({
+      where: {
+        seriesId,
+      },
+    });
+  }
+
+  await prisma.mockExamSeries.delete({
+    where: { id: seriesId },
+  });
+
+  recordAdminAction(req, {
+    action: "mock_exam_series_delete",
+    entityType: "mock_exam_series",
+    entityId: series.id,
+    entityName: series.name,
+  });
+
+  return ok(res, { success: true, id: series.id, name: series.name }, "机考课程已删除");
 });
 
 mockExamAdminRouter.get("/settings/launch", async (_req, res) => {

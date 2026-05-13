@@ -157,6 +157,7 @@ model User {
   digitalFulfillments ShopDigitalFulfillment[]
   mockExamRecords MockExamRecord[]
   mockExamPermissions UserMockExamPermission[]
+  mockExamSeriesPermissions UserMockExamSeriesPermission[]
   typingPracticeRecords TypingPracticeRecord[]
 }
 
@@ -391,8 +392,23 @@ model LawEntryOperation {
   @@index([isPinned, manualSortOrder])
 }
 
+model MockExamSeries {
+  id          String                       @id @default(cuid())
+  name        String                       @unique @db.VarChar(191)
+  description String?                      @db.VarChar(255)
+  sortOrder   Int                          @default(0)
+  createdAt   DateTime                     @default(now())
+  updatedAt   DateTime                     @updatedAt
+
+  papers       MockExamPaper[]
+  permissions  UserMockExamSeriesPermission[]
+
+  @@index([sortOrder, createdAt])
+}
+
 model MockExamPaper {
   id              String                @id @default(cuid())
+  seriesId        String?
   code            String                @unique @db.VarChar(64)
   title           String                @db.VarChar(191)
   subtitle        String?               @db.VarChar(255)
@@ -414,10 +430,12 @@ model MockExamPaper {
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
 
+  series          MockExamSeries?       @relation(fields: [seriesId], references: [id], onDelete: Restrict)
   questions       MockExamQuestion[]
   records         MockExamRecord[]
   permissions     UserMockExamPermission[]
 
+  @@index([seriesId, sortOrder])
   @@index([status, sortOrder])
   @@index([year, sortOrder])
 }
@@ -436,6 +454,19 @@ model UserMockExamPermission {
 
   @@unique([userId, paperId])
   @@index([paperId])
+}
+
+model UserMockExamSeriesPermission {
+  id        String         @id @default(cuid())
+  userId    String
+  seriesId  String
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @default(now()) @updatedAt
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  series    MockExamSeries @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, seriesId])
+  @@index([seriesId])
 }
 
 model QuestionBankFolder {

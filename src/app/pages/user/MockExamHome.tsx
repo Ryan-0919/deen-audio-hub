@@ -48,6 +48,8 @@ const paperTypeMeta: Record<
 
 const getPaperCategory = (paper: MockExamPaper): PaperCategory => (isSubjectivePaper(paper) ? "subjective" : "objective");
 const getExamEntryPath = (paperId: string) => `/user/mock-exams/papers/${paperId}`;
+const UNGROUPED_SERIES_KEY = "__ungrouped__";
+const UNGROUPED_SERIES_LABEL = "未分组试卷";
 
 const EMPTY_HOME_CONFIG: UserHomeConfig = {
   memberHome: {
@@ -99,6 +101,33 @@ const buildAttemptsText = (paper: MockExamPaper) =>
   [paper.maxAttempts > 0 ? `限考 ${paper.maxAttempts} 次` : "不限次数", isSubjectivePaper(paper) ? (paper.reviewEnabled ? "人工批改" : "直接解析") : ""]
     .filter(Boolean)
     .join(" · ");
+
+const groupPapersBySeries = (papers: MockExamPaper[]) => {
+  const groups = new Map<string, { key: string; label: string; papers: MockExamPaper[] }>();
+
+  for (const paper of papers) {
+    const key = paper.seriesId || UNGROUPED_SERIES_KEY;
+    const label = paper.seriesName?.trim() || UNGROUPED_SERIES_LABEL;
+    const current = groups.get(key);
+
+    if (current) {
+      current.papers.push(paper);
+      continue;
+    }
+
+    groups.set(key, {
+      key,
+      label,
+      papers: [paper],
+    });
+  }
+
+  return Array.from(groups.values()).sort((left, right) => {
+    if (left.key === UNGROUPED_SERIES_KEY) return 1;
+    if (right.key === UNGROUPED_SERIES_KEY) return -1;
+    return left.label.localeCompare(right.label, "zh-CN");
+  });
+};
 
 const getActionLabel = (paper: MockExamPaper) => {
   if (paper.activeRecord?.canResume) {
@@ -214,6 +243,7 @@ export function MockExamHome() {
   }, [activeTab, objectivePapers.length, subjectivePapers.length]);
 
   const visiblePapers = activeTab === "objective" ? objectivePapers : subjectivePapers;
+  const groupedVisiblePapers = useMemo(() => groupPapersBySeries(visiblePapers), [visiblePapers]);
   const examHome = homeConfig.examHome;
 
   const openPaper = (paper: MockExamPaper) => {
@@ -312,23 +342,38 @@ export function MockExamHome() {
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {visiblePapers.length === 0 ? (
-              <div className="col-span-full rounded-[28px] border border-dashed border-white/12 bg-white/[0.04] px-6 py-16 text-center backdrop-blur-xl">
-                <div className="mx-auto flex size-14 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white/34">
-                  <PenSquare className="size-6" />
-                </div>
-                <p className="mt-4 text-lg font-medium text-white">暂无{paperTypeMeta[activeTab].label}试卷</p>
-                <p className="mt-2 text-sm leading-7 text-white/52">
-                  {activeTab === "objective"
-                    ? examHome.objectiveEmptyText || paperTypeMeta[activeTab].emptyText
-                    : examHome.subjectiveEmptyText || paperTypeMeta[activeTab].emptyText}
-                </p>
+          {visiblePapers.length === 0 ? (
+            <div className="rounded-[28px] border border-dashed border-white/12 bg-white/[0.04] px-6 py-16 text-center backdrop-blur-xl">
+              <div className="mx-auto flex size-14 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white/34">
+                <PenSquare className="size-6" />
               </div>
-            ) : (
-              visiblePapers.map((paper) => <PaperCard key={paper.id} paper={paper} category={activeTab} onOpen={openPaper} />)
-            )}
-          </div>
+              <p className="mt-4 text-lg font-medium text-white">暂无{paperTypeMeta[activeTab].label}试卷</p>
+              <p className="mt-2 text-sm leading-7 text-white/52">
+                {activeTab === "objective"
+                  ? examHome.objectiveEmptyText || paperTypeMeta[activeTab].emptyText
+                  : examHome.subjectiveEmptyText || paperTypeMeta[activeTab].emptyText}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-8">
+              {groupedVisiblePapers.map((group) => (
+                <section key={group.key} className="space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-xl font-semibold tracking-[-0.04em] text-white">{group.label}</h2>
+                      <p className="mt-1 text-xs uppercase tracking-[0.24em] text-white/34">{group.papers.length} 套试卷</p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    {group.papers.map((paper) => (
+                      <PaperCard key={paper.id} paper={paper} category={activeTab} onOpen={openPaper} />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
         </motion.section>
       </div>
     </div>

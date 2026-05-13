@@ -78,7 +78,8 @@ export const serializeUser = (user) => ({
   lastLogin: user.lastLoginAt ? formatDateTime(user.lastLoginAt) : "",
   deviceCount: user._count?.devices ?? user.devices?.length ?? 0,
   coursePermissions: (user.permissions ?? []).map((item) => item.courseId),
-  mockExamPermissions: (user.mockExamPermissions ?? []).map((item) => item.paperId),
+  mockExamPermissions: (user.mockExamSeriesPermissions ?? []).map((item) => item.seriesId),
+  mockExamAccessiblePaperIds: (user.mockExamPermissions ?? []).map((item) => item.paperId),
   mockExamPermissionConfigs: (user.mockExamPermissions ?? []).map((item) => ({
     paperId: item.paperId,
     manualAttemptLimit: item.manualAttemptLimit ?? null,

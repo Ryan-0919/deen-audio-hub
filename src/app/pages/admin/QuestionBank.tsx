@@ -14,6 +14,7 @@ import { Textarea } from "../../components/ui/textarea";
 import { Switch } from "../../components/ui/switch";
 import {
   type AdminMockExamPaperStatus,
+  type AdminMockExamSeriesOption,
   type MockExamRubricPoint,
   type MockExamQuestionType,
   type QuestionBankFolder,
@@ -77,6 +78,7 @@ type ItemFormState = {
 
 type PaperFormState = {
   title: string;
+  seriesId: string;
   subtitle: string;
   year: string;
   phase: string;
@@ -198,6 +200,7 @@ const createItemFormFromItem = (item: QuestionBankItem): ItemFormState => ({
 
 const buildPaperForm = (paperType: QuestionBankPaperType, totalScore: number): PaperFormState => ({
   title: "",
+  seriesId: "",
   subtitle: "",
   year: `${new Date().getFullYear()}`,
   phase: paperType === "objective" ? "客观题" : "主观题",
@@ -509,6 +512,7 @@ export function QuestionBank() {
   const [folders, setFolders] = useState<QuestionBankFolder[]>([]);
   const [items, setItems] = useState<QuestionBankItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [seriesOptions, setSeriesOptions] = useState<AdminMockExamSeriesOption[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [selectedFolderId, setSelectedFolderId] = useState("all");
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
@@ -606,7 +610,8 @@ export function QuestionBank() {
     const initialize = async () => {
       try {
         setLoading(true);
-        await Promise.all([loadSummary(), loadFolders()]);
+        const [_, __, nextSeriesOptions] = await Promise.all([loadSummary(), loadFolders(), mockApi.getAdminMockExamSeries()]);
+        setSeriesOptions(nextSeriesOptions);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "加载题库失败");
       } finally {
@@ -1322,6 +1327,7 @@ export function QuestionBank() {
         itemIds: selectedQuestions.map((item) => item.id),
         paper: {
           title: paperForm.title.trim(),
+          seriesId: paperForm.seriesId || undefined,
           subtitle: paperForm.subtitle.trim() || undefined,
           year: paperForm.year ? Number(paperForm.year) : undefined,
           phase: paperForm.phase.trim() || undefined,
@@ -2018,8 +2024,33 @@ export function QuestionBank() {
               <Input value={paperForm.title} onChange={(event) => setPaperForm((current) => ({ ...current, title: event.target.value }))} placeholder="例如：2026 客观题模考卷三" />
             </div>
             <div className="space-y-2">
+              <Label>所属机考课程</Label>
+              <Select value={paperForm.seriesId || "__none__"} onValueChange={(value) => setPaperForm((current) => ({ ...current, seriesId: value === "__none__" ? "" : value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="不绑定也可以，后续可再调整" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">暂不绑定</SelectItem>
+                  {seriesOptions.map((series) => (
+                    <SelectItem key={series.id} value={series.id}>
+                      {series.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
               <Label>副标题</Label>
               <Input value={paperForm.subtitle} onChange={(event) => setPaperForm((current) => ({ ...current, subtitle: event.target.value }))} placeholder="可选，用于补充学科或专题说明" />
+            </div>
+            <div className="space-y-2">
+              <Label>说明</Label>
+              <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-6 text-slate-500">
+                绑定机考课程后，这个课程下已开权限的用户会自动拥有新试卷，无需逐个再补权限。
+              </p>
             </div>
           </div>
 

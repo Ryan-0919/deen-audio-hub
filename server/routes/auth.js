@@ -205,6 +205,8 @@ authRouter.post("/user/login", async (req, res, next) => {
         include: {
           permissions: true,
           devices: true,
+          mockExamSeriesPermissions: true,
+          mockExamPermissions: true,
         },
       });
     });
@@ -249,6 +251,8 @@ authRouter.get("/user/me", requireUserAuth, async (req, res) => {
     include: {
       permissions: true,
       devices: true,
+      mockExamSeriesPermissions: true,
+      mockExamPermissions: true,
     },
   });
 

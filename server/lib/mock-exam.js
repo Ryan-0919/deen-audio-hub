@@ -1021,6 +1021,8 @@ const serializeRecordSummary = (record, currentTime = new Date()) => {
 export const serializeMockExamPaperSummary = ({ paper, activeRecord = null, latestRecord = null, currentTime = new Date() }) => ({
   id: paper.id,
   code: paper.code,
+  seriesId: paper.seriesId ?? "",
+  seriesName: paper.series?.name ?? "",
   title: paper.title,
   subtitle: paper.subtitle ?? "",
   coverUrl: getMockExamPaperCoverUrl(paper, paper.paperType),
@@ -1049,6 +1051,8 @@ export const serializeAdminMockExamPaperSummary = (paper) => {
   return {
     id: paper.id,
     code: paper.code,
+    seriesId: paper.seriesId ?? "",
+    seriesName: paper.series?.name ?? "",
     title: paper.title,
     subtitle: paper.subtitle ?? "",
     coverUrl: getMockExamPaperCoverUrl(paper, paperType),
@@ -1075,6 +1079,12 @@ export const listAdminMockExamPapers = async ({ db }) => {
   const papers = await db.mockExamPaper.findMany({
     orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
     include: {
+      series: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
       _count: {
         select: {
           records: true,
@@ -1163,6 +1173,96 @@ const ensurePaperCanPublish = ({ status, questionCount }) => {
   }
 };
 
+const parseSeriesIdOrNull = (value) => {
+  const normalized = normalizeAdminText(value);
+  return normalized || null;
+};
+
+const syncSeriesPaperPermissions = async ({ tx, paperId, seriesId }) => {
+  const normalizedPaperId = `${paperId ?? ""}`.trim();
+  const normalizedSeriesId = `${seriesId ?? ""}`.trim();
+
+  if (!normalizedPaperId || !normalizedSeriesId) {
+    return;
+  }
+
+  const seriesPermissionRows = await tx.userMockExamSeriesPermission.findMany({
+    where: {
+      seriesId: normalizedSeriesId,
+    },
+    select: {
+      userId: true,
+    },
+  });
+
+  if (seriesPermissionRows.length <= 0) {
+    return;
+  }
+
+  await tx.userMockExamPermission.createMany({
+    data: seriesPermissionRows.map((item) => ({
+      userId: item.userId,
+      paperId: normalizedPaperId,
+      manualAttemptLimit: null,
+      manualAttemptUsed: 0,
+      currentRecordStartedAt: null,
+    })),
+    skipDuplicates: true,
+  });
+};
+
+const cleanupDetachedSeriesPaperPermissions = async ({ tx, paperId, nextSeriesId }) => {
+  const normalizedPaperId = `${paperId ?? ""}`.trim();
+  if (!normalizedPaperId) {
+    return;
+  }
+
+  const permissionRows = await tx.userMockExamPermission.findMany({
+    where: {
+      paperId: normalizedPaperId,
+    },
+    select: {
+      userId: true,
+    },
+  });
+
+  if (permissionRows.length <= 0) {
+    return;
+  }
+
+  const userIds = permissionRows.map((item) => item.userId);
+  const normalizedNextSeriesId = `${nextSeriesId ?? ""}`.trim();
+  const nextSeriesPermissionRows = normalizedNextSeriesId
+    ? await tx.userMockExamSeriesPermission.findMany({
+        where: {
+          userId: {
+            in: userIds,
+          },
+          seriesId: normalizedNextSeriesId,
+        },
+        select: {
+          userId: true,
+        },
+      })
+    : [];
+
+  const protectedUserIds = new Set(nextSeriesPermissionRows.map((item) => item.userId));
+  const removableUserIds = userIds.filter((userId) => !protectedUserIds.has(userId));
+
+  if (removableUserIds.length <= 0) {
+    return;
+  }
+
+  await tx.userMockExamPermission.deleteMany({
+    where: {
+      paperId: normalizedPaperId,
+      userId: {
+        in: removableUserIds,
+      },
+    },
+  });
+};
+
 const buildAdminPaperCreateData = ({ payload, maxSortOrder = 0 }) => {
   const title = normalizeAdminText(payload?.title);
   if (!title) {
@@ -1174,6 +1274,7 @@ const buildAdminPaperCreateData = ({ payload, maxSortOrder = 0 }) => {
   ensurePaperCanPublish({ status, questionCount: 0 });
 
   return {
+    seriesId: parseSeriesIdOrNull(payload?.seriesId),
     code: normalizeAdminText(payload?.code) || generateAdminPaperCode(),
     title,
     subtitle: toNullableAdminText(payload?.subtitle),
@@ -1226,6 +1327,7 @@ const buildAdminPaperUpdateData = ({ payload, paper }) => {
   }
 
   return {
+    seriesId: payload?.seriesId === undefined ? paper.seriesId ?? null : parseSeriesIdOrNull(payload?.seriesId),
     code: payload?.code === undefined ? paper.code : normalizeAdminText(payload?.code) || paper.code,
     title,
     subtitle: payload?.subtitle === undefined ? paper.subtitle ?? null : toNullableAdminText(payload?.subtitle),
@@ -1301,6 +1403,12 @@ const getAdminPaperWithQuestions = async (db, paperId) => {
   const paper = await db.mockExamPaper.findUnique({
     where: { id: paperId },
     include: {
+      series: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
       questions: {
         where: {
           isActive: true,
@@ -1584,30 +1692,46 @@ export const createAdminMockExamPaper = async ({ db, payload }) => {
   });
 
   try {
-    const created = await db.mockExamPaper.create({
-      data: buildAdminPaperCreateData({
-        payload,
-        maxSortOrder: Number(maxSortPaper?.sortOrder ?? 0),
-      }),
-      include: {
-        questions: {
-          include: {
-            options: {
-              orderBy: { sortOrder: "asc" },
+    const created = await db.$transaction(async (tx) => {
+      const createdPaper = await tx.mockExamPaper.create({
+        data: buildAdminPaperCreateData({
+          payload,
+          maxSortOrder: Number(maxSortPaper?.sortOrder ?? 0),
+        }),
+        include: {
+          series: {
+            select: {
+              id: true,
+              name: true,
             },
-            sourceBankItem: {
-              select: {
-                folder: {
-                  select: {
-                    name: true,
+          },
+          questions: {
+            include: {
+              options: {
+                orderBy: { sortOrder: "asc" },
+              },
+              sourceBankItem: {
+                select: {
+                  folder: {
+                    select: {
+                      name: true,
+                    },
                   },
                 },
               },
             },
+            orderBy: { sortOrder: "asc" },
           },
-          orderBy: { sortOrder: "asc" },
         },
-      },
+      });
+
+      await syncSeriesPaperPermissions({
+        tx,
+        paperId: createdPaper.id,
+        seriesId: createdPaper.seriesId,
+      });
+
+      return createdPaper;
     });
 
     return serializeAdminMockExamPaperDetail(created);
@@ -1625,6 +1749,11 @@ export const updateAdminMockExamPaper = async ({ db, paperId, payload }) => {
     const paper = await tx.mockExamPaper.findUnique({
       where: { id: paperId },
       include: {
+        series: {
+          select: {
+            id: true,
+          },
+        },
         questions: {
           where: {
             isActive: true,
@@ -1647,12 +1776,31 @@ export const updateAdminMockExamPaper = async ({ db, paperId, payload }) => {
     });
 
     try {
-      await tx.mockExamPaper.update({
+      const previousSeriesId = paper.seriesId ?? null;
+      const updatedPaper = await tx.mockExamPaper.update({
         where: { id: paperId },
         data: buildAdminPaperUpdateData({
           payload,
           paper,
         }),
+        select: {
+          id: true,
+          seriesId: true,
+        },
+      });
+
+      if ((previousSeriesId ?? "") !== (updatedPaper.seriesId ?? "")) {
+        await cleanupDetachedSeriesPaperPermissions({
+          tx,
+          paperId: updatedPaper.id,
+          nextSeriesId: updatedPaper.seriesId,
+        });
+      }
+
+      await syncSeriesPaperPermissions({
+        tx,
+        paperId: updatedPaper.id,
+        seriesId: updatedPaper.seriesId,
       });
     } catch (error) {
       if (isUniqueConstraintError(error, "code")) {
@@ -1668,45 +1816,7 @@ export const updateAdminMockExamPaper = async ({ db, paperId, payload }) => {
     paperId,
   });
 
-  const paper = await db.mockExamPaper.findUnique({
-    where: { id: paperId },
-    include: {
-      questions: {
-        where: {
-          isActive: true,
-        },
-        select: {
-          type: true,
-          score: true,
-        },
-      },
-    },
-  });
 
-  if (!paper) {
-    throw createHttpError("试卷不存在", 404);
-  }
-
-  try {
-    await db.mockExamPaper.update({
-      where: { id: paperId },
-      data: buildAdminPaperUpdateData({
-        payload,
-        paper,
-      }),
-    });
-  } catch (error) {
-    if (isUniqueConstraintError(error, "code")) {
-      throw createHttpError("试卷编号已存在，请修改后重试");
-    }
-
-    throw error;
-  }
-
-  return getAdminMockExamPaperDetail({
-    db,
-    paperId,
-  });
 };
 
 export const deleteAdminMockExamPaper = async ({ db, paperId }) => {
@@ -1839,116 +1949,7 @@ export const addAdminMockExamPaperQuestionsFromBank = async ({ db, paperId, item
     paperId,
   });
 
-  const editTarget = await db.$transaction(async (tx) => {
-    const target = await getEditableAdminPaperTarget({
-      tx,
-      paperId,
-    });
 
-    const paper = await tx.mockExamPaper.findUnique({
-      where: { id: target.paperId },
-      include: {
-        questions: {
-          where: {
-            isActive: true,
-          },
-          select: {
-            id: true,
-            type: true,
-            sortOrder: true,
-          },
-          orderBy: {
-            sortOrder: "asc",
-          },
-        },
-      },
-    });
-
-    if (!paper) {
-      throw createHttpError("试卷不存在", 404);
-    }
-    const selectedItems = await tx.questionBankItem.findMany({
-      where: {
-        id: {
-          in: normalizedItemIds,
-        },
-      },
-      include: {
-        options: {
-          orderBy: {
-            sortOrder: "asc",
-          },
-        },
-      },
-    });
-
-    if (selectedItems.length !== normalizedItemIds.length) {
-      throw createHttpError("部分题目不存在或已被删除");
-    }
-
-    const orderedItems = normalizedItemIds
-      .map((id) => selectedItems.find((item) => item.id === id))
-      .filter(Boolean);
-
-    const incomingPaperType = inferAdminPaperTypeFromQuestions(orderedItems);
-    ensurePaperTypeMatchesQuestions(incomingPaperType, orderedItems);
-
-    const targetPaperType = paper.paperType ?? (paper.questions.length > 0 ? inferAdminPaperTypeFromQuestions(paper.questions) : incomingPaperType);
-    ensurePaperTypeMatchesQuestions(targetPaperType, orderedItems);
-
-    let sortOrderCursor = Math.max(0, ...paper.questions.map((question) => Number(question.sortOrder ?? 0)));
-
-    for (const item of orderedItems) {
-      sortOrderCursor += 1;
-      await tx.mockExamQuestion.create({
-        data: {
-          paperId: target.paperId,
-          sourceBankItemId: item.id,
-          type: item.type,
-          stem: item.stem,
-          material: item.material ?? null,
-          analysis: item.analysis ?? null,
-          lessonAudioUrl: item.lessonAudioUrl ?? null,
-          lessonAudioObjectKey: item.lessonAudioObjectKey ?? null,
-          lessonAudioDurationSeconds: Number(item.lessonAudioDurationSeconds ?? 0) || 0,
-          score: Number(item.score ?? 0),
-          sortOrder: sortOrderCursor,
-          correctAnswerJson: item.correctAnswerJson,
-          questionMetaJson: item.questionMetaJson,
-          options: {
-            create: (item.options ?? []).map((option) => ({
-              optionKey: option.optionKey,
-              content: option.content,
-              sortOrder: Number(option.sortOrder ?? 0),
-            })),
-          },
-        },
-      });
-    }
-
-    await syncAdminPaperDerivedFields({
-      tx,
-      paperId: target.paperId,
-      paperTypeFallback: targetPaperType,
-    });
-
-    return target;
-  });
-
-  const detail = await getAdminMockExamPaperDetail({
-    db,
-    paperId: editTarget.paperId,
-  });
-
-  if (editTarget.forkedFromPaperId) {
-    return {
-      ...detail,
-      forkedFromPaperId: editTarget.forkedFromPaperId,
-      forkedFromTitle: editTarget.forkedFromTitle,
-    };
-  }
-
-  return detail;
 };
 
 export const removeAdminMockExamPaperQuestion = async ({ db, paperId, questionId }) => {
@@ -2024,86 +2025,7 @@ export const removeAdminMockExamPaperQuestion = async ({ db, paperId, questionId
     paperId,
   });
 
-  const editTarget = await db.$transaction(async (tx) => {
-    const target = await getEditableAdminPaperTarget({
-      tx,
-      paperId,
-    });
 
-    const paper = await tx.mockExamPaper.findUnique({
-      where: { id: target.paperId },
-      select: {
-        id: true,
-      },
-    });
-
-    if (!paper) {
-      throw createHttpError("试卷不存在", 404);
-    }
-
-    const editableQuestionId = target.questionIdMap.get(questionId) ?? questionId;
-
-    const question = await tx.mockExamQuestion.findUnique({
-      where: { id: editableQuestionId },
-      select: {
-        id: true,
-        paperId: true,
-      },
-    });
-
-    if (!question || question.paperId !== target.paperId) {
-      throw createHttpError("试卷题目不存在", 404);
-    }
-
-    await tx.mockExamQuestion.delete({
-      where: { id: editableQuestionId },
-    });
-
-    const remainingQuestions = await tx.mockExamQuestion.findMany({
-      where: {
-        paperId: target.paperId,
-      },
-      select: {
-        id: true,
-      },
-      orderBy: {
-        sortOrder: "asc",
-      },
-    });
-
-    await Promise.all(
-      remainingQuestions.map((item, index) =>
-        tx.mockExamQuestion.update({
-          where: { id: item.id },
-          data: {
-            sortOrder: index + 1,
-          },
-        }),
-      ),
-    );
-
-    await syncAdminPaperDerivedFields({
-      tx,
-      paperId: target.paperId,
-    });
-
-    return target;
-  });
-
-  const detail = await getAdminMockExamPaperDetail({
-    db,
-    paperId: editTarget.paperId,
-  });
-
-  if (editTarget.forkedFromPaperId) {
-    return {
-      ...detail,
-      forkedFromPaperId: editTarget.forkedFromPaperId,
-      forkedFromTitle: editTarget.forkedFromTitle,
-    };
-  }
-
-  return detail;
 };
 
 export const serializeMockExamRecordDetail = (record, currentTime = new Date()) => {
@@ -2214,6 +2136,7 @@ const assertMockExamPaperPermission = async ({ db, userId, paperId }) => {
     },
     select: {
       id: true,
+      seriesId: true,
       permissionRequired: true,
     },
   });
@@ -2241,7 +2164,21 @@ const assertMockExamPaperPermission = async ({ db, userId, paperId }) => {
     },
   });
 
-  if (!permission) {
+  const seriesPermission = paper.seriesId
+    ? await db.userMockExamSeriesPermission.findUnique({
+        where: {
+          userId_seriesId: {
+            userId,
+            seriesId: paper.seriesId,
+          },
+        },
+        select: {
+          seriesId: true,
+        },
+      })
+    : null;
+
+  if (!permission && !seriesPermission) {
     throw createHttpError("你暂未开通这张试卷", 403);
   }
 
@@ -3697,3 +3634,6 @@ export const saveMockExamReviewFeedback = async ({
 
     return getRecordWithPaper(tx, record.id);
   });
+
+
+

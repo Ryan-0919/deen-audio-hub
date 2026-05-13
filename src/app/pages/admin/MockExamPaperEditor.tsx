@@ -19,6 +19,7 @@ import {
   type AdminMockExamPaperQuestion,
   type AdminMockExamPaperStatus,
   type AdminMockExamPaperType,
+  type AdminMockExamSeriesOption,
   type MockExamQuestionType,
   type QuestionBankFolder,
   type QuestionBankItem,
@@ -57,6 +58,7 @@ const questionTypeMeta: Record<MockExamQuestionType, { label: string }> = {
 
 type PaperFormState = {
   title: string;
+  seriesId: string;
   subtitle: string;
   code: string;
   coverUrl: string;
@@ -76,6 +78,7 @@ type PaperFormState = {
 
 const createEmptyPaperForm = (paperType: AdminMockExamPaperType = "objective"): PaperFormState => ({
   title: "",
+  seriesId: "",
   subtitle: "",
   code: "",
   coverUrl: paperType === "subjective" ? "/mock-exam/default-subjective-cover.png" : "/mock-exam/default-objective-cover.png",
@@ -95,6 +98,7 @@ const createEmptyPaperForm = (paperType: AdminMockExamPaperType = "objective"): 
 
 const mapPaperDetailToForm = (paper: AdminMockExamPaperDetail): PaperFormState => ({
   title: paper.title,
+  seriesId: paper.seriesId ?? "",
   subtitle: paper.subtitle,
   code: paper.code,
   coverUrl: paper.coverUrl,
@@ -114,6 +118,7 @@ const mapPaperDetailToForm = (paper: AdminMockExamPaperDetail): PaperFormState =
 
 const buildPaperPayload = (form: PaperFormState): AdminMockExamPaperPayload => ({
   title: form.title.trim(),
+  seriesId: form.seriesId.trim() || undefined,
   subtitle: form.subtitle.trim() || undefined,
   code: form.code.trim() || undefined,
   coverUrl: form.coverUrl.trim() || undefined,
@@ -156,6 +161,7 @@ export function MockExamPaperEditor() {
   const [saving, setSaving] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
   const [paper, setPaper] = useState<AdminMockExamPaperDetail | null>(null);
+  const [seriesOptions, setSeriesOptions] = useState<AdminMockExamSeriesOption[]>([]);
   const [form, setForm] = useState<PaperFormState>(createEmptyPaperForm);
   const [questionDialogOpen, setQuestionDialogOpen] = useState(false);
   const [folders, setFolders] = useState<QuestionBankFolder[]>([]);
@@ -178,6 +184,18 @@ export function MockExamPaperEditor() {
   const selectedBankIds = useMemo(() => Object.keys(selectedBankMap), [selectedBankMap]);
   const selectedBankScore = useMemo(() => selectedBankItems.reduce((sum, item) => sum + item.score, 0), [selectedBankItems]);
   const allCurrentPageSelected = bankItems.length > 0 && bankItems.every((item) => Boolean(selectedBankMap[item.id]));
+
+  useEffect(() => {
+    const loadSeriesOptions = async () => {
+      try {
+        setSeriesOptions(await mockApi.getAdminMockExamSeries());
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "加载机考试卷系列失败");
+      }
+    };
+
+    void loadSeriesOptions();
+  }, []);
 
   useEffect(() => {
     if (!isEdit || !paperId) {
@@ -553,6 +571,24 @@ export function MockExamPaperEditor() {
                   onChange={(event) => updateForm("title", event.target.value)}
                   placeholder="例如：2026 年客观题模拟卷一"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label>所属机考课程</Label>
+                <Select value={form.seriesId || "__none__"} onValueChange={(value) => updateForm("seriesId", value === "__none__" ? "" : value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="不绑定也可以，后续可再调整" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">暂不绑定</SelectItem>
+                    {seriesOptions.map((series) => (
+                      <SelectItem key={series.id} value={series.id}>
+                        {series.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-400">绑定后，这个机考课程下已开权限的用户会自动获得本试卷。</p>
               </div>
 
               <div className="space-y-2">

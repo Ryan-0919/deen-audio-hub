@@ -35,15 +35,26 @@ mockExamUserRouter.get("/papers", async (req, res) => {
     const userId = req.auth.userId;
     await syncExpiredMockExamRecords({ db: prisma, userId });
 
-    const permissionRows = await prisma.userMockExamPermission.findMany({
-      where: {
-        userId,
-      },
-      select: {
-        paperId: true,
-      },
-    });
-    const visiblePaperIds = permissionRows.map((item) => item.paperId);
+    const [seriesPermissionRows, legacyPermissionRows] = await Promise.all([
+      prisma.userMockExamSeriesPermission.findMany({
+        where: {
+          userId,
+        },
+        select: {
+          seriesId: true,
+        },
+      }),
+      prisma.userMockExamPermission.findMany({
+        where: {
+          userId,
+        },
+        select: {
+          paperId: true,
+        },
+      }),
+    ]);
+    const visibleSeriesIds = seriesPermissionRows.map((item) => item.seriesId);
+    const visiblePaperIds = legacyPermissionRows.map((item) => item.paperId);
 
     const papers = await prisma.mockExamPaper.findMany({
       where: {
@@ -54,9 +65,18 @@ mockExamUserRouter.get("/papers", async (req, res) => {
           },
           {
             permissionRequired: true,
-            id: {
-              in: visiblePaperIds.length > 0 ? visiblePaperIds : ["__no_permission__"],
-            },
+            OR: [
+              {
+                id: {
+                  in: visiblePaperIds.length > 0 ? visiblePaperIds : ["__no_permission__"],
+                },
+              },
+              {
+                seriesId: {
+                  in: visibleSeriesIds.length > 0 ? visibleSeriesIds : ["__no_permission__"],
+                },
+              },
+            ],
           },
         ],
       },

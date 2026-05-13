@@ -671,6 +671,44 @@ const getMockExamPaperTitlesByIds = async (paperIds = []) => {
   return normalizedPaperIds.map((paperId) => titleMap.get(paperId)).filter(Boolean);
 };
 
+const getMockExamSeriesNamesByIds = async (seriesIds = []) => {
+  const normalizedSeriesIds = toStringArray(seriesIds);
+  if (normalizedSeriesIds.length === 0) return [];
+
+  const seriesList = await prisma.mockExamSeries.findMany({
+    where: {
+      id: {
+        in: normalizedSeriesIds,
+      },
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+
+  const nameMap = new Map(seriesList.map((series) => [series.id, series.name]));
+  return normalizedSeriesIds.map((seriesId) => nameMap.get(seriesId)).filter(Boolean);
+};
+
+const getPaperIdsBySeriesIds = async (seriesIds = []) => {
+  const normalizedSeriesIds = toStringArray(seriesIds);
+  if (normalizedSeriesIds.length === 0) return [];
+
+  const papers = await prisma.mockExamPaper.findMany({
+    where: {
+      seriesId: {
+        in: normalizedSeriesIds,
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  return papers.map((paper) => paper.id);
+};
+
 const createMockExamPermissionLinks = async (userId, paperIds) => {
   const normalizedPaperIds = toStringArray(paperIds);
   if (normalizedPaperIds.length === 0) return;
@@ -687,7 +725,22 @@ const createMockExamPermissionLinks = async (userId, paperIds) => {
   });
 };
 
-const createOrAppendUser = async (phone, courseIds, mockExamPaperIds, defaultPasswordHash) => {
+const createMockExamSeriesPermissionLinks = async (userId, seriesIds) => {
+  const normalizedSeriesIds = toStringArray(seriesIds);
+  if (normalizedSeriesIds.length === 0) return;
+
+  await prisma.userMockExamSeriesPermission.createMany({
+    data: normalizedSeriesIds.map((seriesId) => ({
+      userId,
+      seriesId,
+    })),
+    skipDuplicates: true,
+  });
+
+  await createMockExamPermissionLinks(userId, await getPaperIdsBySeriesIds(normalizedSeriesIds));
+};
+
+const createOrAppendUser = async (phone, courseIds, mockExamSeriesIds, defaultPasswordHash) => {
   const normalizedPhone = validatePhoneOrThrow(phone);
   const existed = await prisma.user.findUnique({
     where: { phone: normalizedPhone },
@@ -695,7 +748,7 @@ const createOrAppendUser = async (phone, courseIds, mockExamPaperIds, defaultPas
 
   if (existed) {
     await createCoursePermissionLinks(existed.id, courseIds);
-    await createMockExamPermissionLinks(existed.id, mockExamPaperIds);
+    await createMockExamSeriesPermissionLinks(existed.id, mockExamSeriesIds);
     return { isNew: false, userId: existed.id, phone: existed.phone };
   }
 
@@ -707,13 +760,13 @@ const createOrAppendUser = async (phone, courseIds, mockExamPaperIds, defaultPas
     },
   });
   await createCoursePermissionLinks(user.id, courseIds);
-  await createMockExamPermissionLinks(user.id, mockExamPaperIds);
+  await createMockExamSeriesPermissionLinks(user.id, mockExamSeriesIds);
   return { isNew: true, userId: user.id, phone: user.phone };
 };
 
-const batchCreateOrAppendUsers = async (phones, courseIds, mockExamPaperIds) => {
+const batchCreateOrAppendUsers = async (phones, courseIds, mockExamSeriesIds) => {
   const normalizedCourseIds = toStringArray(courseIds);
-  const normalizedMockExamPaperIds = toStringArray(mockExamPaperIds);
+  const normalizedMockExamSeriesIds = toStringArray(mockExamSeriesIds);
   const uniquePhones = [...new Set((Array.isArray(phones) ? phones : [phones]).map((item) => normalizePhone(item)).filter(Boolean))];
   const failed = [];
   const validPhones = [];
@@ -796,12 +849,27 @@ const batchCreateOrAppendUsers = async (phones, courseIds, mockExamPaperIds) => 
     });
   }
 
-  if (normalizedMockExamPaperIds.length > 0 && allUsers.length > 0) {
+  if (normalizedMockExamSeriesIds.length > 0 && allUsers.length > 0) {
+    const seriesPaperIds = await getPaperIdsBySeriesIds(normalizedMockExamSeriesIds);
+
+    await prisma.userMockExamSeriesPermission.createMany({
+      data: allUsers.flatMap((user) =>
+        normalizedMockExamSeriesIds.map((seriesId) => ({
+          userId: user.id,
+          seriesId,
+        })),
+      ),
+      skipDuplicates: true,
+    });
+
     await prisma.userMockExamPermission.createMany({
       data: allUsers.flatMap((user) =>
-        normalizedMockExamPaperIds.map((paperId) => ({
+        seriesPaperIds.map((paperId) => ({
           userId: user.id,
           paperId,
+          manualAttemptLimit: null,
+          manualAttemptUsed: 0,
+          currentRecordStartedAt: null,
         })),
       ),
       skipDuplicates: true,
@@ -1144,6 +1212,7 @@ adminRouter.get("/users", async (req, res) => {
       where,
       include: {
         permissions: true,
+        mockExamSeriesPermissions: true,
         mockExamPermissions: true,
         _count: {
           select: {
@@ -1170,87 +1239,97 @@ adminRouter.get("/users", async (req, res) => {
 });
 
 adminRouter.get("/users/mock-exam-papers", async (_req, res) => {
-  const papers = await prisma.mockExamPaper.findMany({
-    where: {
-      status: "published",
-    },
+  const seriesList = await prisma.mockExamSeries.findMany({
     orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
-    select: {
-      id: true,
-      title: true,
-      subtitle: true,
-      paperType: true,
-      year: true,
-      phase: true,
-      status: true,
-      reviewEnabled: true,
-      maxAttempts: true,
+    include: {
+      papers: {
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+        select: {
+          title: true,
+        },
+      },
     },
   });
 
   return ok(
     res,
-    papers.map((paper) => ({
-      id: paper.id,
-      title: paper.title,
-      subtitle: paper.subtitle ?? "",
-      paperType: paper.paperType === "subjective" ? "subjective" : "objective",
-      paperTypeLabel: paper.paperType === "subjective" ? "主观题" : "客观题",
-      year: Number(paper.year ?? 0),
-      phase: paper.phase ?? "",
-      status: paper.status,
-      reviewEnabled: Boolean(paper.reviewEnabled),
-      maxAttempts: Number(paper.maxAttempts ?? 0),
+    seriesList.map((series) => ({
+      id: series.id,
+      title: series.name,
+      description: series.description ?? "",
+      paperCount: series.papers.length,
+      paperTitles: series.papers.map((paper) => paper.title),
     })),
   );
 });
 
 adminRouter.get("/mock-exam-papers", async (_req, res) => {
-  const papers = await prisma.mockExamPaper.findMany({
+  const seriesList = await prisma.mockExamSeries.findMany({
     where: {
-      status: "published",
+      papers: {
+        some: {
+          status: "published",
+        },
+      },
     },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
-    select: {
-      id: true,
-      title: true,
-      subtitle: true,
-      paperType: true,
-      year: true,
-      phase: true,
-      status: true,
-      reviewEnabled: true,
-      maxAttempts: true,
+    include: {
+      papers: {
+        where: {
+          status: "published",
+        },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+        select: {
+          title: true,
+        },
+      },
     },
   });
 
   return ok(
     res,
-    papers.map((paper) => ({
-      id: paper.id,
-      title: paper.title,
-      subtitle: paper.subtitle ?? "",
-      paperType: paper.paperType === "subjective" ? "subjective" : "objective",
-      paperTypeLabel: paper.paperType === "subjective" ? "主观题" : "客观题",
-      year: Number(paper.year ?? 0),
-      phase: paper.phase ?? "",
-      status: paper.status,
-      reviewEnabled: Boolean(paper.reviewEnabled),
-      maxAttempts: Number(paper.maxAttempts ?? 0),
+    seriesList.map((series) => ({
+      id: series.id,
+      title: series.name,
+      description: series.description ?? "",
+      paperCount: series.papers.length,
+      paperTitles: series.papers.map((paper) => paper.title),
+    })),
+  );
+});
+
+adminRouter.get("/mock-exam-series", async (_req, res) => {
+  const seriesList = await prisma.mockExamSeries.findMany({
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      sortOrder: true,
+    },
+  });
+
+  return ok(
+    res,
+    seriesList.map((series) => ({
+      id: series.id,
+      name: series.name,
+      description: series.description ?? "",
+      sortOrder: Number(series.sortOrder ?? 0),
     })),
   );
 });
 
 adminRouter.post("/users", async (req, res) => {
-  const { phone, courseIds = [], mockExamPaperIds = [] } = req.body ?? {};
+  const { phone, courseIds = [], mockExamSeriesIds = [] } = req.body ?? {};
   if (!phone) return fail(res, "请输入手机号", 400);
 
   const normalizedCourseIds = toStringArray(courseIds);
-  const normalizedMockExamPaperIds = toStringArray(mockExamPaperIds);
+  const normalizedMockExamSeriesIds = toStringArray(mockExamSeriesIds);
   const normalizedPhone = validatePhoneOrThrow(phone);
-  const result = await createOrAppendUser(normalizedPhone, normalizedCourseIds, normalizedMockExamPaperIds);
+  const result = await createOrAppendUser(normalizedPhone, normalizedCourseIds, normalizedMockExamSeriesIds);
   const courseNames = await getCourseNamesByIds(normalizedCourseIds);
-  const mockExamPaperTitles = await getMockExamPaperTitlesByIds(normalizedMockExamPaperIds);
+  const mockExamSeriesNames = await getMockExamSeriesNamesByIds(normalizedMockExamSeriesIds);
 
   void notifyMarkdownSafely(
     `user-create:${result.userId}`,
@@ -1275,18 +1354,18 @@ adminRouter.post("/users", async (req, res) => {
     entityName: result.phone,
     detail: {
       courseNames,
-      mockExamPaperTitles,
+      mockExamSeriesNames,
     },
   });
   return ok(res, result, result.isNew ? "用户已新增" : "已为现有用户追加课程权限");
 });
 
 adminRouter.post("/users/batch-import", async (req, res) => {
-  const { phones = [], courseIds = [], mockExamPaperIds = [] } = req.body ?? {};
+  const { phones = [], courseIds = [], mockExamSeriesIds = [] } = req.body ?? {};
   const normalizedPhones = [...new Set((phones || []).map((item) => `${item}`.trim()).filter(Boolean))];
   const normalizedCourseIds = toStringArray(courseIds);
-  const normalizedMockExamPaperIds = toStringArray(mockExamPaperIds);
-  const { createdCount, appendedCount, failed } = await batchCreateOrAppendUsers(normalizedPhones, normalizedCourseIds, normalizedMockExamPaperIds);
+  const normalizedMockExamSeriesIds = toStringArray(mockExamSeriesIds);
+  const { createdCount, appendedCount, failed } = await batchCreateOrAppendUsers(normalizedPhones, normalizedCourseIds, normalizedMockExamSeriesIds);
 
   void notifyMarkdownSafely(
     "user-batch-import",
@@ -1309,7 +1388,7 @@ adminRouter.post("/users/batch-import", async (req, res) => {
       appendedCount,
       failedCount: failed.length,
       courseNames: await getCourseNamesByIds(normalizedCourseIds),
-      mockExamPaperTitles: await getMockExamPaperTitlesByIds(normalizedMockExamPaperIds),
+      mockExamSeriesNames: await getMockExamSeriesNamesByIds(normalizedMockExamSeriesIds),
     },
   });
 
@@ -1318,9 +1397,9 @@ adminRouter.post("/users/batch-import", async (req, res) => {
 
 adminRouter.post("/users/batch-import-excel", uploadExcel.single("file"), async (req, res) => {
   const file = req.file;
-  const { courseIds = [], mockExamPaperIds = [] } = req.body ?? {};
+  const { courseIds = [], mockExamSeriesIds = [] } = req.body ?? {};
   const normalizedCourseIds = toStringArray(courseIds);
-  const normalizedMockExamPaperIds = toStringArray(mockExamPaperIds);
+  const normalizedMockExamSeriesIds = toStringArray(mockExamSeriesIds);
   if (!file) return fail(res, "请选择 Excel 文件", 400);
 
   let normalizedPhones = [];
@@ -1337,7 +1416,7 @@ adminRouter.post("/users/batch-import-excel", uploadExcel.single("file"), async 
     return fail(res, "Excel 中未读取到手机号", 400);
   }
 
-  const { createdCount, appendedCount, failed } = await batchCreateOrAppendUsers(normalizedPhones, normalizedCourseIds, normalizedMockExamPaperIds);
+  const { createdCount, appendedCount, failed } = await batchCreateOrAppendUsers(normalizedPhones, normalizedCourseIds, normalizedMockExamSeriesIds);
 
   void notifyMarkdownSafely(
     "user-batch-import-excel",
@@ -1361,7 +1440,7 @@ adminRouter.post("/users/batch-import-excel", uploadExcel.single("file"), async 
       appendedCount,
       failedCount: failed.length,
       courseNames: await getCourseNamesByIds(normalizedCourseIds),
-      mockExamPaperTitles: await getMockExamPaperTitlesByIds(normalizedMockExamPaperIds),
+      mockExamSeriesNames: await getMockExamSeriesNamesByIds(normalizedMockExamSeriesIds),
     },
   });
 
@@ -1377,7 +1456,7 @@ adminRouter.patch("/users/:userId/permissions", async (req, res) => {
   });
 
   await createCoursePermissionLinks(userId, addCourses);
-  await createMockExamPermissionLinks(userId, addMockExamPapers);
+  await createMockExamSeriesPermissionLinks(userId, addMockExamPapers);
   if (removeCourses.length > 0) {
     await prisma.userCoursePermission.deleteMany({
       where: {
@@ -1387,10 +1466,19 @@ adminRouter.patch("/users/:userId/permissions", async (req, res) => {
     });
   }
   if (removeMockExamPapers.length > 0) {
+    const paperIdsToRemove = await getPaperIdsBySeriesIds(removeMockExamPapers);
+
+    await prisma.userMockExamSeriesPermission.deleteMany({
+      where: {
+        userId,
+        seriesId: { in: removeMockExamPapers },
+      },
+    });
+
     await prisma.userMockExamPermission.deleteMany({
       where: {
         userId,
-        paperId: { in: removeMockExamPapers },
+        paperId: { in: paperIdsToRemove },
       },
     });
   }
@@ -1403,8 +1491,8 @@ adminRouter.patch("/users/:userId/permissions", async (req, res) => {
     detail: {
       addedCourses: await getCourseNamesByIds(addCourses),
       removedCourses: await getCourseNamesByIds(removeCourses),
-      addedMockExamPapers: await getMockExamPaperTitlesByIds(addMockExamPapers),
-      removedMockExamPapers: await getMockExamPaperTitlesByIds(removeMockExamPapers),
+      addedMockExamSeries: await getMockExamSeriesNamesByIds(addMockExamPapers),
+      removedMockExamSeries: await getMockExamSeriesNamesByIds(removeMockExamPapers),
     },
   });
 
@@ -1581,10 +1669,10 @@ adminRouter.post("/users/:userId/mock-exam-permissions/:paperId/reset-time", asy
 });
 
 adminRouter.post("/users/batch-permissions", async (req, res) => {
-  const { userIds = [], courseIds = [], mockExamPaperIds = [] } = req.body ?? {};
+  const { userIds = [], courseIds = [], mockExamSeriesIds = [] } = req.body ?? {};
   const normalizedUserIds = toStringArray(userIds);
   const normalizedCourseIds = toStringArray(courseIds);
-  const normalizedMockExamPaperIds = toStringArray(mockExamPaperIds);
+  const normalizedMockExamSeriesIds = toStringArray(mockExamSeriesIds);
 
   if (normalizedUserIds.length > 0 && normalizedCourseIds.length > 0) {
     await prisma.userCoursePermission.createMany({
@@ -1597,12 +1685,27 @@ adminRouter.post("/users/batch-permissions", async (req, res) => {
       skipDuplicates: true,
     });
   }
-  if (normalizedUserIds.length > 0 && normalizedMockExamPaperIds.length > 0) {
+  if (normalizedUserIds.length > 0 && normalizedMockExamSeriesIds.length > 0) {
+    const paperIds = await getPaperIdsBySeriesIds(normalizedMockExamSeriesIds);
+
+    await prisma.userMockExamSeriesPermission.createMany({
+      data: normalizedUserIds.flatMap((userId) =>
+        normalizedMockExamSeriesIds.map((seriesId) => ({
+          userId,
+          seriesId,
+        })),
+      ),
+      skipDuplicates: true,
+    });
+
     await prisma.userMockExamPermission.createMany({
       data: normalizedUserIds.flatMap((userId) =>
-        normalizedMockExamPaperIds.map((paperId) => ({
+        paperIds.map((paperId) => ({
           userId,
           paperId,
+          manualAttemptLimit: null,
+          manualAttemptUsed: 0,
+          currentRecordStartedAt: null,
         })),
       ),
       skipDuplicates: true,
@@ -1615,7 +1718,7 @@ adminRouter.post("/users/batch-permissions", async (req, res) => {
     detail: {
       userCount: normalizedUserIds.length,
       courseNames: await getCourseNamesByIds(normalizedCourseIds),
-      mockExamPaperTitles: await getMockExamPaperTitlesByIds(normalizedMockExamPaperIds),
+      mockExamSeriesNames: await getMockExamSeriesNamesByIds(normalizedMockExamSeriesIds),
     },
   });
   return ok(res, { success: true }, "批量加课完成");
@@ -2820,3 +2923,4 @@ adminRouter.get("/progress/:audioId", async (req, res) => {
   });
   return ok(res, list.map(serializeProgress));
 });
+

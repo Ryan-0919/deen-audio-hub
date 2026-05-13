@@ -22,6 +22,7 @@ export interface User {
   deviceCount: number;
   coursePermissions: string[];
   mockExamPermissions: string[];
+  mockExamAccessiblePaperIds?: string[];
   mockExamPermissionConfigs?: UserMockExamPermissionConfig[];
 }
 
@@ -693,6 +694,8 @@ export interface MockExamRecordSummary {
 export interface MockExamPaper {
   id: string;
   code: string;
+  seriesId?: string;
+  seriesName?: string;
   title: string;
   subtitle: string;
   coverUrl: string;
@@ -853,6 +856,8 @@ export interface AdminMockExamManualReviewLock {
 export interface AdminMockExamPaperSummary {
   id: string;
   code: string;
+  seriesId: string;
+  seriesName: string;
   title: string;
   subtitle: string;
   coverUrl: string;
@@ -874,17 +879,25 @@ export interface AdminMockExamPaperSummary {
   updatedAt: string;
 }
 
-export interface MockExamPermissionOption {
+export interface MockExamSeriesPermissionOption {
   id: string;
   title: string;
-  subtitle: string;
-  paperType: AdminMockExamPaperType;
-  paperTypeLabel: string;
-  year: number;
-  phase: string;
-  status: AdminMockExamPaperStatus;
-  reviewEnabled: boolean;
-  maxAttempts?: number;
+  description: string;
+  paperCount: number;
+  paperTitles: string[];
+}
+
+export interface AdminMockExamSeriesOption {
+  id: string;
+  name: string;
+  description: string;
+  sortOrder: number;
+}
+
+export interface AdminMockExamSeriesPayload {
+  name: string;
+  description?: string;
+  sortOrder?: number | string;
 }
 
 export interface AdminMockExamPaperListPayload {
@@ -925,6 +938,7 @@ export interface AdminMockExamPaperDetail extends AdminMockExamPaperSummary {
 
 export interface AdminMockExamPaperPayload {
   title: string;
+  seriesId?: string;
   subtitle?: string;
   coverUrl?: string;
   coverObjectKey?: string;
@@ -2115,6 +2129,7 @@ export const mockApi = {
     itemIds: string[];
     paper: {
       title: string;
+      seriesId?: string;
       subtitle?: string;
       year?: number;
       phase?: string;
@@ -2501,7 +2516,16 @@ export const mockApi = {
   getUserSummary: () => request<UserSummary>("/api/admin/users/summary", { auth: "admin" }),
   getAllAdmins: () => request<AdminAccount[]>("/api/admin/admins", { auth: "admin" }),
   getAllMockExamPermissionPapers: () =>
-    request<MockExamPermissionOption[]>("/api/admin/mock-exam-papers", { auth: "admin" }),
+    request<MockExamSeriesPermissionOption[]>("/api/admin/mock-exam-papers", { auth: "admin" }),
+  getUserMockExamSeriesOptions: () =>
+    request<MockExamSeriesPermissionOption[]>("/api/admin/users/mock-exam-papers", { auth: "admin" }),
+  getAdminMockExamSeries: () => request<AdminMockExamSeriesOption[]>("/api/admin/mock-exam-series", { auth: "admin" }),
+  createAdminMockExamSeries: (payload: AdminMockExamSeriesPayload) =>
+    postJson<AdminMockExamSeriesOption>("/api/admin/mock-exams/series", payload, "admin"),
+  updateAdminMockExamSeries: (seriesId: string, payload: AdminMockExamSeriesPayload) =>
+    patchJson<AdminMockExamSeriesOption>(`/api/admin/mock-exams/series/${seriesId}`, payload, "admin"),
+  deleteAdminMockExamSeries: (seriesId: string) =>
+    deleteRequest<{ success: boolean; id: string; name: string }>(`/api/admin/mock-exams/series/${seriesId}`, "admin"),
   createAdminAccount: (payload: { account: string; name: string; password: string; role: AdminRole }) =>
     postJson<AdminAccount>("/api/admin/admins", payload, "admin"),
   updateAdminAccount: (adminId: string, payload: { account: string; name: string; role: AdminRole }) =>
@@ -2530,19 +2554,19 @@ export const mockApi = {
   removeDevice: (deviceId: string) => deleteRequest<{ success: boolean }>(`/api/admin/devices/${deviceId}`, "admin"),
   clearUserDevices: (userId: string) => deleteRequest<{ success: boolean }>(`/api/admin/users/${userId}/devices`, "admin"),
 
-  createUser: (phone: string, courseIds: string[], mockExamPaperIds: string[] = []) =>
-    postJson<{ isNew: boolean; userId: string; phone: string }>("/api/admin/users", { phone, courseIds, mockExamPaperIds }, "admin"),
-  batchCreateUsers: (phones: string[], courseIds: string[], mockExamPaperIds: string[] = []) =>
+  createUser: (phone: string, courseIds: string[], mockExamSeriesIds: string[] = []) =>
+    postJson<{ isNew: boolean; userId: string; phone: string }>("/api/admin/users", { phone, courseIds, mockExamSeriesIds }, "admin"),
+  batchCreateUsers: (phones: string[], courseIds: string[], mockExamSeriesIds: string[] = []) =>
     postJson<{ createdCount: number; appendedCount: number; failed: string[] }>(
       "/api/admin/users/batch-import",
-      { phones, courseIds, mockExamPaperIds },
+      { phones, courseIds, mockExamSeriesIds },
       "admin",
     ),
-  batchCreateUsersByExcel: (file: File, courseIds: string[], mockExamPaperIds: string[] = []) =>
+  batchCreateUsersByExcel: (file: File, courseIds: string[], mockExamSeriesIds: string[] = []) =>
     uploadSingleFileWithFields<{ createdCount: number; appendedCount: number; failed: string[]; parsedCount: number }>(
       "/api/admin/users/batch-import-excel",
       file,
-      { courseIds, mockExamPaperIds },
+      { courseIds, mockExamSeriesIds },
       "admin",
     ),
   updateUserPermissions: (
@@ -2559,8 +2583,8 @@ export const mockApi = {
     ),
   updateUserPassword: (userId: string, password: string) =>
     patchJson<{ success: boolean }>(`/api/admin/users/${userId}/password`, { password }, "admin"),
-  batchAddUserPermissions: (userIds: string[], courseIds: string[], mockExamPaperIds: string[] = []) =>
-    postJson<{ success: boolean }>("/api/admin/users/batch-permissions", { userIds, courseIds, mockExamPaperIds }, "admin"),
+  batchAddUserPermissions: (userIds: string[], courseIds: string[], mockExamSeriesIds: string[] = []) =>
+    postJson<{ success: boolean }>("/api/admin/users/batch-permissions", { userIds, courseIds, mockExamSeriesIds }, "admin"),
   resetUserMockExamAttempts: (userId: string, paperId: string) =>
     postJson<{ paperId: string; manualAttemptLimit: number | null; manualAttemptUsed: number }>(
       `/api/admin/users/${userId}/mock-exam-permissions/${paperId}/reset-attempts`,
