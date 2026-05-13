@@ -341,7 +341,10 @@ const buildDraftState = (detail: AdminMockExamReviewDetail): DraftState => {
         const numericScore = Number(point.awardedScore);
         return sum + (Number.isFinite(numericScore) ? Math.max(0, numericScore) : 0);
       }, 0);
-      scores[key] = `${Math.max(initialMarkScore, initialRubricScore, Number(subQuestion.score ?? 0) || 0)}`;
+      const persistedScore = Number(subQuestion.score);
+      scores[key] = `${
+        Number.isFinite(persistedScore) ? persistedScore : Math.max(initialMarkScore, initialRubricScore, 0)
+      }`;
       comments[key] = subQuestion.reviewComment ?? "";
       references[key] = subQuestion.referenceAnswer ?? "";
       abilities[key] = subQuestion.abilityLabel ?? subQuestion.title ?? "";

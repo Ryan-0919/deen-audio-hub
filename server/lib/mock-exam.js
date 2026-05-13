@@ -629,16 +629,17 @@ const serializeQuestion = (question, answer, revealAnswer) => {
           : null;
         const subQuestionReviewProvider = normalizeReviewProvider(reviewItem?.reviewProvider ?? reviewProvider);
         const normalizedRubricPointList = normalizeRubricPoints(reviewItem?.rubricPoints ?? item.rubricPoints);
+        const maxSubQuestionScore = Number(reviewItem?.maxScore ?? item.maxScore ?? 0);
+        const rubricAwardedScore = normalizedRubricPointList.reduce(
+          (sum, point) => sum + (Number.isFinite(Number(point.awardedScore)) ? Number(point.awardedScore) : 0),
+          0,
+        );
+        const explicitReviewScore = Number(reviewItem?.score);
         const normalizedSubQuestionScore = Math.max(
           0,
           Math.min(
-            Number(reviewItem?.maxScore ?? item.maxScore ?? 0),
-            normalizedRubricPointList.length > 0
-              ? normalizedRubricPointList.reduce(
-                  (sum, point) => sum + (Number.isFinite(Number(point.awardedScore)) ? Number(point.awardedScore) : 0),
-                  0,
-                )
-              : Number(reviewItem?.score ?? 0),
+            maxSubQuestionScore,
+            Number.isFinite(explicitReviewScore) ? explicitReviewScore : rubricAwardedScore,
           ),
         );
 
