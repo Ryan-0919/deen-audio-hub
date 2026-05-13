@@ -82,6 +82,12 @@ mockExamUserRouter.get("/papers", async (req, res) => {
       },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
       include: {
+        series: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         questions: {
           where: {
             isActive: true,
