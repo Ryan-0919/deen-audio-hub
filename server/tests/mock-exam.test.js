@@ -123,6 +123,10 @@ test("startMockExamRecord returns existing active record when concurrent create 
   let createAttempts = 0;
   const fakeDb = {
     mockExamPaper: {
+      findUnique: async () => ({
+        id: "paper_1",
+        permissionRequired: false,
+      }),
       findFirst: async () => paper,
     },
     mockExamRecord: {
@@ -185,6 +189,10 @@ test("startMockExamRecord stores a frozen paper snapshot for new attempts", asyn
   let createdPayload = null;
   const fakeDb = {
     mockExamPaper: {
+      findUnique: async () => ({
+        id: paper.id,
+        permissionRequired: false,
+      }),
       findFirst: async () => paper,
     },
     mockExamRecord: {
@@ -442,7 +450,7 @@ test("serializeMockExamRecordDetail exposes subjective answers and pending revie
   assert.equal(detail.questions[0].answerState, "answered");
   assert.equal(detail.questions[0].subjectiveSubQuestions.length, 2);
   assert.equal(detail.questions[0].subjectiveSubQuestions[0].answer, "First answer");
-  assert.equal(detail.questions[0].analysis, "Reference points");
+  assert.equal(detail.questions[0].analysis, "");
 });
 
 test("serializeMockExamReviewDetail marks subjective records as reviewed after scoring", () => {
@@ -475,6 +483,8 @@ test("serializeMockExamReviewDetail marks subjective records as reviewed after s
     startedAt: new Date("2026-04-25T10:00:00.000Z"),
     submittedAt: new Date("2026-04-25T10:30:00.000Z"),
     reviewedAt: new Date("2026-04-25T11:00:00.000Z"),
+    publishedAt: new Date("2026-04-25T11:05:00.000Z"),
+    reviewWorkflowStatus: "published",
     user: {
       id: "user_1",
       phone: "13800000000",
@@ -509,7 +519,7 @@ test("serializeMockExamReviewDetail marks subjective records as reviewed after s
   assert.equal(detail.summary.finalScorePending, false);
   assert.equal(detail.summary.pendingReviewCount, 0);
   assert.equal(detail.summary.isPassed, true);
-  assert.equal(detail.reviewStatus, "reviewed");
+  assert.equal(detail.reviewStatus, "published");
   assert.equal(detail.scoring.objectiveScore, 0);
   assert.equal(detail.scoring.subjectiveScore, 16);
   assert.equal(detail.questions[0].earnedScore, 16);
@@ -808,6 +818,12 @@ test("reviewMockExamRecord accepts per-subquestion scoring payloads", async () =
   const record = {
     id: "record_review_subquestions",
     status: "submitted",
+    manualReviewerId: "admin_1",
+    manualReviewerName: "张老师",
+    manualReviewLockToken: "lock_review_subquestions",
+    manualReviewClaimedAt: new Date("2026-04-25T10:31:00.000Z"),
+    manualReviewLockExpiresAt: new Date("2026-04-25T11:31:00.000Z"),
+    manualReviewVersion: 0,
     paper: {
       id: "paper_review_subquestions",
       reviewEnabled: true,
@@ -877,6 +893,10 @@ test("reviewMockExamRecord accepts per-subquestion scoring payloads", async () =
   const reviewed = await reviewMockExamRecord({
     db: fakeDb,
     recordId: record.id,
+    adminId: "admin_1",
+    lockToken: "lock_review_subquestions",
+    version: 0,
+    currentTime: new Date("2026-04-25T10:32:00.000Z"),
     questionScores: [
       {
         questionId: "subjective_review_subquestions_1",
@@ -899,6 +919,12 @@ test("reviewMockExamRecord persists subjective answer marks", async () => {
   const record = {
     id: "record_review_answer_marks",
     status: "submitted",
+    manualReviewerId: "admin_1",
+    manualReviewerName: "张老师",
+    manualReviewLockToken: "lock_review_answer_marks",
+    manualReviewClaimedAt: new Date("2026-04-25T10:31:00.000Z"),
+    manualReviewLockExpiresAt: new Date("2026-04-25T11:31:00.000Z"),
+    manualReviewVersion: 0,
     paper: {
       id: "paper_review_answer_marks",
       reviewEnabled: true,
@@ -964,6 +990,10 @@ test("reviewMockExamRecord persists subjective answer marks", async () => {
   const reviewed = await reviewMockExamRecord({
     db: fakeDb,
     recordId: record.id,
+    adminId: "admin_1",
+    lockToken: "lock_review_answer_marks",
+    version: 0,
+    currentTime: new Date("2026-04-25T10:32:00.000Z"),
     questionScores: [
       {
         questionId: "subjective_review_answer_marks_1",
@@ -989,7 +1019,7 @@ test("reviewMockExamRecord persists subjective answer marks", async () => {
   assert.equal(reviewed.answers[0].reviewJson.includes('"answerMarks"'), true);
   assert.equal(reviewed.answers[0].reviewJson.includes("未论证损失范围"), true);
   assert.equal(reviewed.answers[0].reviewJson.includes("损失计算依据"), true);
-  assert.equal(reviewed.answers[0].reviewJson.includes('"status":"score"'), true);
+  assert.equal(reviewed.answers[0].reviewJson.includes('"status":"correct"'), true);
   assert.equal(reviewed.answers[0].reviewJson.includes('"score":12'), true);
 });
 
@@ -1198,6 +1228,7 @@ test("aiReviewMockExamRecord persists rubric point hit state", async () => {
                   referenceAnswer: "参考答案",
                   abilityLabel: "违约责任分析",
                   reviewProvider: "openai-compatible",
+                  missedPoints: [],
                   rubricPoints: [
                     {
                       id: "point_1",
@@ -1220,7 +1251,22 @@ test("aiReviewMockExamRecord persists rubric point hit state", async () => {
                       matchedText: "损失赔偿",
                     },
                   ],
-                  answerMarks: [],
+                  answerMarks: [
+                    {
+                      id: "mark_ai_1_1",
+                      highlight: "违约责任",
+                      comment: "这一点答到了违约责任。",
+                      status: "score",
+                      score: 4,
+                    },
+                    {
+                      id: "mark_ai_1_2",
+                      highlight: "损失赔偿",
+                      comment: "这一点答到了损失赔偿。",
+                      status: "score",
+                      score: 6,
+                    },
+                  ],
                 },
               ],
             }),
@@ -1246,11 +1292,20 @@ test("aiReviewMockExamRecord persists rubric point hit state", async () => {
     global.fetch = originalFetch;
   }
 
+  const normalizedReview = JSON.parse(savedAnswer.reviewJson);
+  const subQuestion = normalizedReview.subQuestions?.[0];
   assert.equal(savedAnswer.reviewJson.includes('"rubricPoints"'), true);
   assert.equal(savedAnswer.reviewJson.includes('"hit":true'), true);
   assert.equal(savedAnswer.reviewJson.includes('"matchedText":"违约责任"'), true);
   assert.equal(savedAnswer.reviewJson.includes('"awardedScore":4'), true);
   assert.equal(savedAnswer.reviewJson.includes('"reviewProvider":"openai-compatible"'), true);
+  assert.equal(subQuestion?.score, 10);
+  assert.deepEqual(
+    (subQuestion?.answerMarks ?? [])
+      .filter((item) => item.status === "score")
+      .map((item) => item.score),
+    [4, 6],
+  );
 });
 
 test("aiReviewMockExamRecord throws when remote AI request fails", async () => {
@@ -1410,7 +1465,7 @@ test("aiReviewMockExamRecord normalizes remote AI answer marks to student source
     id: "answer_ai_marks_1",
     questionId: question.id,
     answerJson: JSON.stringify({
-      sq_ai_marks_1: "本案中应承担违约责任，并赔偿相应损失赔偿。",
+      sq_ai_marks_1: "本案中已写明违约 责任，后面又写到损失赔偿。",
     }),
     reviewJson: null,
     score: 0,
@@ -1481,6 +1536,7 @@ test("aiReviewMockExamRecord normalizes remote AI answer marks to student source
                   referenceAnswer: "应说明违约责任，并分析损失赔偿范围。",
                   abilityLabel: "案例分析",
                   rubricGuidance: "围绕违约责任和损失赔偿两个要点评分。",
+                  missedPoints: [],
                   rubricPoints: [
                     {
                       id: "point_ai_marks_1",
@@ -1506,10 +1562,17 @@ test("aiReviewMockExamRecord normalizes remote AI answer marks to student source
                   answerMarks: [
                     {
                       id: "mark_1",
-                      highlight: "应承担违约责任并赔偿损失",
-                      comment: "覆盖了核心结论",
+                      highlight: "违约责任",
+                      comment: "这里点到了违约责任。",
                       status: "score",
-                      score: 10,
+                      score: 4,
+                    },
+                    {
+                      id: "mark_2",
+                      highlight: "损失赔偿",
+                      comment: "这里点到了损失赔偿。",
+                      status: "score",
+                      score: 6,
                     },
                   ],
                 },
@@ -1541,13 +1604,17 @@ test("aiReviewMockExamRecord normalizes remote AI answer marks to student source
   const answerPayload = JSON.parse(savedAnswer.answerJson);
   const studentAnswerText = answerPayload.sq_ai_marks_1;
   const normalizedMarks = normalizedReview.subQuestions?.[0]?.answerMarks ?? [];
-  assert.equal(normalizedMarks.length > 0, true);
-  assert.equal(studentAnswerText.includes(normalizedMarks[0].highlight), true);
-  assert.equal(normalizedMarks[0].status, "score");
-  assert.equal(normalizedMarks.some((item) => item.status === "score"), true);
+  const firstMark = normalizedMarks.find((item) => item.id === "mark_1");
+  const secondMark = normalizedMarks.find((item) => item.id === "mark_2");
+  assert.equal(normalizedMarks.length, 2);
+  assert.equal(studentAnswerText.includes(firstMark.highlight), true);
+  assert.equal(studentAnswerText.includes(secondMark.highlight), true);
+  assert.equal(firstMark.highlight, "违约 责任");
+  assert.equal(secondMark.highlight, "损失赔偿");
+  assert.equal(normalizedMarks.every((item) => item.status === "score"), true);
 });
 
-test("aiReviewMockExamRecord auto builds answer marks when remote AI omits them", async () => {
+test("aiReviewMockExamRecord throws when remote AI omits answer marks", async () => {
   const question = createQuestion({
     id: "subjective_ai_marks_2",
     type: "subjective_case",
@@ -1646,6 +1713,7 @@ test("aiReviewMockExamRecord auto builds answer marks when remote AI omits them"
                   id: "sq_ai_marks_2",
                   score: 5,
                   reviewComment: "已明确指出合同有效。",
+                  missedPoints: [],
                   rubricPoints: [
                     {
                       id: "point_ai_marks_3",
@@ -1669,26 +1737,30 @@ test("aiReviewMockExamRecord auto builds answer marks when remote AI omits them"
   });
 
   try {
-    await aiReviewMockExamRecord({
-      db: fakeDb,
-      recordId: savedRecord.id,
-      runtimeConfig: {
-        provider: "openai-compatible",
-        baseUrl: "https://example.com/v1",
-        apiKey: "test-key",
-        model: "test-model",
-        timeoutMs: 1000,
-      },
-    });
+    await assert.rejects(
+      () =>
+        aiReviewMockExamRecord({
+          db: fakeDb,
+          recordId: savedRecord.id,
+          runtimeConfig: {
+            provider: "openai-compatible",
+            baseUrl: "https://example.com/v1",
+            apiKey: "test-key",
+            model: "test-model",
+            timeoutMs: 1000,
+          },
+        }),
+      (error) => error?.message?.includes("缺少正向标注"),
+    );
   } finally {
     global.fetch = originalFetch;
   }
 
-  assert.equal(savedAnswer.reviewJson.includes('"highlight":"合同有效"'), true);
-  assert.equal(savedAnswer.reviewJson.includes('"score":5'), true);
+  assert.equal(savedAnswer.reviewJson, null);
+  assert.equal(savedAnswer.score, 0);
 });
 
-test("aiReviewMockExamRecord auto builds wrong marks for missed rubric points", async () => {
+test("aiReviewMockExamRecord keeps remote AI wrong marks for missed rubric points", async () => {
   const question = createQuestion({
     id: "subjective_ai_marks_3",
     type: "subjective_case",
@@ -1725,7 +1797,7 @@ test("aiReviewMockExamRecord auto builds wrong marks for missed rubric points", 
     id: "answer_ai_marks_3",
     questionId: question.id,
     answerJson: JSON.stringify({
-      sq_ai_marks_3: "本题需要先分析侵权行为，再判断责任承担。",
+      sq_ai_marks_3: "本题已经存在侵权行为，但我认为没有损害后果。",
     }),
     reviewJson: null,
     score: 0,
@@ -1793,6 +1865,14 @@ test("aiReviewMockExamRecord auto builds wrong marks for missed rubric points", 
                   id: "sq_ai_marks_3",
                   score: 4,
                   reviewComment: "已分析侵权行为，但未说明损害后果。",
+                  missedPoints: [
+                    {
+                      id: "missed_ai_marks_3_1",
+                      title: "损害后果",
+                      description: "没有把损害后果的事实基础和结果展开写出来。",
+                      score: 4,
+                    },
+                  ],
                   rubricPoints: [
                     {
                       id: "point_ai_marks_4",
@@ -1815,7 +1895,22 @@ test("aiReviewMockExamRecord auto builds wrong marks for missed rubric points", 
                       matchedText: "",
                     },
                   ],
-                  answerMarks: [],
+                  answerMarks: [
+                    {
+                      id: "mark_ai_marks_3_1",
+                      highlight: "侵权行为",
+                      comment: "这一点答到了侵权行为。",
+                      status: "score",
+                      score: 4,
+                    },
+                    {
+                      id: "mark_ai_marks_3_2",
+                      highlight: "没有损害后果",
+                      comment: "这里对损害后果的判断错了，不能直接这样下结论。",
+                      status: "wrong",
+                      score: null,
+                    },
+                  ],
                 },
               ],
             }),
@@ -1842,15 +1937,18 @@ test("aiReviewMockExamRecord auto builds wrong marks for missed rubric points", 
   }
 
   const normalizedReview = JSON.parse(savedAnswer.reviewJson);
-  const normalizedMarks = normalizedReview.subQuestions?.[0]?.answerMarks ?? [];
+  const subQuestion = normalizedReview.subQuestions?.[0];
+  const normalizedMarks = subQuestion?.answerMarks ?? [];
+  assert.equal(subQuestion?.missedPoints?.length, 1);
   assert.equal(normalizedMarks.some((item) => item.status === "wrong"), true);
+  assert.equal(normalizedMarks.some((item) => item.highlight === "没有损害后果"), true);
 });
 
-test("aiReviewMockExamRecord upgrades positive correct marks to scored marks", async () => {
+test("aiReviewMockExamRecord keeps remote AI positive scored marks unchanged", async () => {
   const question = createQuestion({
     id: "subjective_ai_marks_correct_to_score",
     type: "subjective_case",
-    stem: "è¯·åˆ†æžåˆåŒæ•ˆåŠ›ã€‚",
+    stem: "请分析合同效力。",
     score: 3,
     correctAnswerJson: "[]",
     options: [],
@@ -1858,14 +1956,14 @@ test("aiReviewMockExamRecord upgrades positive correct marks to scored marks", a
       subQuestions: [
         {
           id: "sq_ai_marks_correct_to_score",
-          title: "é—®é¢˜(1)",
-          placeholder: "è¯·ä½œç­”",
+          title: "问题(1)",
+          placeholder: "请作答",
           rubricPoints: [
             {
               id: "point_correct_to_score_1",
-              title: "è¯´æ˜ŽåˆåŒæœ‰æ•ˆ",
+              title: "说明合同有效",
               score: 3,
-              keywords: ["åˆåŒæœ‰æ•ˆ"],
+              keywords: ["合同有效"],
             },
           ],
         },
@@ -1877,7 +1975,7 @@ test("aiReviewMockExamRecord upgrades positive correct marks to scored marks", a
     id: "answer_ai_marks_correct_to_score",
     questionId: question.id,
     answerJson: JSON.stringify({
-      sq_ai_marks_correct_to_score: "æœ¬æ¡ˆåˆåŒæœ‰æ•ˆï¼Œåº”ç»§ç»­å±¥è¡Œã€‚",
+      sq_ai_marks_correct_to_score: "本案合同有效，应继续履行。",
     }),
     reviewJson: null,
     score: 0,
@@ -1892,7 +1990,7 @@ test("aiReviewMockExamRecord upgrades positive correct marks to scored marks", a
       id: "paper_ai_marks_correct_to_score",
       code: "paper_ai_marks_correct_to_score",
       title: "AI Correct To Score Paper",
-      phase: "ä¸»è§‚é¢˜",
+      phase: "主观题",
       totalScore: 3,
       passScore: 2,
       questions: [question],
@@ -1944,27 +2042,27 @@ test("aiReviewMockExamRecord upgrades positive correct marks to scored marks", a
                 {
                   id: "sq_ai_marks_correct_to_score",
                   score: 3,
-                  reviewComment: "ç»“è®ºå†™åˆ°äº†ï¼Œä½†è¿˜å¯ä»¥æŠŠä¾æ®æ‰£å¾—æ›´ç´§ã€‚",
+                  reviewComment: "结论写到了，核心点命中。",
+                  missedPoints: [],
                   rubricPoints: [
                     {
                       id: "point_correct_to_score_1",
-                      title: "è¯´æ˜ŽåˆåŒæœ‰æ•ˆ",
+                      title: "说明合同有效",
                       score: 3,
                       description: "",
-                      keywords: ["åˆåŒæœ‰æ•ˆ"],
+                      keywords: ["合同有效"],
                       hit: true,
                       awardedScore: 3,
-                      matchedText: "åˆåŒæœ‰æ•ˆ",
+                      matchedText: "合同有效",
                     },
                   ],
-                  missedPoints: [],
                   answerMarks: [
                     {
-                      id: "mark_correct_without_score",
-                      highlight: "åˆåŒæœ‰æ•ˆ",
-                      comment: "è¿™ä¸€ç‚¹ç­”åˆ°äº†",
-                      status: "correct",
-                      score: null,
+                      id: "mark_scored_directly",
+                      highlight: "合同有效",
+                      comment: "这一点答到了。",
+                      status: "score",
+                      score: 3,
                     },
                   ],
                 },
@@ -1993,9 +2091,212 @@ test("aiReviewMockExamRecord upgrades positive correct marks to scored marks", a
   }
 
   const normalizedReview = JSON.parse(savedAnswer.reviewJson);
-  const positiveMark = normalizedReview.subQuestions?.[0]?.answerMarks?.find((item) => item.status === "score");
-  assert.equal(Boolean(positiveMark), true);
+  const positiveMark = normalizedReview.subQuestions?.[0]?.answerMarks?.find((item) => item.id === "mark_scored_directly");
+  assert.equal(positiveMark?.status, "score");
   assert.equal(positiveMark?.score, 3);
+  assert.equal(positiveMark?.highlight, "合同有效");
+});
+
+test("aiReviewMockExamRecord tightens loose multi-hit scoring", async () => {
+  const question = createQuestion({
+    id: "subjective_ai_loose_hit_1",
+    type: "subjective_case",
+    stem: "请分析发起人责任。",
+    score: 5,
+    correctAnswerJson: "[]",
+    options: [],
+    questionMetaJson: JSON.stringify({
+      subQuestions: [
+        {
+          id: "sq_ai_loose_hit_1",
+          title: "问题(1)",
+          placeholder: "请作答",
+          rubricPoints: [
+            {
+              id: "point_loose_hit_1",
+              title: "可以向发起人主张责任",
+              score: 2,
+              keywords: ["可以", "可向发起人主张"],
+            },
+            {
+              id: "point_loose_hit_2",
+              title: "发起人以个人名义签约",
+              score: 1,
+              keywords: ["发起人以个人名义订立购买合同"],
+            },
+            {
+              id: "point_loose_hit_3",
+              title: "相对人享有选择权",
+              score: 1,
+              keywords: ["债权人可向成立后的公司或发起人主张债权"],
+            },
+            {
+              id: "point_loose_hit_4",
+              title: "公司成立后仍可向发起人主张",
+              score: 1,
+              keywords: ["公司可向作为发起人的高某主张"],
+            },
+          ],
+        },
+      ],
+    }),
+  });
+
+  let savedAnswer = {
+    id: "answer_ai_loose_hit_1",
+    questionId: question.id,
+    answerJson: JSON.stringify({
+      sq_ai_loose_hit_1: "发起人以个人名义订立购买合同。",
+    }),
+    reviewJson: null,
+    score: 0,
+  };
+
+  let savedRecord = {
+    id: "record_ai_loose_hit_1",
+    status: "submitted",
+    totalScore: 0,
+    reviewedAt: null,
+    paper: {
+      id: "paper_ai_loose_hit_1",
+      code: "paper_ai_loose_hit_1",
+      title: "AI Loose Hit Paper",
+      phase: "主观题",
+      totalScore: 5,
+      passScore: 3,
+      questions: [question],
+    },
+    answers: [savedAnswer],
+    user: { id: "user_ai_loose_hit_1", phone: "13800000017" },
+  };
+
+  const fakeDb = {
+    $transaction: async (callback) =>
+      callback({
+        mockExamRecord: {
+          findUnique: async () => savedRecord,
+          update: async ({ data }) => {
+            savedRecord = {
+              ...savedRecord,
+              totalScore: data.totalScore,
+              reviewedAt: data.reviewedAt,
+            };
+            return savedRecord;
+          },
+        },
+        mockExamAnswer: {
+          update: async ({ data }) => {
+            savedAnswer = {
+              ...savedAnswer,
+              score: data.score,
+              reviewJson: data.reviewJson,
+            };
+            savedRecord = {
+              ...savedRecord,
+              answers: [savedAnswer],
+            };
+            return savedAnswer;
+          },
+        },
+      }),
+  };
+
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              subQuestions: [
+                {
+                  id: "sq_ai_loose_hit_1",
+                  score: 5,
+                  reviewComment: "你这道题只写到了一句事实，理由层次并没有展开。",
+                  missedPoints: [],
+                  rubricPoints: [
+                    {
+                      id: "point_loose_hit_1",
+                      title: "可以向发起人主张责任",
+                      score: 2,
+                      description: "",
+                      keywords: ["可以", "可向发起人主张"],
+                      hit: false,
+                      awardedScore: 0,
+                      matchedText: "",
+                    },
+                    {
+                      id: "point_loose_hit_2",
+                      title: "发起人以个人名义签约",
+                      score: 1,
+                      description: "",
+                      keywords: ["发起人以个人名义订立购买合同"],
+                      hit: true,
+                      awardedScore: 1,
+                      matchedText: "发起人以个人名义订立购买合同",
+                    },
+                    {
+                      id: "point_loose_hit_3",
+                      title: "相对人享有选择权",
+                      score: 1,
+                      description: "",
+                      keywords: ["债权人可向成立后的公司或发起人主张债权"],
+                      hit: true,
+                      awardedScore: 1,
+                      matchedText: "发起人以个人名义订立购买合同",
+                    },
+                    {
+                      id: "point_loose_hit_4",
+                      title: "公司成立后仍可向发起人主张",
+                      score: 1,
+                      description: "",
+                      keywords: ["公司可向作为发起人的高某主张"],
+                      hit: true,
+                      awardedScore: 1,
+                      matchedText: "发起人以个人名义订立购买合同",
+                    },
+                  ],
+                  answerMarks: [
+                    {
+                      id: "mark_loose_hit_1",
+                      highlight: "发起人以个人名义订立购买合同",
+                      comment: "命中了多个点。",
+                      status: "score",
+                      score: 3,
+                    },
+                  ],
+                },
+              ],
+            }),
+          },
+        },
+      ],
+    }),
+  });
+
+  try {
+    await aiReviewMockExamRecord({
+      db: fakeDb,
+      recordId: savedRecord.id,
+      runtimeConfig: {
+        provider: "openai-compatible",
+        baseUrl: "https://example.com/v1",
+        apiKey: "test-key",
+        model: "test-model",
+        timeoutMs: 1000,
+      },
+    });
+  } finally {
+    global.fetch = originalFetch;
+  }
+
+  const normalizedReview = JSON.parse(savedAnswer.reviewJson);
+  const subQuestion = normalizedReview.subQuestions?.[0];
+  assert.equal(subQuestion?.score, 1);
+  assert.equal(subQuestion?.rubricPoints?.filter((item) => item.hit).length, 1);
+  assert.equal(subQuestion?.answerMarks?.filter((item) => item.status === "score").length, 1);
+  assert.equal(subQuestion?.answerMarks?.find((item) => item.status === "score")?.score, 1);
 });
 
 test("aiReviewMockExamRecord sends one AI request per subjective question with all subquestions", async () => {
@@ -2122,6 +2423,7 @@ test("aiReviewMockExamRecord sends one AI request per subjective question with a
                     reviewComment: "第一问完整。",
                     referenceAnswer: "第一问参考答案",
                     rubricGuidance: "第一问批改说明",
+                    missedPoints: [],
                     rubricPoints: [
                       {
                         id: "point_ai_batch_1",
@@ -2134,7 +2436,15 @@ test("aiReviewMockExamRecord sends one AI request per subjective question with a
                         matchedText: "第一问",
                       },
                     ],
-                    answerMarks: [],
+                    answerMarks: [
+                      {
+                        id: "mark_ai_batch_1",
+                        highlight: "第一问",
+                        comment: "这一问核心点答到了。",
+                        status: "score",
+                        score: 6,
+                      },
+                    ],
                   },
                   {
                     id: "sq_ai_batch_2",
@@ -2142,6 +2452,7 @@ test("aiReviewMockExamRecord sends one AI request per subjective question with a
                     reviewComment: "第二问完整。",
                     referenceAnswer: "第二问参考答案",
                     rubricGuidance: "第二问批改说明",
+                    missedPoints: [],
                     rubricPoints: [
                       {
                         id: "point_ai_batch_2",
@@ -2154,7 +2465,15 @@ test("aiReviewMockExamRecord sends one AI request per subjective question with a
                         matchedText: "第二问",
                       },
                     ],
-                    answerMarks: [],
+                    answerMarks: [
+                      {
+                        id: "mark_ai_batch_2",
+                        highlight: "第二问",
+                        comment: "这一问核心点答到了。",
+                        status: "score",
+                        score: 6,
+                      },
+                    ],
                   },
                 ],
               }),
@@ -2186,6 +2505,7 @@ test("aiReviewMockExamRecord sends one AI request per subjective question with a
   assert.equal(typeof requestPrompt, "string");
   assert.equal(requestPrompt.includes('"subQuestionId": "sq_ai_batch_1"'), true);
   assert.equal(requestPrompt.includes('"subQuestionId": "sq_ai_batch_2"'), true);
+  assert.equal(savedAnswer.score, 12);
 });
 
 test("aiReviewMockExamRecord does not skip short conclusion answers like 能 or 不能", async () => {

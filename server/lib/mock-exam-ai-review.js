@@ -8,6 +8,7 @@ const AI_REVIEW_MARK_COMMENT_MAX_LENGTH = 60;
 const SUBJECTIVE_REVIEW_MIN_MEANINGFUL_LENGTH = 6;
 const KEYWORD_SPLIT_PATTERN = /[\n,，、；;]/;
 const SENTENCE_SPLIT_PATTERN = /[。；;！!？?\n]/;
+const CLAUSE_SPLIT_PATTERN = /[，,、；;：:\n]/;
 const REVIEW_COMMENT_ACTION_HINT_PATTERN = /(补上|补出|写明|写清楚|展开|落到|扣到|带回|对应到|单独起一句|改的时候|回去改|更稳的写法|别只停在|先把|再把|最后把)/;
 const REVIEW_COMMENT_GENERIC_PATTERNS = [
   /理由不足/u,
@@ -261,6 +262,48 @@ const normalizeAiReviewComment = (value, maxLength = AI_REVIEW_COMMENT_MAX_LENGT
 
   return `${sliceUnicodeText(clipped, Math.max(0, maxLength - 1)).trim()}…`;
 };
+const truncateNormalizedReviewText = (value, maxLength, cutoffMarkers) => {
+  const normalized = `${value ?? ""}`.trim();
+  if (!normalized) {
+    return "";
+  }
+
+  if (getUnicodeLength(normalized) <= maxLength) {
+    return normalized;
+  }
+
+  const clipped = sliceUnicodeText(normalized, maxLength);
+  const bestCutoff = cutoffMarkers.reduce((result, marker) => {
+    const index = clipped.lastIndexOf(marker);
+    return index > result ? index : result;
+  }, -1);
+
+  if (bestCutoff >= Math.floor(maxLength * 0.6)) {
+    return clipped.slice(0, bestCutoff + 1).trim();
+  }
+
+  return `${sliceUnicodeText(clipped, Math.max(0, maxLength - 1)).trim()}…`;
+};
+const normalizeReturnedAiReviewComment = (value, maxLength = AI_REVIEW_COMMENT_MAX_LENGTH) => {
+  const text = sanitizeReviewExposureText(normalizeMultilineText(value));
+  if (!text) {
+    return "";
+  }
+
+  const paragraphs = text
+    .split(/\n{2,}/)
+    .map((paragraph) =>
+      paragraph
+        .split("\n")
+        .map((line) => line.replace(/\s+/g, " ").trim())
+        .filter(Boolean)
+        .join("\n"),
+    )
+    .filter(Boolean)
+    .slice(0, 3);
+
+  return truncateNormalizedReviewText(paragraphs.join("\n\n"), maxLength, ["。", "；", "！", "？", "\n"]);
+};
 export const humanizeAiReviewComment = (value) => {
   const normalized = normalizeAiReviewComment(value);
   if (!normalized) {
@@ -350,6 +393,12 @@ export const normalizeAiMarkComment = (value, maxLength = AI_REVIEW_MARK_COMMENT
 
   return `${sliceUnicodeText(clipped, Math.max(0, maxLength - 1)).trim()}…`;
 };
+const normalizeReturnedAiMarkComment = (value, maxLength = AI_REVIEW_MARK_COMMENT_MAX_LENGTH) =>
+  truncateNormalizedReviewText(
+    sanitizeReviewExposureText(normalizeText(value)).replace(/\s+/g, " ").trim(),
+    maxLength,
+    ["。", "；", "，"],
+  );
 
 const LEGACY_AI_REVIEW_PROMPT_TEMPLATE_PLACEHOLDERS = Object.freeze({
   gradingPrinciples: "{{æ‰¹æ”¹åŽŸåˆ™}}",
@@ -458,6 +507,165 @@ const normalizeSubjectiveAnswerForDetection = (value) =>
   normalizeText(value)
     .replace(/[，,。！？；、\s]+/g, "")
     .trim();
+const buildTextRanges = (value, separatorPattern) => {
+  const source = `${value ?? ""}`;
+  if (!source) {
+    return [];
+  }
+
+  const ranges = [];
+  let start = 0;
+
+  for (let index = 0; index < source.length; index += 1) {
+    if (!separatorPattern.test(source[index])) {
+      continue;
+    }
+
+    const segment = source.slice(start, index);
+    if (normalizeText(segment)) {
+      ranges.push({ start, end: index, text: segment });
+    }
+    start = index + 1;
+  }
+
+  const tail = source.slice(start);
+  if (normalizeText(tail)) {
+    ranges.push({ start, end: source.length, text: tail });
+  }
+
+  return ranges.length > 0 ? ranges : normalizeText(source) ? [{ start: 0, end: source.length, text: source }] : [];
+};
+const findRangeIndexBySpan = (ranges, start, end) => ranges.findIndex((range) => start < range.end && end > range.start);
+const sumRubricAwardedScores = (rubricPoints) =>
+  (Array.isArray(rubricPoints) ? rubricPoints : []).reduce((sum, point) => sum + Math.max(0, Number(point?.awardedScore ?? 0) || 0), 0);
+const compareHitEvidencePriority = (left, right) =>
+  right.keywordStrength - left.keywordStrength ||
+  right.evidenceLength - left.evidenceLength ||
+  left.awardedScore - right.awardedScore ||
+  left.sortOrder - right.sortOrder ||
+  left.index - right.index;
+const tightenAiRubricPointHits = ({ rubricPoints, answerText }) => {
+  const normalizedAnswer = normalizeText(answerText);
+  const normalizedPoints = Array.isArray(rubricPoints) ? rubricPoints : [];
+  if (!normalizedAnswer || normalizedPoints.length === 0) {
+    return normalizedPoints;
+  }
+
+  const sentenceRanges = buildTextRanges(normalizedAnswer, SENTENCE_SPLIT_PATTERN);
+  const clauseRanges = buildTextRanges(normalizedAnswer, CLAUSE_SPLIT_PATTERN);
+  const compactAnswerLength = getUnicodeLength(normalizeSubjectiveAnswerForDetection(normalizedAnswer));
+  const positiveCandidates = normalizedPoints
+    .map((point, index) => {
+      if (!point?.hit || !(Number(point?.awardedScore ?? 0) > 0)) {
+        return null;
+      }
+
+      const evidence =
+        findAnswerHighlight(
+          normalizedAnswer,
+          point?.matchedText ||
+            normalizeKeywords(point?.keywords).sort((left, right) => right.length - left.length)[0] ||
+            point?.title ||
+            "",
+        ) || "";
+      if (!evidence) {
+        return {
+          index,
+          keepable: false,
+        };
+      }
+
+      const evidenceStart = normalizedAnswer.indexOf(evidence);
+      const evidenceEnd = evidenceStart >= 0 ? evidenceStart + evidence.length : -1;
+      const keywordStrength = Math.max(
+        0,
+        ...normalizeKeywords(point?.keywords).map((keyword) => getUnicodeLength(findAnswerHighlight(normalizedAnswer, keyword))),
+      );
+
+      return {
+        index,
+        keepable: evidenceStart >= 0 && evidenceEnd > evidenceStart,
+        evidence,
+        evidenceKey: normalizeSubjectiveAnswerForDetection(evidence),
+        evidenceLength: getUnicodeLength(evidence),
+        awardedScore: Math.max(0, Number(point?.awardedScore ?? 0) || 0),
+        sortOrder: Number(point?.sortOrder ?? index + 1),
+        keywordStrength,
+        clauseIndex: evidenceStart >= 0 ? findRangeIndexBySpan(clauseRanges, evidenceStart, evidenceEnd) : -1,
+      };
+    })
+    .filter(Boolean);
+
+  const keepByEvidence = new Map();
+  positiveCandidates.forEach((candidate) => {
+    if (!candidate.keepable || !candidate.evidenceKey) {
+      return;
+    }
+
+    const previous = keepByEvidence.get(candidate.evidenceKey);
+    if (!previous || compareHitEvidencePriority(candidate, previous) < 0) {
+      keepByEvidence.set(candidate.evidenceKey, candidate);
+    }
+  });
+
+  const dedupedCandidates = Array.from(keepByEvidence.values());
+  const maxPositiveHitCount =
+    sentenceRanges.length <= 1
+      ? clauseRanges.length <= 1 && compactAnswerLength <= 36
+        ? 1
+        : clauseRanges.length <= 2 && compactAnswerLength <= 72
+          ? 2
+          : Number.POSITIVE_INFINITY
+      : Number.POSITIVE_INFINITY;
+
+  const keepIndexes = new Set();
+  if (Number.isFinite(maxPositiveHitCount)) {
+    const bestCandidateByClause = new Map();
+    dedupedCandidates.forEach((candidate) => {
+      const clauseKey = candidate.clauseIndex >= 0 ? `clause_${candidate.clauseIndex}` : `index_${candidate.index}`;
+      const previous = bestCandidateByClause.get(clauseKey);
+      if (!previous || compareHitEvidencePriority(candidate, previous) < 0) {
+        bestCandidateByClause.set(clauseKey, candidate);
+      }
+    });
+
+    const prioritizedCandidates = Array.from(bestCandidateByClause.values()).sort((left, right) => {
+      if (left.clauseIndex !== right.clauseIndex) {
+        return left.clauseIndex - right.clauseIndex;
+      }
+      return compareHitEvidencePriority(left, right);
+    });
+
+    prioritizedCandidates.slice(0, maxPositiveHitCount).forEach((candidate) => {
+      keepIndexes.add(candidate.index);
+    });
+  } else {
+    dedupedCandidates.forEach((candidate) => {
+      keepIndexes.add(candidate.index);
+    });
+  }
+
+  return normalizedPoints.map((point, index) => {
+    const candidate = positiveCandidates.find((item) => item.index === index) ?? null;
+    if (!candidate) {
+      return point;
+    }
+
+    if (!candidate.keepable || !keepIndexes.has(index)) {
+      return {
+        ...point,
+        hit: false,
+        awardedScore: 0,
+        matchedText: "",
+      };
+    }
+
+    return {
+      ...point,
+      matchedText: candidate.evidence,
+    };
+  });
+};
 const isConclusionLikeSubjectiveAnswer = (value) => {
   const raw = normalizeText(value);
   if (!raw) {
@@ -720,9 +928,9 @@ const normalizeAiReviewResponsePayload = (value) => {
       referenceAnswer: item?.referenceAnswer ?? item?.reference_answer ?? "",
       abilityLabel: item?.abilityLabel ?? item?.ability_label ?? "",
       rubricGuidance: item?.rubricGuidance ?? item?.rubric_guidance ?? "",
-      rubricPoints: Array.isArray(item?.rubricPoints) ? item.rubricPoints : Array.isArray(item?.rubric_points) ? item.rubric_points : [],
-      missedPoints: Array.isArray(item?.missedPoints) ? item.missedPoints : Array.isArray(item?.missed_points) ? item.missed_points : [],
-      answerMarks: Array.isArray(item?.answerMarks) ? item.answerMarks : Array.isArray(item?.answer_marks) ? item.answer_marks : [],
+      rubricPoints: Array.isArray(item?.rubricPoints) ? item.rubricPoints : item?.rubric_points,
+      missedPoints: Array.isArray(item?.missedPoints) ? item.missedPoints : item?.missed_points,
+      answerMarks: Array.isArray(item?.answerMarks) ? item.answerMarks : item?.answer_marks,
     })),
   };
 };
@@ -811,53 +1019,6 @@ const normalizeMissedPoints = (value) =>
       score: item.score,
     }));
 
-const mergeAiRubricPointsWithAllocation = ({ aiRubricPoints, allocationRubricPoints }) => {
-  const normalizedAi = normalizeAiRubricPoints(aiRubricPoints);
-  const normalizedAllocation = normalizeAiRubricPoints(
-    (Array.isArray(allocationRubricPoints) ? allocationRubricPoints : []).map((point, index) => ({
-      ...point,
-      sortOrder: Number(point?.sortOrder ?? index + 1),
-      hit: false,
-      awardedScore: 0,
-      matchedText: "",
-    })),
-  );
-
-  if (normalizedAllocation.length === 0) {
-    return normalizedAi;
-  }
-
-  const usedAiIndexes = new Set();
-  const merged = normalizedAllocation.map((basePoint) => {
-    const matchedIndex = normalizedAi.findIndex((candidate, index) => {
-      if (usedAiIndexes.has(index)) {
-        return false;
-      }
-
-      return (basePoint.id && candidate.id && basePoint.id === candidate.id) || (basePoint.title && candidate.title && basePoint.title === candidate.title);
-    });
-
-    if (matchedIndex < 0) {
-      return basePoint;
-    }
-
-    usedAiIndexes.add(matchedIndex);
-    const matchedPoint = normalizedAi[matchedIndex];
-
-    return {
-      ...basePoint,
-      description: matchedPoint.description || basePoint.description,
-      keywords: Array.isArray(matchedPoint.keywords) && matchedPoint.keywords.length > 0 ? matchedPoint.keywords : basePoint.keywords,
-      hit: matchedPoint.hit,
-      awardedScore: matchedPoint.awardedScore,
-      matchedText: matchedPoint.matchedText || "",
-    };
-  });
-
-  const extraAiPoints = normalizedAi.filter((_item, index) => !usedAiIndexes.has(index));
-  return [...merged, ...extraAiPoints].sort((left, right) => Number(left.sortOrder ?? 0) - Number(right.sortOrder ?? 0));
-};
-
 const normalizeAnswerMarks = (value) => {
   if (!Array.isArray(value)) {
     return [];
@@ -881,7 +1042,7 @@ const normalizeAnswerMarks = (value) => {
       return {
         id: `${item?.id ?? item?.markId ?? item?.mark_id ?? `mark_${index + 1}`}`.trim(),
         highlight: `${item?.highlight ?? item?.selectedText ?? item?.selected_text ?? item?.text ?? ""}`.trim(),
-        comment: normalizeAiMarkComment(item?.comment ?? item?.reviewComment ?? item?.review_comment ?? item?.remark ?? ""),
+        comment: normalizeReturnedAiMarkComment(item?.comment ?? item?.reviewComment ?? item?.review_comment ?? item?.remark ?? ""),
         status: normalizedStatus,
         score: (normalizedStatus === "score" || normalizedStatus === "correct") && Number.isFinite(rawScore) ? rawScore : null,
         start: Number.isInteger(rawStart) && rawStart >= 0 ? rawStart : null,
@@ -898,6 +1059,38 @@ const hasPositiveMarkWithScore = (marks) =>
       Number.isFinite(Number(mark?.score)) &&
       Number(mark?.score ?? 0) > 0,
   );
+const syncPositiveAnswerMarkScoresWithRubricPoints = ({ answerMarks, rubricPoints }) => {
+  const normalizedMarks = Array.isArray(answerMarks) ? answerMarks : [];
+  const positiveMarks = normalizedMarks.filter((mark) => mark?.status === "score" || mark?.status === "correct");
+
+  if (positiveMarks.length === 0) {
+    return normalizedMarks;
+  }
+
+  const awardedScores = (Array.isArray(rubricPoints) ? rubricPoints : [])
+    .filter((point) => point?.hit && Number(point?.awardedScore ?? 0) > 0)
+    .map((point) => Math.max(0, Number(point?.awardedScore ?? 0) || 0));
+  const totalAwardedScore = awardedScores.reduce((sum, score) => sum + score, 0);
+  const totalPositiveScore = positiveMarks.reduce((sum, mark) => sum + Math.max(0, Number(mark?.score ?? 0) || 0), 0);
+
+  if (positiveMarks.length === 0 || totalPositiveScore === totalAwardedScore) {
+    return normalizedMarks;
+  }
+
+  const nextPositiveScores = [...awardedScores];
+  return normalizedMarks.map((mark) => {
+    if (mark?.status !== "score" && mark?.status !== "correct") {
+      return mark;
+    }
+
+    const nextScore = nextPositiveScores.length > 0 ? nextPositiveScores.shift() : 0;
+    return {
+      ...mark,
+      status: "score",
+      score: nextScore,
+    };
+  });
+};
 
 const escapeRegExp = (value) => `${value ?? ""}`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -1029,132 +1222,6 @@ const normalizeAnswerMarksAgainstAnswer = (value, answerText) =>
       })
       .filter(Boolean),
   );
-
-const mergeAiAnswerMarks = ({ existingMarks, answerText, rubricPoints, reviewComment }) => {
-  const fallbackMarks = buildFallbackAiAnswerMarks({
-    answerText,
-    rubricPoints,
-    reviewComment,
-  });
-
-  if (existingMarks.length === 0) {
-    return fallbackMarks;
-  }
-
-  if (existingMarks.some((item) => item.status === "wrong")) {
-    return dedupeAnswerMarks(existingMarks);
-  }
-
-  const fallbackWrongMarks = fallbackMarks.filter((item) => item.status === "wrong");
-  if (fallbackWrongMarks.length === 0) {
-    return dedupeAnswerMarks(existingMarks);
-  }
-
-  return dedupeAnswerMarks([...existingMarks, ...fallbackWrongMarks]);
-};
-
-const canAutoRepairAnswerMarks = ({ answerMarks, answerText, score, maxScore }) => {
-  const safeScore = Number(score ?? 0);
-  const safeMaxScore = Number(maxScore ?? 0);
-  const normalizedMarks = normalizeAnswerMarks(answerMarks);
-
-  if (safeScore > 0) {
-    const hasPositiveMark = hasPositiveMarkWithScore(normalizedMarks);
-    if (!hasPositiveMark && answerText.trim()) {
-      return true;
-    }
-  }
-
-  if (safeScore < safeMaxScore) {
-    const hasWrongMark = normalizedMarks.some((mark) => mark.status === "wrong");
-    if (!hasWrongMark && answerText.trim()) {
-      return true;
-    }
-  }
-
-  return false;
-};
-
-const ensureWrongMarkForPartialScore = ({ marks, answerText, reviewComment, score, maxScore }) => {
-  return dedupeAnswerMarks(marks);
-};
-
-const ensurePositiveMarkForAwardedScore = ({ marks, answerText, rubricPoints, score }) => {
-  const safeScore = Number(score ?? 0);
-  if (!(safeScore > 0)) {
-    return dedupeAnswerMarks(marks);
-  }
-
-  const normalizedMarks = marks.map((item) =>
-    item.status === "score" || item.status === "correct"
-      ? {
-          ...item,
-          status: "score",
-        }
-      : item,
-  );
-
-  if (hasPositiveMarkWithScore(normalizedMarks)) {
-    return dedupeAnswerMarks(normalizedMarks);
-  }
-
-  const hitPoint = (Array.isArray(rubricPoints) ? rubricPoints : []).find(
-    (point) => point?.hit && (Number(point?.awardedScore ?? 0) > 0 || Number(point?.score ?? 0) > 0),
-  );
-
-  const fallbackHighlight = findAnswerHighlight(
-    answerText,
-    hitPoint?.matchedText ||
-      hitPoint?.title ||
-      (Array.isArray(hitPoint?.keywords) ? hitPoint.keywords[0] : "") ||
-      answerText.split(SENTENCE_SPLIT_PATTERN).find((item) => item.trim()) ||
-      answerText.slice(0, 24),
-  );
-
-  if (!fallbackHighlight) {
-    return dedupeAnswerMarks(normalizedMarks);
-  }
-
-  return dedupeAnswerMarks([
-    {
-      id: "ai_forced_score_1",
-      highlight: fallbackHighlight,
-      comment: normalizeAiMarkComment(hitPoint?.title ? `这一点答到了“${hitPoint.title}”，应给分。` : "这一处内容命中了得分点，应给分。"),
-      status: "score",
-      score: safeScore,
-    },
-    ...normalizedMarks,
-  ]);
-};
-
-const buildFallbackAiAnswerMarks = ({ answerText, rubricPoints, reviewComment }) => {
-  const marks = [];
-
-  rubricPoints.forEach((point, index) => {
-    if (!point.hit) {
-      return;
-    }
-
-    const highlight = findAnswerHighlight(answerText, point.matchedText || point.title || (point.keywords ?? [])[0] || "");
-    if (!highlight) {
-      return;
-    }
-
-    marks.push({
-      id: `ai_score_${index + 1}`,
-      highlight,
-      comment: normalizeAiMarkComment(point.title || "命中评分点"),
-      status: "score",
-      score: Number(point.awardedScore ?? 0) || null,
-    });
-  });
-
-  if (marks.length > 0) {
-    return dedupeAnswerMarks(marks);
-  }
-
-  return [];
-};
 
 const isSubjectiveQuestion = (question) => `${question?.type ?? ""}`.trim() === subjectiveQuestionType;
 
@@ -1731,12 +1798,14 @@ const buildAiPromptV2 = ({ question, answer, allocations, runtimeConfig }) => {
     "11.1 局部评语不要写成“建议后面的修改为……”“建议改成……”这类固定模板，直接指出这一处哪里错了、漏了什么、该往哪一层补。",
     "12. 只要某小问得了分，answerMarks 中就必须出现正向标注，不能只给 wrong。",
     "13. 如果命中了多个采分点，尽量分别标出多个正向命中位置，让前端可以显示多个对号/加分点。",
+    "13.0 但不能把一句非常笼统、没有展开层次的短句，同时判成多个彼此独立的理由采分点。尤其是“只写一句结论”或“只写一句概括性判断”时，通常只能覆盖结论点，不能顺带拿到多个理由点。",
     "13.1 answerMarks 的 highlight 必须尽量短、尽量准，优先截取能直接承载该采分点或错误点的最小必要原文片段，一般以词组、短句为主，不要动不动整句整段都划进去。",
     "13.2 一个 answerMark 只表达一个局部判断：要么对应一个命中的采分点，要么对应一个具体错误/遗漏，不要把两个以上的得分点或错误点合并到同一条划线里。",
     "13.3 如果学生一句话里同时写了多个层次，只有其中一部分命中采分点时，只截取命中的那一小段原文，不要把前后无关内容一起划进去。",
     "13.4 如果学生某一处表述错误，wrong 标注要尽量落在出错的那个词、短语或就近短句上，不要为了方便直接划整句或整段。",
     "13.5 不要把 answerMarks.highlight 写成概括后的意思、标准答案里的说法，必须是学生原答案里肉眼能直接找到的连续原文。",
     "13.6 能用 matchedText 精准对应的，就优先围绕 matchedText 附近取 highlight；不要把 matchedText 扩成很长一段话。",
+    "13.7 如果两个 rubricPoint 实际引用的是同一句、同一短语、同一小段原文，而这段原文本身并没有分别展开两个独立理由，则只能保留其中最核心、最直接的那个得分点，不能重复给分。",
     "14. referenceAnswer、rubricGuidance、rubricPoints 返回时应尽量与本题批改依据保持一致，便于人工复核。",
     "15. missedPoints 必须由你根据本小问实际失分情况直接输出，不允许让前端自己根据 rubricPoints 再去推算。",
     "16. missedPoints 只表示学生没有答到的点；如果学生写了但写错、答偏、论证错误，这属于错误点，不属于遗漏点。",
@@ -1760,6 +1829,7 @@ const buildAiPromptV2 = ({ question, answer, allocations, runtimeConfig }) => {
     "如果一句话里只有局部内容命中采分点或局部内容出错，只截取那一小段连续原文，不要把整句都划进去。",
     "wrong 标注应尽量落在出错词语、出错短句或最靠近错误的那一段原文上，不要用很长的 highlight 去笼统表示“这段有问题”。",
     "能用 matchedText 精准定位的，highlight 就围绕 matchedText 取最小必要原文，不要额外扩写前后无关文字。",
+    "如果学生只是写了一句很短的概括性结论、身份事实或抽象判断，而没有分别展开多个理由层次，这一句通常只能支持 1 个最直接的得分点，不能同时命中多个彼此独立的理由点。",
     "正向命中采分点时必须使用 status=score，并填写对应得分。",
     "如果只是漏写了某个采分点、理由层次或本案分析，没有在答案里出现对应错误表述，则不要为了提示遗漏而强行生成 wrong 标注；这类内容只写进 missedPoints 和 reviewComment。",
     "只有当学生原答案里出现了明确的错误结论、错误判断、错误表述或答偏内容时，才生成 status=wrong 的 answerMarks，并在 comment 里指出错在哪里。",
@@ -1924,7 +1994,7 @@ const assertValidAiSubQuestionResult = ({ item, allocation, fallbackTitle, fallb
     throw createHttpError(`批改返回的小问分数不合法：${fallbackTitle || allocation?.id || "unknown"}`, 502);
   }
 
-  const reviewComment = humanizeAiReviewComment(item?.reviewComment);
+  const reviewComment = normalizeReturnedAiReviewComment(item?.reviewComment);
   if (!reviewComment) {
     throw createHttpError(`批改返回缺少小问总点评：${fallbackTitle || allocation?.id || "unknown"}`, 502);
   }
@@ -1943,68 +2013,34 @@ const assertValidAiSubQuestionResult = ({ item, allocation, fallbackTitle, fallb
   if (rawScore >= maxScore && normalizedMissedPoints.length > 0) {
     throw createHttpError(`批改返回的遗漏点与满分结果不一致：${fallbackTitle || allocation?.id || "unknown"}`, 502);
   }
+  if (!Array.isArray(item?.answerMarks)) {
+    throw createHttpError(`批改返回缺少局部标注：${fallbackTitle || allocation?.id || "unknown"}`, 502);
+  }
   const rawAnswerMarks = normalizeAnswerMarks(item?.answerMarks);
   const hasPositiveMark = hasPositiveMarkWithScore(rawAnswerMarks);
 
-  if (rawScore > 0 && !hasPositiveMark && !canAutoRepairAnswerMarks({ answerMarks: rawAnswerMarks, answerText: fallbackAnswerText, score: rawScore, maxScore })) {
+  if (rawScore > 0 && !hasPositiveMark) {
     throw createHttpError(`批改返回缺少正向标注：${fallbackTitle || allocation?.id || "unknown"}`, 502);
   }
 };
 
 const normalizeAiSubQuestionResult = ({ item, allocation, fallbackAnswerText, fallbackTitle }) => {
   assertValidAiSubQuestionResult({ item, allocation, fallbackTitle, fallbackAnswerText });
-  const normalizedRubricPoints = mergeAiRubricPointsWithAllocation({
-    aiRubricPoints: item?.rubricPoints,
-    allocationRubricPoints: allocation?.rubricPoints,
+  const normalizedRubricPoints = tightenAiRubricPointHits({
+    rubricPoints: normalizeAiRubricPoints(item?.rubricPoints),
+    answerText: fallbackAnswerText,
   });
-  const normalizedScore = clampInteger(item?.score ?? 0, 0, Number(allocation.maxScore ?? 0));
+  const normalizedScore = clampInteger(sumRubricAwardedScores(normalizedRubricPoints), 0, Number(allocation.maxScore ?? 0));
   const normalizedMissedPoints = normalizeMissedPoints(item?.missedPoints);
-  const normalizedReviewComment = finalizeAiReviewComment({
-    reviewComment: item?.reviewComment,
-    score: normalizedScore,
-    maxScore: Number(allocation.maxScore ?? 0),
-    title: fallbackTitle,
-    rubricPoints: normalizedRubricPoints,
-  });
+  const normalizedReviewComment = normalizeReturnedAiReviewComment(item?.reviewComment);
   const rawAnswerMarks = normalizeAnswerMarks(item?.answerMarks);
   const normalizedAnswerMarksAgainstAnswer = normalizeAnswerMarksAgainstAnswer(item?.answerMarks, fallbackAnswerText);
-  const normalizedAnswerMarks =
-    rawAnswerMarks.length === 0
-      ? mergeAiAnswerMarks({
-          existingMarks: [],
-          answerText: fallbackAnswerText,
-          rubricPoints: normalizedRubricPoints,
-          reviewComment: normalizedReviewComment,
-        })
-      : normalizedAnswerMarksAgainstAnswer.length === rawAnswerMarks.length
-        ? normalizedAnswerMarksAgainstAnswer
-        : mergeAiAnswerMarks({
-            existingMarks: normalizedAnswerMarksAgainstAnswer,
-            answerText: fallbackAnswerText,
-            rubricPoints: normalizedRubricPoints,
-            reviewComment: normalizedReviewComment,
-          });
-  if (normalizedAnswerMarks.length === 0) {
+  if (normalizedAnswerMarksAgainstAnswer.length !== rawAnswerMarks.length) {
     throw createHttpError(`批改返回的局部标注无法完整对应到考生原文：${fallbackTitle || allocation?.id || "unknown"}`, 502);
   }
-  const completedAnswerMarks = ensureWrongMarkForPartialScore({
-    marks: normalizedAnswerMarks,
-    answerText: fallbackAnswerText,
-    reviewComment: normalizedReviewComment,
-    score: normalizedScore,
-    maxScore: Number(allocation.maxScore ?? 0),
-  });
-  const finalizedAnswerMarks = ensurePositiveMarkForAwardedScore({
-    marks: completedAnswerMarks,
-    answerText: fallbackAnswerText,
+  const normalizedAnswerMarks = syncPositiveAnswerMarkScoresWithRubricPoints({
+    answerMarks: normalizedAnswerMarksAgainstAnswer,
     rubricPoints: normalizedRubricPoints,
-    score: normalizedScore,
-  });
-  const reconciledAnswerMarks = reconcileConclusionLikeAnswerMarks({
-    marks: finalizedAnswerMarks,
-    answerText: fallbackAnswerText,
-    score: normalizedScore,
-    maxScore: Number(allocation.maxScore ?? 0),
   });
 
   return {
@@ -2022,7 +2058,7 @@ const normalizeAiSubQuestionResult = ({ item, allocation, fallbackAnswerText, fa
     reviewProvider: "openai-compatible",
     abilityLabel: sanitizeReviewExposureText(normalizeText(item?.abilityLabel)) || sanitizeReviewExposureText(allocation.abilityLabel) || fallbackTitle,
     missedPoints: normalizedMissedPoints,
-    answerMarks: reconciledAnswerMarks,
+    answerMarks: normalizedAnswerMarks,
     rubricGuidance: sanitizeReviewExposureText(normalizeText(item?.rubricGuidance)) || sanitizeReviewExposureText(allocation.rubricGuidance) || "",
     rubricPoints: normalizedRubricPoints,
     skippedReview: false,
@@ -2112,7 +2148,6 @@ const buildOpenAiCompatibleReviewJson = async ({ runtimeConfig, question, answer
     reviewVoiceDurationSeconds: Number(currentReviewJson?.reviewVoiceDurationSeconds ?? 0) || 0,
     feedbackStars: Number(currentReviewJson?.feedbackStars ?? 0) || 0,
     feedbackSubmittedAt: currentReviewJson?.feedbackSubmittedAt ?? null,
-    missedPoints: [],
     subQuestions,
   };
 };
@@ -2321,14 +2356,16 @@ export const aiReviewMockExamRecord = async ({
 
     return readRecord();
   } catch (error) {
-    await db.mockExamRecord.update({
-      where: { id: record.id },
-      data: {
-        reviewWorkflowStatus: initialWorkflowStatus,
-        aiReviewFinishedAt: null,
-        lastAiReviewError: error instanceof Error ? error.message : "AI批改失败",
-      },
-    });
+    if (typeof db?.mockExamRecord?.update === "function") {
+      await db.mockExamRecord.update({
+        where: { id: record.id },
+        data: {
+          reviewWorkflowStatus: initialWorkflowStatus,
+          aiReviewFinishedAt: null,
+          lastAiReviewError: error instanceof Error ? error.message : "AI批改失败",
+        },
+      });
+    }
     throw error;
   }
 };

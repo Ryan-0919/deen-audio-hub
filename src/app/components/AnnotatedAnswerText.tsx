@@ -120,6 +120,11 @@ const findAllOccurrences = (value: string, highlight: string) => {
   return matches;
 };
 
+const getPositiveHighlightMinLength = (highlight: string) => {
+  const compactHighlight = highlight.replace(/\s+/g, "");
+  return compactHighlight.length <= 1 ? 1 : 2;
+};
+
 const carveNonOverlappingRange = ({
   value,
   candidate,
@@ -220,9 +225,10 @@ const resolveMarkPositions = (value: string, marks: ResolvedMark[]) => {
     let resolvedCandidate = null;
 
     if (isPositiveMark) {
+      const minHighlightLength = getPositiveHighlightMinLength(item.mark.highlight);
       const trimmedCandidates = item.candidates
         .map((candidate) => trimRange(value, candidate.start, candidate.end))
-        .filter((candidate) => candidate.end - candidate.start >= 2);
+        .filter((candidate) => candidate.end - candidate.start >= minHighlightLength);
       const occurrenceIndex = usedPositiveOccurrenceCount.get(item.mark.highlight) ?? 0;
       resolvedCandidate = trimmedCandidates[occurrenceIndex] ?? trimmedCandidates[trimmedCandidates.length - 1] ?? null;
       usedPositiveOccurrenceCount.set(item.mark.highlight, occurrenceIndex + 1);

@@ -1,6 +1,6 @@
 import { formatDateTime } from "./time.js";
 import { getReadableObjectUrl } from "./upload.js";
-import { humanizeAiReviewComment, normalizeAiMarkComment, sanitizeReviewExposureText } from "./mock-exam-ai-review.js";
+import { sanitizeReviewExposureText } from "./mock-exam-ai-review.js";
 import { normalizeDisplayText } from "./text.js";
 
 const DEFAULT_OBJECTIVE_PAPER_COVER = "/mock-exam/default-objective-cover.svg";
@@ -683,7 +683,7 @@ const serializeQuestion = (question, answer, revealAnswer) => {
         wordCount: text.length,
         score: normalizedSubQuestionScore,
         maxScore: Number(reviewItem?.maxScore ?? item.maxScore ?? 0),
-        reviewComment: humanizeAiReviewComment(reviewItem?.reviewComment ?? ""),
+        reviewComment: sanitizeReviewExposureText(normalizeDisplayText(`${reviewItem?.reviewComment ?? ""}`.trim())),
         referenceAnswer: sanitizeReviewExposureText(`${reviewItem?.referenceAnswer ?? item.referenceAnswer ?? ""}`.trim()),
         reviewSource: reviewItem?.reviewSource ?? reviewSource,
         reviewProvider: subQuestionReviewProvider || undefined,
@@ -704,10 +704,7 @@ const serializeQuestion = (question, answer, revealAnswer) => {
         skippedReviewReason: `${reviewItem?.skippedReviewReason ?? ""}`.trim(),
         answerMarks: normalizeAnswerMarks(reviewItem?.answerMarks).map((mark) => ({
           ...mark,
-          comment:
-            mark.status === "wrong"
-              ? normalizeAiMarkComment(mark.comment ?? "")
-              : sanitizeReviewExposureText(normalizeDisplayText(`${mark.comment ?? ""}`.trim())),
+          comment: sanitizeReviewExposureText(normalizeDisplayText(`${mark.comment ?? ""}`.trim())),
         })),
       };
     }),
