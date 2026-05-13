@@ -85,11 +85,12 @@ const buildPseudoUploadFile = ({ buffer, fileName, mimeType }) => ({
   size: buffer.length,
 });
 
-const buildQuestionMetaJson = (subQuestions) =>
+const buildQuestionMetaJson = (seed) =>
   JSON.stringify({
+    title: seed.title,
     sectionLabel,
     sectionDescription,
-    subQuestions: subQuestions.map((subQuestion, subQuestionIndex) => ({
+    subQuestions: seed.subQuestions.map((subQuestion, subQuestionIndex) => ({
       id: `sub_${subQuestionIndex + 1}`,
       title: subQuestion.title,
       placeholder: "请在此输入本问答案。",
@@ -388,7 +389,7 @@ const uploadLessonAudio = async (sourceFilePath, fileName) => {
 };
 
 const upsertQuestionBankItem = async (folderId, seed, audio) => {
-  const questionMetaJson = buildQuestionMetaJson(seed.subQuestions);
+  const questionMetaJson = buildQuestionMetaJson(seed);
   const existing = await prisma.questionBankItem.findFirst({
     where: {
       folderId,

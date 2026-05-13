@@ -544,6 +544,7 @@ export interface QuestionBankItem {
   paperType: QuestionBankPaperType;
   questionType: MockExamQuestionType;
   questionTypeLabel: string;
+  title: string;
   stem: string;
   material: string;
   analysis: string;
@@ -564,6 +565,7 @@ export interface QuestionBankItem {
 export interface QuestionBankItemPayload {
   folderId: string;
   questionType: MockExamQuestionType;
+  title?: string;
   stem: string;
   material?: string;
   analysis?: string;

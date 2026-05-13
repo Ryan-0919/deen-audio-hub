@@ -95,6 +95,7 @@ const parseQuestionType = (value, paperType) => {
 };
 
 const buildSubjectiveMeta = (row, stem, rowIndex) => {
+  const title = getValue(row, ["标题", "题目标题", "title"]);
   const sectionLabel = getValue(row, ["题组名称", "题组", "sectionLabel"]) || "主观题";
   const sectionDescription = getValue(row, ["题组说明", "作答说明", "sectionDescription"]);
   const subQuestions = [];
@@ -122,6 +123,7 @@ const buildSubjectiveMeta = (row, stem, rowIndex) => {
   }
 
   return {
+    title,
     sectionLabel,
     sectionDescription,
     subQuestions,
@@ -268,6 +270,7 @@ const createInstructionRows = (paperType) => {
     return [
       ["字段", "填写说明"],
       ["题型", "固定填写“主观题”或 subjective_case，留空也会自动按主观题处理。"],
+      ["标题", "可选，题库列表展示标题，例：民法案例1。"],
       ["分值", "可选，默认 20。"],
       ["题干", "必填。"],
       ["材料", "可选，用于案例材料、背景说明。"],
@@ -296,6 +299,7 @@ const buildTemplateRows = (paperType) => {
     return [
       {
         题型: "主观题",
+        标题: "民法案例1",
         分值: 28,
         题干: "一、民法案例分析题。",
         材料: "甲公司与乙公司签订设备买卖合同，后因交付与瑕疵责任发生争议。",

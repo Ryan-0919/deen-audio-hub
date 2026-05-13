@@ -116,6 +116,7 @@ const normalizeSubjectiveSubQuestions = (items = [], stem = "") => {
 
 const parseQuestionMeta = (item) => {
   const raw = parseJsonSafely(item?.questionMetaJson, {});
+  const title = normalizeText(raw?.title);
   const sectionLabel = normalizeText(raw?.sectionLabel) || questionTypeLabelMap[item?.type] || "题目";
   const sectionDescription = normalizeText(raw?.sectionDescription);
   const subjectiveSubQuestions = isSubjectiveQuestionType(item?.type)
@@ -123,6 +124,7 @@ const parseQuestionMeta = (item) => {
     : [];
 
   return {
+    title,
     sectionLabel,
     sectionDescription,
     subjectiveSubQuestions,
@@ -148,6 +150,7 @@ const serializeQuestionBankItem = (item) => {
     paperType: item.folder?.paperType ?? getPaperTypeByQuestionType(item.type),
     questionType: item.type,
     questionTypeLabel: questionTypeLabelMap[item.type] ?? item.type,
+    title: questionMeta.title,
     stem: normalizeText(item.stem),
     material: normalizeText(item.material),
     analysis: normalizeText(item.analysis),
@@ -187,16 +190,18 @@ const serializeQuestionBankItem = (item) => {
   };
 };
 
-const buildQuestionMetaJson = ({ questionType, sectionLabel, sectionDescription, subjectiveSubQuestions, stem }) => {
+const buildQuestionMetaJson = ({ questionType, title, sectionLabel, sectionDescription, subjectiveSubQuestions, stem }) => {
+  const normalizedTitle = normalizeText(title);
   const normalizedSectionLabel = normalizeText(sectionLabel);
   const normalizedSectionDescription = normalizeText(sectionDescription);
 
-  if (!isSubjectiveQuestionType(questionType) && !normalizedSectionLabel && !normalizedSectionDescription) {
+  if (!isSubjectiveQuestionType(questionType) && !normalizedTitle && !normalizedSectionLabel && !normalizedSectionDescription) {
     return null;
   }
 
   if (isSubjectiveQuestionType(questionType)) {
     return JSON.stringify({
+      title: normalizedTitle,
       sectionLabel: normalizedSectionLabel || "主观题",
       sectionDescription: normalizedSectionDescription,
       subQuestions: normalizeSubjectiveSubQuestions(subjectiveSubQuestions, stem),
@@ -204,6 +209,7 @@ const buildQuestionMetaJson = ({ questionType, sectionLabel, sectionDescription,
   }
 
   return JSON.stringify({
+    title: normalizedTitle,
     sectionLabel: normalizedSectionLabel || questionTypeLabelMap[questionType] || "题目",
     sectionDescription: normalizedSectionDescription,
   });
@@ -274,6 +280,7 @@ const validateQuestionInput = ({ folder, payload }) => {
       correctAnswerJson: JSON.stringify(correctAnswerKeys),
       options,
       questionMetaJson: buildQuestionMetaJson({
+      title: payload?.title,
       questionType,
       sectionLabel: payload?.sectionLabel,
       sectionDescription: payload?.sectionDescription,
@@ -295,6 +302,7 @@ const validateQuestionInput = ({ folder, payload }) => {
     correctAnswerJson: JSON.stringify([]),
     options: [],
     questionMetaJson: buildQuestionMetaJson({
+      title: payload?.title,
       questionType,
       sectionLabel: payload?.sectionLabel,
       sectionDescription: payload?.sectionDescription,
@@ -767,6 +775,7 @@ export const importQuestionBankItems = async ({ db, folderId, items }) => {
         payload: {
           folderId,
           questionType: source.type,
+          title: source.questionMeta?.title,
           stem: source.stem,
           material: source.material,
           analysis: source.analysis,

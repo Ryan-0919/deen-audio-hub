@@ -60,6 +60,7 @@ const questionTypeMeta: Record<MockExamQuestionType, { label: string; answerHint
 type ItemFormState = {
   folderId: string;
   questionType: MockExamQuestionType;
+  title: string;
   stem: string;
   material: string;
   analysis: string;
@@ -131,6 +132,7 @@ const createEmptySubQuestions = (): QuestionBankSubQuestion[] => [
 const createEmptyItemForm = (paperType: QuestionBankPaperType, folderId = ""): ItemFormState => ({
   folderId,
   questionType: paperType === "subjective" ? "subjective_case" : "single_choice",
+  title: "",
   stem: "",
   material: "",
   analysis: "",
@@ -176,6 +178,7 @@ const normalizeSubQuestionFormState = (subQuestion: QuestionBankSubQuestion | un
 const createItemFormFromItem = (item: QuestionBankItem): ItemFormState => ({
   folderId: item.folderId,
   questionType: item.questionType,
+  title: item.title ?? "",
   stem: item.stem,
   material: item.material,
   analysis: item.analysis,
@@ -213,7 +216,18 @@ const truncate = (text: string, maxLength = 180) => {
   return `${text.slice(0, maxLength)}...`;
 };
 
+const extractSubjectLabelFromText = (value: string) => {
+  const normalized = `${value ?? ""}`;
+  const matched = normalized.match(/(民法|民诉|刑法|刑诉)/);
+  return matched?.[1] ?? "";
+};
+
 const extractQuestionBankItemTitle = (item: QuestionBankItem) => {
+  const explicitTitle = `${item.title ?? ""}`.trim();
+  if (explicitTitle) {
+    return explicitTitle;
+  }
+
   const stem = `${item.stem ?? ""}`.trim();
   const stemLines = stem
     .split("\n")
@@ -229,9 +243,14 @@ const extractQuestionBankItemTitle = (item: QuestionBankItem) => {
   if (item.questionType === "subjective_case") {
     const folderName = `${item.folderName ?? ""}`.trim();
     const firstSubQuestionTitle = `${item.subjectiveSubQuestions[0]?.title ?? ""}`.trim();
+    const sectionLabel = `${item.sectionLabel ?? ""}`.trim();
+    const subjectLabel =
+      extractSubjectLabelFromText(folderName) ||
+      extractSubjectLabelFromText(sectionLabel) ||
+      extractSubjectLabelFromText(firstSubQuestionTitle);
 
-    if (folderName) {
-      return `${folderName} · #${item.sortOrder}`;
+    if (subjectLabel) {
+      return `${subjectLabel}案例${item.sortOrder}`;
     }
 
     if (secondLine) {
@@ -1160,6 +1179,7 @@ export function QuestionBank() {
     const payload = {
       folderId: itemForm.folderId,
       questionType: itemForm.questionType,
+      title: itemForm.title.trim(),
       stem: itemForm.stem,
       material: itemForm.material,
       analysis: itemForm.analysis,
@@ -1699,6 +1719,11 @@ export function QuestionBank() {
               <Label>分值</Label>
               <Input type="number" min={1} value={itemForm.score} onChange={(event) => setItemForm((current) => ({ ...current, score: event.target.value }))} />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>标题</Label>
+            <Input value={itemForm.title} onChange={(event) => setItemForm((current) => ({ ...current, title: event.target.value }))} placeholder="例如：民法案例1" />
           </div>
 
           <div className="space-y-2">
