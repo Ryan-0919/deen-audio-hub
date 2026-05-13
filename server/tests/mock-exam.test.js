@@ -1761,6 +1761,214 @@ test("aiReviewMockExamRecord throws when remote AI omits answer marks", async ()
   assert.equal(savedAnswer.score, 0);
 });
 
+test("aiReviewMockExamRecord surfaces HTML upstream pages as baseUrl configuration errors", async () => {
+  const question = createQuestion({
+    id: "subjective_ai_html_1",
+    type: "subjective_case",
+    stem: "请分析合同违约责任。",
+    score: 8,
+    correctAnswerJson: "[]",
+    options: [],
+    questionMetaJson: JSON.stringify({
+      subQuestions: [
+        {
+          id: "sq_ai_html_1",
+          title: "问题(1)",
+          placeholder: "请作答",
+          rubricPoints: [{ id: "point_ai_html_1", title: "说明违约责任", score: 8, keywords: ["违约责任"] }],
+        },
+      ],
+    }),
+  });
+
+  let savedAnswer = {
+    id: "answer_ai_html_1",
+    questionId: question.id,
+    answerJson: JSON.stringify({
+      sq_ai_html_1: "应说明违约责任。",
+    }),
+    reviewJson: null,
+    score: 0,
+  };
+
+  const savedRecord = {
+    id: "record_ai_html_1",
+    status: "submitted",
+    totalScore: 0,
+    reviewedAt: null,
+    paper: {
+      id: "paper_ai_html_1",
+      code: "paper_ai_html_1",
+      title: "AI HTML Paper",
+      phase: "主观题",
+      totalScore: 8,
+      passScore: 5,
+      questions: [question],
+    },
+    answers: [savedAnswer],
+    user: { id: "user_ai_html_1", phone: "13800000014" },
+  };
+
+  const fakeDb = {
+    $transaction: async (callback) =>
+      callback({
+        mockExamRecord: {
+          findUnique: async () => savedRecord,
+          update: async () => savedRecord,
+        },
+        mockExamAnswer: {
+          update: async ({ data }) => {
+            savedAnswer = {
+              ...savedAnswer,
+              score: data.score,
+              reviewJson: data.reviewJson,
+            };
+            return savedAnswer;
+          },
+        },
+      }),
+    mockExamRecord: {
+      update: async () => savedRecord,
+    },
+  };
+
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    headers: {
+      get: (name) => (name === "content-type" ? "text/html; charset=utf-8" : ""),
+    },
+    text: async () => "<!doctype html><html><body><h1>Provider Console</h1></body></html>",
+  });
+
+  let thrownError = null;
+  try {
+    try {
+      await aiReviewMockExamRecord({
+        db: fakeDb,
+        recordId: savedRecord.id,
+        runtimeConfig: {
+          provider: "openai-compatible",
+          baseUrl: "https://example.com/v1",
+          apiKey: "test-key",
+          model: "test-model",
+          timeoutMs: 1000,
+        },
+      });
+    } catch (error) {
+      thrownError = error;
+    }
+  } finally {
+    global.fetch = originalFetch;
+  }
+
+  assert.equal(thrownError instanceof Error, true);
+  assert.equal(`${thrownError?.message ?? ""}`.includes("HTML 页面"), true);
+  assert.equal(`${thrownError?.message ?? ""}`.includes("Base URL"), true);
+  assert.equal(savedAnswer.reviewJson, null);
+});
+
+test("aiReviewMockExamRecord surfaces upstream JSON error messages", async () => {
+  const question = createQuestion({
+    id: "subjective_ai_json_error_1",
+    type: "subjective_case",
+    stem: "请分析合同违约责任。",
+    score: 8,
+    correctAnswerJson: "[]",
+    options: [],
+    questionMetaJson: JSON.stringify({
+      subQuestions: [
+        {
+          id: "sq_ai_json_error_1",
+          title: "问题(1)",
+          placeholder: "请作答",
+          rubricPoints: [{ id: "point_ai_json_error_1", title: "说明违约责任", score: 8, keywords: ["违约责任"] }],
+        },
+      ],
+    }),
+  });
+
+  const savedRecord = {
+    id: "record_ai_json_error_1",
+    status: "submitted",
+    totalScore: 0,
+    reviewedAt: null,
+    paper: {
+      id: "paper_ai_json_error_1",
+      code: "paper_ai_json_error_1",
+      title: "AI JSON Error Paper",
+      phase: "主观题",
+      totalScore: 8,
+      passScore: 5,
+      questions: [question],
+    },
+    answers: [
+      {
+        id: "answer_ai_json_error_1",
+        questionId: question.id,
+        answerJson: JSON.stringify({
+          sq_ai_json_error_1: "应说明违约责任。",
+        }),
+        reviewJson: null,
+        score: 0,
+      },
+    ],
+    user: { id: "user_ai_json_error_1", phone: "13800000015" },
+  };
+
+  const fakeDb = {
+    $transaction: async (callback) =>
+      callback({
+        mockExamRecord: {
+          findUnique: async () => savedRecord,
+          update: async () => savedRecord,
+        },
+        mockExamAnswer: {
+          update: async ({ data }) => data,
+        },
+      }),
+    mockExamRecord: {
+      update: async () => savedRecord,
+    },
+  };
+
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: false,
+    status: 401,
+    headers: {
+      get: (name) => (name === "content-type" ? "application/json" : ""),
+    },
+    text: async () => JSON.stringify({ error: { message: "Invalid API key" } }),
+  });
+
+  let thrownError = null;
+  try {
+    try {
+      await aiReviewMockExamRecord({
+        db: fakeDb,
+        recordId: savedRecord.id,
+        runtimeConfig: {
+          provider: "openai-compatible",
+          baseUrl: "https://example.com/v1",
+          apiKey: "bad-key",
+          model: "test-model",
+          timeoutMs: 1000,
+        },
+      });
+    } catch (error) {
+      thrownError = error;
+    }
+  } finally {
+    global.fetch = originalFetch;
+  }
+
+  assert.equal(thrownError instanceof Error, true);
+  assert.equal(`${thrownError?.message ?? ""}`.includes("401"), true);
+  assert.equal(`${thrownError?.message ?? ""}`.includes("Invalid API key"), true);
+});
+
 test("aiReviewMockExamRecord keeps remote AI wrong marks for missed rubric points", async () => {
   const question = createQuestion({
     id: "subjective_ai_marks_3",

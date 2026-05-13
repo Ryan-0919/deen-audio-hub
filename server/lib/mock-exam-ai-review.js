@@ -856,6 +856,52 @@ const buildAiResponseDebugPreview = ({ payload, content, parsed }) =>
   );
 
 const withAiDebugMessage = (message, debugPreview) => (debugPreview ? `${message}。AI 原始返回：${debugPreview}` : message);
+const stripHtmlTags = (value) =>
+  `${value ?? ""}`
+    .replace(/<script[\s\S]*?<\/script>/giu, " ")
+    .replace(/<style[\s\S]*?<\/style>/giu, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+const looksLikeHtmlDocument = (value) => {
+  const text = `${value ?? ""}`.trim().toLowerCase();
+  if (!text) {
+    return false;
+  }
+  return text.startsWith("<!doctype html") || text.startsWith("<html") || text.includes("<head") || text.includes("<body");
+};
+const extractRemoteErrorMessage = (payload) => {
+  if (!payload || typeof payload !== "object") {
+    return "";
+  }
+
+  const directCandidates = [
+    payload?.error?.message,
+    payload?.error?.msg,
+    payload?.message,
+    payload?.msg,
+    payload?.detail,
+    payload?.error_description,
+  ];
+  for (const item of directCandidates) {
+    const normalized = normalizeText(item);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  if (Array.isArray(payload?.errors)) {
+    const joined = payload.errors
+      .map((item) => normalizeText(item?.message ?? item?.msg ?? item?.detail ?? item))
+      .filter(Boolean)
+      .join("；");
+    if (joined) {
+      return joined;
+    }
+  }
+
+  return "";
+};
 
 const toSubQuestionSequenceId = (value) => {
   const text = normalizeText(value);
@@ -1933,11 +1979,47 @@ const requestOpenAiCompatibleReviewOnce = async ({ runtimeConfig, question, answ
       signal: controller.signal,
     });
 
+    const contentType = `${response.headers?.get?.("content-type") ?? ""}`.toLowerCase();
+    let rawText = "";
+    let parsedPayload = null;
+    if (typeof response.text === "function") {
+      rawText = await response.text();
+      parsedPayload = parseJsonSafely(rawText, null);
+    } else if (typeof response.json === "function") {
+      parsedPayload = await response.json().catch(() => null);
+      rawText = parsedPayload ? JSON.stringify(parsedPayload) : "";
+    }
+    const remoteErrorMessage = extractRemoteErrorMessage(parsedPayload);
+    const htmlPreview = stripHtmlTags(rawText).slice(0, 160);
+
     if (!response.ok) {
+      if (remoteErrorMessage) {
+        throw createHttpError(`批改请求失败：${response.status}，${remoteErrorMessage}`, 502);
+      }
+      if (looksLikeHtmlDocument(rawText) || contentType.includes("text/html")) {
+        throw createHttpError(
+          `批改请求失败：${response.status}，远程接口返回了 HTML 页面，请检查 AI 厂商的 Base URL 是否填写成了站点页面而不是 API 地址。${htmlPreview ? `返回内容：${htmlPreview}` : ""}`,
+          502,
+        );
+      }
       throw createHttpError(`批改请求失败：${response.status}`, 502);
     }
 
-    const payload = await response.json();
+    if (looksLikeHtmlDocument(rawText) || contentType.includes("text/html")) {
+      throw createHttpError(
+        `远程批改返回了 HTML 页面，请检查 AI 厂商的 Base URL 是否填写成了站点页面而不是 API 地址。${htmlPreview ? `返回内容：${htmlPreview}` : ""}`,
+        502,
+      );
+    }
+
+    const payload = parsedPayload;
+    if (!payload || typeof payload !== "object") {
+      throw createHttpError(
+        `远程批改返回的不是合法 JSON，请检查当前厂商接口是否兼容 OpenAI Chat Completions。${rawText ? `返回片段：${rawText.slice(0, 160)}` : ""}`,
+        502,
+      );
+    }
+
     const content = extractCompletionText(payload);
     const parsed = normalizeAiReviewResponsePayload(extractJsonPayload(content));
     const debugPreview = buildAiResponseDebugPreview({ payload, content, parsed });
