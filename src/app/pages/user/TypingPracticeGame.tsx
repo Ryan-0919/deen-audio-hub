@@ -8,7 +8,6 @@ import {
   buildTypingPracticeCompletionMessage,
   buildTypingPracticePromptText,
   buildTypingPracticeStageWindow,
-  buildTypingPracticeTileWindow,
   buildTypingScoreText,
   DEFAULT_MEMORIZE_PREVIEW_SECONDS,
   formatTypingSecondsText,
@@ -321,6 +320,7 @@ export function TypingPracticeGame() {
   const [previewCountdown, setPreviewCountdown] = useState(0);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [segmentStartedAt, setSegmentStartedAt] = useState<number | null>(null);
+  const [activeStageStartIndex, setActiveStageStartIndex] = useState(0);
   const [nowTick, setNowTick] = useState(Date.now());
   const [livesRemaining, setLivesRemaining] = useState(DEFAULT_DIFFICULTY_CONFIG_MAP.medium.initialLives);
   const [capturedStageCount, setCapturedStageCount] = useState(0);
@@ -338,12 +338,11 @@ export function TypingPracticeGame() {
   const elapsedSeconds = startedAt ? Math.max(0, Math.floor((nowTick - startedAt) / 1000)) : 0;
   const currentCpm = elapsedSeconds > 0 ? Math.round((currentIndex / elapsedSeconds) * 60) : 0;
   const remainingSeconds = timeLimitSeconds !== null ? Math.max(0, timeLimitSeconds - elapsedSeconds) : null;
-  const chunkAnchorIndex = targetLength > 0 && currentIndex >= targetLength ? targetLength - 1 : currentIndex;
-  const currentChunkStart = targetLength > 0 ? Math.floor(chunkAnchorIndex / TYPING_PRACTICE_VISIBLE_TILE_COUNT) * TYPING_PRACTICE_VISIBLE_TILE_COUNT : 0;
+  const currentChunkStart = targetLength > 0 ? Math.min(activeStageStartIndex, Math.max(0, targetLength - 1)) : 0;
   const currentChunkEnd = Math.min(currentChunkStart + TYPING_PRACTICE_VISIBLE_TILE_COUNT, targetLength);
   const currentChunkLength = Math.max(1, currentChunkEnd - currentChunkStart);
   const currentChunkTypedLength = Math.max(0, Math.min(currentIndex - currentChunkStart, currentChunkLength));
-  const currentStageIndex = targetLength > 0 ? Math.floor(chunkAnchorIndex / TYPING_PRACTICE_VISIBLE_TILE_COUNT) : 0;
+  const currentStageIndex = targetLength > 0 ? Math.floor(currentChunkStart / TYPING_PRACTICE_VISIBLE_TILE_COUNT) : 0;
   const currentStageNumber = currentStageIndex + 1;
   const totalStageCount = Math.max(1, Math.ceil(targetLength / TYPING_PRACTICE_VISIBLE_TILE_COUNT));
   const level = calculateLevel(currentStageIndex);
@@ -359,14 +358,31 @@ export function TypingPracticeGame() {
     livesRemaining,
     difficultyConfig,
   });
-  const policePosition = Math.min(78, 10 + Math.round(stageProgress * 58));
-  const thiefPosition = Math.min(82, 44 + Math.round((segmentElapsedSeconds / Math.max(stageTimeLimitSeconds, 1)) * 34));
+  const thiefProgress = Math.min(1, segmentElapsedSeconds / Math.max(stageTimeLimitSeconds, 1));
+  const thiefPosition = Math.min(82, 44 + Math.round(thiefProgress * 34));
+  const rawPolicePosition = Math.min(82, 10 + Math.round(stageProgress * 72));
+  const policePosition =
+    currentIndex >= currentChunkEnd
+      ? Math.min(84, thiefPosition + 3)
+      : Math.min(rawPolicePosition, Math.max(10, thiefPosition - 4));
   const showHiddenPrompt = mode === "memorize" && phase !== "preview";
 
   if (isMobileBlocked) {
     return <MockExamDesktopNotice />;
   }
-  const tileWindow = useMemo(() => buildTypingPracticeTileWindow(targetContent, currentIndex), [currentIndex, targetContent]);
+  const tileWindow = useMemo(() => {
+    const rawChars = Array.from(targetContent.slice(currentChunkStart, currentChunkStart + TYPING_PRACTICE_VISIBLE_TILE_COUNT));
+    const chars =
+      rawChars.length === TYPING_PRACTICE_VISIBLE_TILE_COUNT
+        ? rawChars
+        : [...rawChars, ...Array.from({ length: TYPING_PRACTICE_VISIBLE_TILE_COUNT - rawChars.length }, () => "")];
+
+    return {
+      chunkStart: currentChunkStart,
+      chars,
+      activeIndexInChunk: Math.max(0, Math.min(currentIndex - currentChunkStart, TYPING_PRACTICE_VISIBLE_TILE_COUNT)),
+    };
+  }, [currentChunkStart, currentIndex, targetContent]);
   const topLeftTargets = useMemo(() => buildTypingPracticeStageWindow(totalStageCount, currentStageIndex), [currentStageIndex, totalStageCount]);
   const committedPreviewText = inputValue;
   const composingPreviewText = rawInputValue.startsWith(inputValue) ? rawInputValue.slice(inputValue.length) : "";
@@ -473,6 +489,7 @@ export function TypingPracticeGame() {
         setPreviewCountdown(resolvedPreviewSeconds);
         setStartedAt(null);
         setSegmentStartedAt(null);
+        setActiveStageStartIndex(0);
         setLivesRemaining(nextDifficultyConfig.initialLives);
         setCapturedStageCount(0);
         setFlashBanner(null);
@@ -567,6 +584,7 @@ export function TypingPracticeGame() {
         }
 
         const restartTime = Date.now();
+        setActiveStageStartIndex(currentChunkEnd);
         setSegmentStartedAt(restartTime);
         setNowTick(restartTime);
         setPhase("ready");
