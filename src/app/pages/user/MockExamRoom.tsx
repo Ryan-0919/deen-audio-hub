@@ -77,7 +77,7 @@ type HighlightSelection = { block: HighlightBlock; key: string; start: number; e
 const LAW_DIALOG_MIN_WIDTH = 640;
 const LAW_DIALOG_MIN_HEIGHT = 420;
 const LAW_DIALOG_MARGIN = 16;
-const LAW_DIALOG_TOP_GAP = 110;
+const LAW_DIALOG_TOP_MARGIN = 8;
 const CLIPBOARD_DISABLED_MESSAGE = "考试过程中不允许复制、剪切、粘贴";
 const STEM_HIGHLIGHT_CLASS = "mock-stem-highlight";
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
@@ -182,22 +182,22 @@ const clearHighlightInHtml = (html: string, start?: number, end?: number) => {
 const clampLawDialogRect = (rect: LawDialogRect) => {
   const viewport = getLawDialogViewport();
   const maxWidth = Math.max(420, viewport.width - LAW_DIALOG_MARGIN * 2);
-  const maxHeight = Math.max(320, viewport.height - LAW_DIALOG_TOP_GAP - LAW_DIALOG_MARGIN);
+  const maxHeight = Math.max(320, viewport.height - LAW_DIALOG_TOP_MARGIN - LAW_DIALOG_MARGIN);
   const minWidth = Math.min(LAW_DIALOG_MIN_WIDTH, maxWidth);
   const minHeight = Math.min(LAW_DIALOG_MIN_HEIGHT, maxHeight);
   const width = clamp(rect.width, minWidth, maxWidth);
   const height = clamp(rect.height, minHeight, maxHeight);
   const left = clamp(rect.left, LAW_DIALOG_MARGIN, Math.max(LAW_DIALOG_MARGIN, viewport.width - LAW_DIALOG_MARGIN - width));
-  const top = clamp(rect.top, LAW_DIALOG_TOP_GAP, Math.max(LAW_DIALOG_TOP_GAP, viewport.height - LAW_DIALOG_MARGIN - height));
+  const top = clamp(rect.top, LAW_DIALOG_TOP_MARGIN, Math.max(LAW_DIALOG_TOP_MARGIN, viewport.height - LAW_DIALOG_MARGIN - height));
   return { left, top, width, height };
 };
 const buildDefaultLawDialogRect = () => {
   const viewport = getLawDialogViewport();
   const width = Math.min(Math.max(760, Math.round(viewport.width * 0.5)), viewport.width - LAW_DIALOG_MARGIN * 2);
-  const height = Math.min(Math.max(560, Math.round(viewport.height * 0.7)), viewport.height - LAW_DIALOG_TOP_GAP - LAW_DIALOG_MARGIN);
+  const height = Math.min(Math.max(560, Math.round(viewport.height * 0.7)), viewport.height - LAW_DIALOG_TOP_MARGIN - LAW_DIALOG_MARGIN);
   return clampLawDialogRect({
     left: Math.round((viewport.width - width) / 2),
-    top: Math.max(LAW_DIALOG_TOP_GAP, Math.round((viewport.height - height) / 2)),
+    top: Math.max(LAW_DIALOG_TOP_MARGIN, Math.round((viewport.height - height) / 2)),
     width,
     height,
   });
@@ -206,15 +206,15 @@ const buildMaximizedLawDialogRect = () => {
   const viewport = getLawDialogViewport();
   return clampLawDialogRect({
     left: LAW_DIALOG_MARGIN,
-    top: LAW_DIALOG_TOP_GAP,
+    top: LAW_DIALOG_TOP_MARGIN,
     width: viewport.width - LAW_DIALOG_MARGIN * 2,
-    height: viewport.height - LAW_DIALOG_TOP_GAP - LAW_DIALOG_MARGIN,
+    height: viewport.height - LAW_DIALOG_TOP_MARGIN - LAW_DIALOG_MARGIN,
   });
 };
 const resizeLawDialogRect = (startRect: LawDialogRect, direction: ResizeDirection, dx: number, dy: number) => {
   const viewport = getLawDialogViewport();
   const maxWidth = Math.max(420, viewport.width - LAW_DIALOG_MARGIN * 2);
-  const maxHeight = Math.max(320, viewport.height - LAW_DIALOG_TOP_GAP - LAW_DIALOG_MARGIN);
+  const maxHeight = Math.max(320, viewport.height - LAW_DIALOG_TOP_MARGIN - LAW_DIALOG_MARGIN);
   const minWidth = Math.min(LAW_DIALOG_MIN_WIDTH, maxWidth);
   const minHeight = Math.min(LAW_DIALOG_MIN_HEIGHT, maxHeight);
   const right = startRect.left + startRect.width;
@@ -230,16 +230,37 @@ const resizeLawDialogRect = (startRect: LawDialogRect, direction: ResizeDirectio
   }
 
   if (direction.includes("w")) {
-    left = clamp(startRect.left + dx, LAW_DIALOG_MARGIN, right - minWidth);
-    width = clamp(right - left, minWidth, maxWidth);
+    const minLeft = Math.max(LAW_DIALOG_MARGIN, right - maxWidth);
+    const maxLeft = right - minWidth;
+    left = clamp(startRect.left + dx, minLeft, maxLeft);
+    width = right - left;
   }
 
   if (direction.includes("n")) {
-    top = clamp(startRect.top + dy, LAW_DIALOG_TOP_GAP, bottom - minHeight);
-    height = clamp(bottom - top, minHeight, maxHeight);
+    const minTop = Math.max(LAW_DIALOG_TOP_MARGIN, bottom - maxHeight);
+    const maxTop = bottom - minHeight;
+    top = clamp(startRect.top + dy, minTop, maxTop);
+    height = bottom - top;
   }
 
   return clampLawDialogRect({ left, top, width, height });
+};
+const getLawDialogCursor = (action: LawDialogAction | null) => {
+  if (!action) return "";
+  if (action.type === "move") return "move";
+
+  const cursorMap: Record<ResizeDirection, string> = {
+    n: "n-resize",
+    e: "e-resize",
+    s: "s-resize",
+    w: "w-resize",
+    ne: "ne-resize",
+    nw: "nw-resize",
+    se: "se-resize",
+    sw: "sw-resize",
+  };
+
+  return cursorMap[action.direction];
 };
 const isClipboardShortcut = (event: { key: string; ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean }) => {
   const key = event.key.toLowerCase();
@@ -342,6 +363,7 @@ export function MockExamRoom() {
   const [lawDialogOpen, setLawDialogOpen] = useState(false);
   const [lawDialogMaximized, setLawDialogMaximized] = useState(false);
   const [lawDialogRect, setLawDialogRect] = useState<LawDialogRect>(() => buildDefaultLawDialogRect());
+  const [lawDialogInteracting, setLawDialogInteracting] = useState(false);
   const recordRef = useRef<MockExamRecordDetail | null>(null);
   const draftRef = useRef<Record<string, string>>({});
   const submittingRef = useRef(false);
@@ -386,6 +408,7 @@ export function MockExamRoom() {
   useEffect(() => {
     const stopLawDialogAction = () => {
       lawDialogActionRef.current = null;
+      setLawDialogInteracting(false);
       document.body.style.userSelect = "";
     };
 
@@ -414,11 +437,13 @@ export function MockExamRoom() {
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", stopLawDialogAction);
     window.addEventListener("blur", stopLawDialogAction);
+    window.addEventListener("mouseleave", stopLawDialogAction);
 
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", stopLawDialogAction);
       window.removeEventListener("blur", stopLawDialogAction);
+      window.removeEventListener("mouseleave", stopLawDialogAction);
       stopLawDialogAction();
     };
   }, []);
@@ -1013,6 +1038,7 @@ export function MockExamRoom() {
 
   const closeLawDialog = () => {
     lawDialogActionRef.current = null;
+    setLawDialogInteracting(false);
     document.body.style.userSelect = "";
     if (lawDialogMaximized) {
       setLawDialogRect(clampLawDialogRect(lawDialogRestoreRectRef.current ?? buildDefaultLawDialogRect()));
@@ -1062,6 +1088,7 @@ export function MockExamRoom() {
   const startLawDialogMove = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (lawDialogMaximized) return;
     event.preventDefault();
+    setLawDialogInteracting(true);
     lawDialogActionRef.current = {
       type: "move",
       startX: event.clientX,
@@ -1075,6 +1102,7 @@ export function MockExamRoom() {
     if (lawDialogMaximized) return;
     event.preventDefault();
     event.stopPropagation();
+    setLawDialogInteracting(true);
     lawDialogActionRef.current = {
       type: "resize",
       direction,
@@ -1393,6 +1421,18 @@ export function MockExamRoom() {
                 onLoad={handleLawFrameLoad}
                 style={{ display: "block", width: "100%", height: "100%", border: "0", background: "#fff" }}
               />
+              {lawDialogInteracting ? (
+                <div
+                  {...SCOPE}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    background: "transparent",
+                    cursor: getLawDialogCursor(lawDialogActionRef.current) || "move",
+                    zIndex: 2,
+                  }}
+                />
+              ) : null}
             </div>
             {lawDialogMaximized ? null : (
               <>
