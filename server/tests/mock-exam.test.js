@@ -5,6 +5,7 @@ import {
   getMockExamReviewRecord,
   getRemainingSeconds,
   listMockExamReviewRecords,
+  recoverStaleAiProcessingMockExamReviews,
   reviewMockExamRecord,
   serializeMockExamRecordDetail,
   serializeMockExamReviewDetail,
@@ -2947,4 +2948,116 @@ test("listMockExamReviewRecords filters records by paperId", async () => {
   assert.equal(result.pagination.total, 1);
   assert.equal(result.list.length, 1);
   assert.equal(result.list[0].paper.id, "paper_a");
+});
+
+test("recoverStaleAiProcessingMockExamReviews resets stale records to their real workflow stage", async () => {
+  const now = new Date("2026-05-13T03:30:00.000Z");
+  const updatedPayloads = [];
+  const fakeDb = {
+    systemConfig: {
+      findUnique: async () => ({
+        mockExamAiReviewConfigJson: JSON.stringify({
+          timeoutMs: 120000,
+        }),
+      }),
+    },
+    mockExamRecord: {
+      updateMany: async ({ where, data }) => {
+        updatedPayloads.push({ where, data });
+        if (data.reviewWorkflowStatus === "published") {
+          return { count: 1 };
+        }
+        if (data.reviewWorkflowStatus === "manual_pending") {
+          return { count: 1 };
+        }
+        if (data.reviewWorkflowStatus === "ai_pending") {
+          return { count: 2 };
+        }
+        return { count: 0 };
+      },
+    },
+  };
+
+  const result = await recoverStaleAiProcessingMockExamReviews({
+    db: fakeDb,
+    currentTime: now,
+  });
+
+  assert.equal(result.recovered, 4);
+  assert.equal(result.thresholdMs, 300000);
+  assert.equal(updatedPayloads.length, 3);
+  assert.deepEqual(
+    updatedPayloads.map((item) => item.data.reviewWorkflowStatus),
+    ["published", "manual_pending", "ai_pending"],
+  );
+  assert.equal(updatedPayloads[0].where.reviewWorkflowStatus, "ai_processing");
+  assert.equal(updatedPayloads[1].where.aiReviewFinishedAt, null);
+  assert.equal(updatedPayloads[2].data.lastAiReviewError, "AI批改任务异常中断，已恢复为待处理状态，请重新批改");
+  assert.equal(updatedPayloads[2].where.aiReviewStartedAt.lt.toISOString(), "2026-05-13T03:25:00.000Z");
+});
+
+test("listMockExamReviewRecords recovers stale ai_processing records before querying", async () => {
+  const now = new Date("2026-05-13T03:30:00.000Z");
+  let recovered = false;
+  const records = [
+    {
+      id: "record_stale_processing",
+      status: "submitted",
+      reviewWorkflowStatus: "ai_pending",
+      aiReviewStartedAt: null,
+      aiReviewFinishedAt: null,
+      reviewedAt: null,
+      submittedAt: new Date("2026-05-13T03:00:00.000Z"),
+      paperId: "paper_stale",
+      user: { phone: "13800000003" },
+      paper: {
+        id: "paper_stale",
+        code: "paper_stale",
+        title: "Paper stale",
+        phase: "主观题",
+        year: 2026,
+        totalScore: 20,
+        passScore: 12,
+        reviewEnabled: true,
+        paperType: "subjective",
+        questions: [createQuestion({ id: "paper_stale_q1", type: "subjective_case", correctAnswerJson: "[]", options: [] })],
+      },
+      answers: [],
+    },
+  ];
+
+  const fakeDb = {
+    systemConfig: {
+      findUnique: async () => ({
+        mockExamAiReviewConfigJson: JSON.stringify({
+          timeoutMs: 120000,
+        }),
+      }),
+    },
+    mockExamRecord: {
+      updateMany: async () => {
+        recovered = true;
+        return { count: 1 };
+      },
+      count: async ({ where }) => {
+        if (where.reviewWorkflowStatus === "ai_pending") {
+          return 1;
+        }
+        return 0;
+      },
+      findMany: async () => records,
+    },
+  };
+
+  const result = await listMockExamReviewRecords({
+    db: fakeDb,
+    paperId: "paper_stale",
+    reviewStatus: "all",
+    currentTime: now,
+  });
+
+  assert.equal(recovered, true);
+  assert.equal(result.summary.aiPending, 1);
+  assert.equal(result.summary.aiProcessing, 0);
+  assert.equal(result.list.length, 1);
 });

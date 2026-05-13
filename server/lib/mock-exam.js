@@ -1,3 +1,4 @@
+import { config } from "./config.js";
 import { formatDateTime } from "./time.js";
 import { getReadableObjectUrl } from "./upload.js";
 import { sanitizeReviewExposureText } from "./mock-exam-ai-review.js";
@@ -40,9 +41,121 @@ const createHttpError = (message, statusCode = 400) => {
 const getManualReviewerDisplayName = (value) => normalizeDisplayText(`${value ?? ""}`.trim()) || "其他老师";
 
 const MANUAL_REVIEW_LOCK_MINUTES = 15;
+const STALE_AI_PROCESSING_MIN_RECOVERY_MS = 5 * 60 * 1000;
+const STALE_AI_PROCESSING_EXTRA_BUFFER_MS = 60 * 1000;
+const STALE_AI_PROCESSING_ERROR_MESSAGE = "AI批改任务异常中断，已恢复为待处理状态，请重新批改";
 
 const buildManualReviewLockToken = () =>
   `review_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+
+const getStaleAiProcessingRecoveryThresholdMs = (timeoutMs) => {
+  const normalizedTimeoutMs = Number(timeoutMs);
+  const safeTimeoutMs = Number.isFinite(normalizedTimeoutMs) ? Math.max(0, normalizedTimeoutMs) : 120000;
+  return Math.max(safeTimeoutMs + STALE_AI_PROCESSING_EXTRA_BUFFER_MS, STALE_AI_PROCESSING_MIN_RECOVERY_MS);
+};
+
+const resolveMockExamAiReviewTimeoutMs = async (db) => {
+  const fallbackTimeoutMs = Number(config?.mockExamAiReview?.timeoutMs ?? 120000) || 120000;
+
+  try {
+    if (typeof db?.systemConfig?.findUnique !== "function") {
+      return fallbackTimeoutMs;
+    }
+
+    const systemConfig = await db.systemConfig.findUnique({
+      where: { id: 1 },
+      select: {
+        mockExamAiReviewConfigJson: true,
+      },
+    });
+
+    const parsed = parseJsonSafely(systemConfig?.mockExamAiReviewConfigJson ?? null, null);
+    const timeoutMs = Number(parsed?.timeoutMs);
+    return Number.isFinite(timeoutMs) && timeoutMs >= 0 ? timeoutMs : fallbackTimeoutMs;
+  } catch (_error) {
+    return fallbackTimeoutMs;
+  }
+};
+
+export const recoverStaleAiProcessingMockExamReviews = async ({
+  db,
+  recordId = "",
+  paperId = "",
+  currentTime = new Date(),
+}) => {
+  if (typeof db?.mockExamRecord?.updateMany !== "function") {
+    return {
+      recovered: 0,
+      thresholdMs: getStaleAiProcessingRecoveryThresholdMs(config?.mockExamAiReview?.timeoutMs ?? 120000),
+    };
+  }
+
+  const timeoutMs = await resolveMockExamAiReviewTimeoutMs(db);
+  const thresholdMs = getStaleAiProcessingRecoveryThresholdMs(timeoutMs);
+  const staleBefore = new Date(currentTime.getTime() - thresholdMs);
+  const normalizedRecordId = `${recordId ?? ""}`.trim();
+  const normalizedPaperId = `${paperId ?? ""}`.trim();
+  const baseWhere = {
+    status: "submitted",
+    reviewWorkflowStatus: "ai_processing",
+    aiReviewFinishedAt: null,
+    aiReviewStartedAt: {
+      lt: staleBefore,
+    },
+    ...(normalizedRecordId ? { id: normalizedRecordId } : {}),
+    ...(normalizedPaperId ? { paperId: normalizedPaperId } : {}),
+  };
+  const baseData = {
+    aiReviewStartedAt: null,
+    aiReviewFinishedAt: null,
+    lastAiReviewError: STALE_AI_PROCESSING_ERROR_MESSAGE,
+  };
+
+  const [publishedResult, manualPendingResult, aiPendingResult] = await Promise.all([
+    db.mockExamRecord.updateMany({
+      where: {
+        ...baseWhere,
+        publishedAt: {
+          not: null,
+        },
+      },
+      data: {
+        ...baseData,
+        reviewWorkflowStatus: "published",
+      },
+    }),
+    db.mockExamRecord.updateMany({
+      where: {
+        ...baseWhere,
+        publishedAt: null,
+        reviewedAt: {
+          not: null,
+        },
+      },
+      data: {
+        ...baseData,
+        reviewWorkflowStatus: "manual_pending",
+      },
+    }),
+    db.mockExamRecord.updateMany({
+      where: {
+        ...baseWhere,
+        publishedAt: null,
+        reviewedAt: null,
+      },
+      data: {
+        ...baseData,
+        reviewWorkflowStatus: "ai_pending",
+      },
+    }),
+  ]);
+
+  return {
+    recovered:
+      Number(publishedResult?.count ?? 0) + Number(manualPendingResult?.count ?? 0) + Number(aiPendingResult?.count ?? 0),
+    thresholdMs,
+  };
+};
 
 const parseJsonSafely = (value, fallback) => {
   if (!value) return fallback;
@@ -2447,6 +2560,15 @@ export const getMockExamRecordForUser = async ({ db, recordId, userId, currentTi
     paperId: record.paperId,
   });
 
+  if (`${record.reviewWorkflowStatus ?? ""}`.trim() === "ai_processing") {
+    await recoverStaleAiProcessingMockExamReviews({
+      db,
+      recordId: record.id,
+      currentTime,
+    });
+    record = await getRecordWithPaper(db, recordId);
+  }
+
   if (record.status === "in_progress" && getRemainingSeconds(record, currentTime) <= 0) {
     record = await finalizeMockExamRecord({ db, recordId, userId, currentTime });
   }
@@ -2794,7 +2916,14 @@ export const listMockExamReviewRecords = async ({
   currentAdminId = "",
   page = 1,
   pageSize = 20,
+  currentTime = new Date(),
 }) => {
+  await recoverStaleAiProcessingMockExamReviews({
+    db,
+    paperId,
+    currentTime,
+  });
+
   const normalizedKeyword = `${keyword ?? ""}`.trim();
   const normalizedPaperId = `${paperId ?? ""}`.trim();
   const baseWhere = {
@@ -2973,7 +3102,12 @@ export const listMockExamReviewRecords = async ({
   };
 };
 
-export const listMockExamReviewPaperSummaries = async ({ db, keyword = "", currentAdminId = "" }) => {
+export const listMockExamReviewPaperSummaries = async ({ db, keyword = "", currentAdminId = "", currentTime = new Date() }) => {
+  await recoverStaleAiProcessingMockExamReviews({
+    db,
+    currentTime,
+  });
+
   const normalizedKeyword = `${keyword ?? ""}`.trim();
   const papers = await db.mockExamPaper.findMany({
     where: {
@@ -3064,6 +3198,12 @@ export const listMockExamReviewPaperSummaries = async ({ db, keyword = "", curre
 };
 
 export const getMockExamReviewRecord = async ({ db, recordId, currentTime = new Date() }) => {
+  await recoverStaleAiProcessingMockExamReviews({
+    db,
+    recordId,
+    currentTime,
+  });
+
   const record = await getReviewRecordWithPaper(db, recordId);
   if (!record) {
     throw createHttpError("考试记录不存在", 404);
@@ -3127,6 +3267,12 @@ export const claimMockExamReviewRecord = async ({
   currentTime = new Date(),
 }) =>
   db.$transaction(async (tx) => {
+    await recoverStaleAiProcessingMockExamReviews({
+      db: tx,
+      recordId,
+      currentTime,
+    });
+
     const record = await getReviewRecordWithPaper(tx, recordId);
     if (!record) {
       throw createHttpError("考试记录不存在", 404);
