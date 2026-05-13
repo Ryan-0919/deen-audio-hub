@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, LoaderCircle, Minus, Plus, Search, Send, Trash2, Upload, X } from "lucide-react";
+﻿import { ArrowLeft, Check, LoaderCircle, Minus, Plus, Search, Send, Trash2, Upload, X } from "lucide-react";
 import type { ChangeEvent, ReactNode } from "react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
@@ -175,6 +175,8 @@ type EditableAnswerMark = {
   comment: string;
   status: "correct" | "wrong" | "score" | "neutral";
   score: string;
+  start?: number;
+  end?: number;
 };
 
 type EditableRubricPoint = {
@@ -211,11 +213,62 @@ const parseInteger = (value: string | number | null | undefined) => {
 
 const sumPositiveMarkScores = (marks: EditableAnswerMark[]) =>
   (Array.isArray(marks) ? marks : []).reduce((sum, mark) => {
-    if (mark.status !== "correct") {
+    if (mark.status !== "correct" && mark.status !== "score") {
       return sum;
     }
     return sum + Math.max(0, parseInteger(mark.score));
   }, 0);
+
+const hasMarkRange = (mark: Pick<EditableAnswerMark, "start" | "end">) =>
+  Number.isInteger(mark.start) && Number.isInteger(mark.end) && Number(mark.end) > Number(mark.start);
+
+const marksRangeOverlap = (
+  left: Pick<EditableAnswerMark, "start" | "end">,
+  right: Pick<EditableAnswerMark, "start" | "end">,
+) => {
+  if (!hasMarkRange(left) || !hasMarkRange(right)) {
+    return false;
+  }
+
+  return Number(left.start) < Number(right.end) && Number(right.start) < Number(left.end);
+};
+
+const buildEditableMarkDedupeKey = (mark: EditableAnswerMark) =>
+  [
+    mark.status,
+    hasMarkRange(mark) ? Number(mark.start) : "",
+    hasMarkRange(mark) ? Number(mark.end) : "",
+    mark.highlight.trim(),
+    parseInteger(mark.score),
+    mark.comment.trim(),
+  ].join("::");
+
+const normalizeEditableAnswerMarks = (marks: EditableAnswerMark[]) => {
+  const seen = new Set<string>();
+
+  return (Array.isArray(marks) ? marks : [])
+    .map((mark) => ({
+      ...mark,
+      highlight: mark.highlight.trim(),
+      comment: mark.comment.trim(),
+      score: mark.status === "correct" || mark.status === "score" ? mark.score.trim() : "",
+      start: hasMarkRange(mark) ? Number(mark.start) : undefined,
+      end: hasMarkRange(mark) ? Number(mark.end) : undefined,
+    }))
+    .filter((mark) => {
+      if (!mark.highlight) {
+        return false;
+      }
+
+      const key = buildEditableMarkDedupeKey(mark);
+      if (seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      return true;
+    });
+};
 
 const sumAwardedRubricScores = (points: EditableRubricPoint[]) =>
   (Array.isArray(points) ? points : []).reduce((sum, point) => sum + Math.max(0, parseInteger(point.awardedScore)), 0);
@@ -230,6 +283,21 @@ const getDraftSubQuestionScore = (drafts: DraftState, questionId: string, subQue
 const getManualDraftSubQuestionScore = (drafts: DraftState, questionId: string, subQuestionId: string) => {
   const key = getSubQuestionKey(questionId, subQuestionId);
   return parseInteger(drafts.scores[key]);
+};
+
+const applyMarksToDraftState = (drafts: DraftState, key: string, marks: EditableAnswerMark[]): DraftState => {
+  const normalizedMarks = normalizeEditableAnswerMarks(marks);
+  return {
+    ...drafts,
+    marks: {
+      ...drafts.marks,
+      [key]: normalizedMarks,
+    },
+    scores: {
+      ...drafts.scores,
+      [key]: `${sumPositiveMarkScores(normalizedMarks)}`,
+    },
+  };
 };
 
 const buildDraftState = (detail: AdminMockExamReviewDetail): DraftState => {
@@ -284,6 +352,8 @@ const buildDraftState = (detail: AdminMockExamReviewDetail): DraftState => {
         comment: mark.comment ?? "",
         status: mark.status === "wrong" ? "wrong" : mark.status === "neutral" ? "neutral" : "correct",
         score: mark.score === null || mark.score === undefined || `${mark.score}`.trim() === "" ? "" : Number.isFinite(Number(mark.score)) ? `${Number(mark.score)}` : "",
+        start: Number.isInteger(Number(mark.start)) ? Number(mark.start) : undefined,
+        end: Number.isInteger(Number(mark.end)) ? Number(mark.end) : undefined,
       }));
       rubricPoints[key] = (subQuestion.rubricPoints ?? []).map((point, index) => ({
         id: point.id || `${key}_rubric_${index + 1}`,
@@ -377,15 +447,141 @@ function QuestionReviewVoicePanel({
   );
 }
 
-const createDraftAnswerMark = (highlight = "", status: EditableAnswerMark["status"] = "wrong"): EditableAnswerMark => ({
+const createDraftAnswerMark = (
+  highlight = "",
+  status: EditableAnswerMark["status"] = "wrong",
+  range?: { start: number; end: number },
+): EditableAnswerMark => ({
   id: `draft_mark_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
   highlight,
   comment: "",
   status,
   score: "",
+  start: range?.start,
+  end: range?.end,
 });
 
+const isSelectionInsideContainer = (container: HTMLElement | null, node: Node | null) => {
+  if (!container || !node) {
+    return false;
+  }
+
+  if (node instanceof HTMLElement) {
+    return container.contains(node);
+  }
+
+  return container.contains(node.parentElement);
+};
+
+const trimSelectionRange = (selectionText: string, start: number, end: number) => {
+  const leadingWhitespace = selectionText.match(/^\s+/u)?.[0].length ?? 0;
+  const trailingWhitespace = selectionText.match(/\s+$/u)?.[0].length ?? 0;
+  const nextStart = start + leadingWhitespace;
+  const nextEnd = Math.max(nextStart, end - trailingWhitespace);
+  const highlight = selectionText.trim();
+
+  if (!highlight || nextEnd <= nextStart) {
+    return null;
+  }
+
+  return {
+    highlight,
+    start: nextStart,
+    end: nextEnd,
+  };
+};
+
+const getSelectionRangeInContainer = (container: HTMLElement | null) => {
+  if (typeof window === "undefined" || !container) {
+    return null;
+  }
+
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount <= 0 || selection.isCollapsed) {
+    return null;
+  }
+
+  const range = selection.getRangeAt(0);
+  if (!isSelectionInsideContainer(container, range.commonAncestorContainer)) {
+    return null;
+  }
+
+  const startRange = range.cloneRange();
+  startRange.selectNodeContents(container);
+  startRange.setEnd(range.startContainer, range.startOffset);
+
+  const endRange = range.cloneRange();
+  endRange.selectNodeContents(container);
+  endRange.setEnd(range.endContainer, range.endOffset);
+
+  return trimSelectionRange(range.toString(), startRange.toString().length, endRange.toString().length);
+};
+
 const getQuestionAnchorId = (questionId: string) => `review-question-${questionId}`;
+const getReviewDraftStorageKey = (recordId: string) => `mock-exam-review-draft:${recordId}`;
+
+const saveLocalReviewDraft = (recordId: string, version: number, drafts: DraftState) => {
+  if (typeof window === "undefined" || !recordId) {
+    return;
+  }
+
+  window.localStorage.setItem(
+    getReviewDraftStorageKey(recordId),
+    JSON.stringify({
+      version,
+      savedAt: Date.now(),
+      drafts,
+    }),
+  );
+};
+
+const loadLocalReviewDraft = (recordId: string, version: number): DraftState | null => {
+  if (typeof window === "undefined" || !recordId) {
+    return null;
+  }
+
+  const raw = window.localStorage.getItem(getReviewDraftStorageKey(recordId));
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as {
+      version?: number;
+      drafts?: DraftState;
+    };
+    if (!parsed || typeof parsed !== "object" || !parsed.drafts) {
+      return null;
+    }
+    if (Number(parsed.version ?? -1) !== Number(version ?? 0)) {
+      return null;
+    }
+    return parsed.drafts;
+  } catch (_error) {
+    return null;
+  }
+};
+
+const clearLocalReviewDraft = (recordId: string) => {
+  if (typeof window === "undefined" || !recordId) {
+    return;
+  }
+
+  window.localStorage.removeItem(getReviewDraftStorageKey(recordId));
+};
+
+const serializeDraftState = (drafts: DraftState) =>
+  JSON.stringify({
+    scores: drafts.scores,
+    comments: drafts.comments,
+    references: drafts.references,
+    abilities: drafts.abilities,
+    marks: drafts.marks,
+    rubricGuidance: drafts.rubricGuidance,
+    rubricPoints: drafts.rubricPoints,
+    missedPoints: drafts.missedPoints,
+    reviewVoices: drafts.reviewVoices,
+  });
 
 const getQuestionDraftScore = (question: SubjectiveQuestion, drafts: DraftState) =>
   question.subjectiveSubQuestions.reduce((sum, subQuestion) => {
@@ -431,7 +627,7 @@ const normalizeDraftAnswerMarksForSave = ({
   questionSortOrder: number;
   subQuestionTitle: string;
 }): MockExamSubjectiveAnswerMark[] => {
-  return marks
+  return normalizeEditableAnswerMarks(marks)
     .map((mark, index) => {
       const highlight = mark.highlight.trim();
       const comment = mark.comment.trim();
@@ -454,6 +650,8 @@ const normalizeDraftAnswerMarksForSave = ({
           comment,
           status: "correct",
           score: mark.score.trim() ? parsedScore : undefined,
+          start: Number.isInteger(Number(mark.start)) ? Number(mark.start) : undefined,
+          end: Number.isInteger(Number(mark.end)) ? Number(mark.end) : undefined,
         } satisfies MockExamSubjectiveAnswerMark;
       }
 
@@ -462,6 +660,8 @@ const normalizeDraftAnswerMarksForSave = ({
         highlight,
         comment,
         status: mark.status,
+        start: Number.isInteger(Number(mark.start)) ? Number(mark.start) : undefined,
+        end: Number.isInteger(Number(mark.end)) ? Number(mark.end) : undefined,
       } satisfies MockExamSubjectiveAnswerMark;
     })
     .filter((item): item is MockExamSubjectiveAnswerMark => Boolean(item));
@@ -1062,7 +1262,7 @@ function SubQuestionReviewWorkbench({
               </div>
             </div>
             <div className="mt-4 rounded-[22px] border border-dashed border-slate-200 bg-slate-50/60 px-4 py-4">
-              <div className="max-h-[430px] overflow-y-auto pr-1">
+              <div ref={annotatedAnswerSelectionRef} className="max-h-[430px] overflow-y-auto pr-1">
                 <AnnotatedAnswerText
                   answer={subQuestion.answer || ""}
                   marks={marks.map((mark) => ({
@@ -1071,12 +1271,14 @@ function SubQuestionReviewWorkbench({
                     comment: mark.comment,
                     status: mark.status,
                     score: Number.isFinite(Number(mark.score)) ? Number(mark.score) : undefined,
+                    start: mark.start,
+                    end: mark.end,
                   }))}
                   paragraphClassName="whitespace-pre-wrap text-[16px] leading-[2.15] text-slate-800"
                 />
               </div>
             </div>
-            <div className="mt-4 rounded-[22px] bg-slate-50 px-4 py-3 text-[15px] leading-8 text-slate-700">
+            <div ref={plainAnswerSelectionRef} className="mt-4 rounded-[22px] bg-slate-50 px-4 py-3 text-[15px] leading-8 text-slate-700">
               {subQuestion.answer || "学生未作答"}
             </div>
           </section>
@@ -1426,6 +1628,8 @@ function CompactInlineSubQuestionReviewWorkbench({
   const positiveMarkCount = marks.filter((mark) => mark.status === "correct").length;
   const [selectionHint, setSelectionHint] = useState("");
   const [editingMarkId, setEditingMarkId] = useState("");
+  const annotatedAnswerSelectionRef = useRef<HTMLDivElement | null>(null);
+  const plainAnswerSelectionRef = useRef<HTMLDivElement | null>(null);
   const markTypeMeta: Array<{
     value: EditableAnswerMark["status"];
     label: string;
@@ -1458,21 +1662,43 @@ function CompactInlineSubQuestionReviewWorkbench({
   const manualMarkTypeMeta = markTypeMeta.filter((item) => item.value !== "score");
 
   const appendMarkFromSelection = (status: EditableAnswerMark["status"]) => {
-    const selection = typeof window !== "undefined" ? window.getSelection()?.toString().trim() ?? "" : "";
-    if (!selection) {
+    const selectedRange =
+      getSelectionRangeInContainer(plainAnswerSelectionRef.current) ??
+      getSelectionRangeInContainer(annotatedAnswerSelectionRef.current);
+    if (!selectedRange?.highlight) {
       toast.error("请先在左侧学员作答里选中要标注的文字");
       return;
     }
-    if (subQuestion.answer && !subQuestion.answer.includes(selection)) {
+    if (subQuestion.answer && !subQuestion.answer.includes(selectedRange.highlight)) {
       toast.error("标注内容必须来自学员原答案");
       return;
     }
-    onMarksChange([...marks, createDraftAnswerMark(selection, status)]);
-    setSelectionHint(selection);
+    const nextMark = createDraftAnswerMark(selectedRange.highlight, status, selectedRange);
+    const duplicatedMark = marks.some(
+      (mark) =>
+        mark.status === status &&
+        hasMarkRange(mark) &&
+        hasMarkRange(nextMark) &&
+        Number(mark.start) === Number(nextMark.start) &&
+        Number(mark.end) === Number(nextMark.end),
+    );
+    if (duplicatedMark) {
+      toast.error("这段内容已经标注过了");
+      return;
+    }
+
+    const overlappingMark = marks.some((mark) => marksRangeOverlap(mark, nextMark));
+    if (overlappingMark) {
+      toast.error("这段内容和现有批注重叠了，请缩小选区后再标");
+      return;
+    }
+
+    onMarksChange(normalizeEditableAnswerMarks([...marks, nextMark]));
+    setSelectionHint(selectedRange.highlight);
   };
 
   const updateMark = (markId: string, updater: (mark: EditableAnswerMark) => EditableAnswerMark) =>
-    onMarksChange(marks.map((item) => (item.id === markId ? updater(item) : item)));
+    onMarksChange(normalizeEditableAnswerMarks(marks.map((item) => (item.id === markId ? updater(item) : item))));
   const editingMark = marks.find((item) => item.id === editingMarkId) ?? null;
 
   return (
@@ -1510,7 +1736,7 @@ function CompactInlineSubQuestionReviewWorkbench({
               </div>
             </div>
             <div className="mt-4 rounded-[22px] border border-dashed border-slate-200 bg-slate-50/60 px-4 py-4">
-              <div className="max-h-[430px] overflow-y-auto pr-1">
+              <div ref={annotatedAnswerSelectionRef} className="max-h-[430px] overflow-y-auto pr-1">
                 <AnnotatedAnswerText
                   answer={subQuestion.answer || ""}
                   marks={marks.map((mark) => ({
@@ -1519,12 +1745,14 @@ function CompactInlineSubQuestionReviewWorkbench({
                     comment: mark.comment,
                     status: mark.status,
                     score: Number.isFinite(Number(mark.score)) ? Number(mark.score) : undefined,
+                    start: mark.start,
+                    end: mark.end,
                   }))}
                   paragraphClassName="whitespace-pre-wrap text-[16px] leading-[2.15] text-slate-800"
                 />
               </div>
             </div>
-            <div className="mt-4 rounded-[22px] bg-slate-50 px-4 py-3 text-[15px] leading-8 text-slate-700">
+            <div ref={plainAnswerSelectionRef} className="mt-4 rounded-[22px] bg-slate-50 px-4 py-3 text-[15px] leading-8 text-slate-700">
               {subQuestion.answer || "学生未作答"}
             </div>
           </section>
@@ -1617,13 +1845,13 @@ function CompactInlineSubQuestionReviewWorkbench({
                           <button
                             key={`${mark.id}_${item.value}`}
                             type="button"
-                            onClick={() =>
-                              updateMark(mark.id, (current) => ({
-                                ...current,
-                                status: item.value,
-                                score: item.value === "correct" ? current.score : "",
-                              }))
-                            }
+                              onClick={() =>
+                                updateMark(mark.id, (current) => ({
+                                  ...current,
+                                  status: item.value,
+                                  score: item.value === "correct" ? current.score : "",
+                                }))
+                              }
                             className={`inline-flex h-10 w-10 items-center justify-center rounded-full border transition ${
                               mark.status === item.value ? item.className : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
                             }`}
@@ -1642,7 +1870,7 @@ function CompactInlineSubQuestionReviewWorkbench({
                         </button>
                         <button
                           type="button"
-                          onClick={() => onMarksChange(marks.filter((item) => item.id !== mark.id))}
+                          onClick={() => onMarksChange(normalizeEditableAnswerMarks(marks.filter((item) => item.id !== mark.id)))}
                           className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
                           aria-label="删除"
                           title="删除"
@@ -1759,10 +1987,12 @@ export function MockExamReviewList() {
   const [saving, setSaving] = useState(false);
   const [aiScoring, setAiScoring] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [autoSaving, setAutoSaving] = useState(false);
   const [claimingRecordId, setClaimingRecordId] = useState("");
   const [uploadingVoiceQuestionId, setUploadingVoiceQuestionId] = useState("");
   const [selectedDetail, setSelectedDetail] = useState<AdminMockExamReviewDetail | null>(null);
   const renewLockTimerRef = useRef<number | null>(null);
+  const lastSyncedDraftRef = useRef("");
   const [drafts, setDrafts] = useState<DraftState>({
     scores: {},
     comments: {},
@@ -1869,7 +2099,10 @@ export function MockExamReviewList() {
       setClaimingRecordId(recordId);
       const detail = await mockApi.claimAdminMockExamReview(recordId);
       setSelectedDetail(detail);
-      setDrafts(buildDraftState(detail));
+      const remoteDraft = buildDraftState(detail);
+      const localDraft = loadLocalReviewDraft(detail.id, detail.manualReviewLock?.version ?? 0);
+      setDrafts(localDraft ?? remoteDraft);
+      lastSyncedDraftRef.current = serializeDraftState(remoteDraft);
       setDetailOpen(true);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "领取试卷失败");
@@ -1927,49 +2160,106 @@ export function MockExamReviewList() {
     };
   }, [currentLockToken, detailOpen, selectedDetail?.id, selectedDetail?.manualReviewLock?.ownedByCurrentAdmin]);
 
+  useEffect(() => {
+    if (!detailOpen || !selectedDetail?.id) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      saveLocalReviewDraft(selectedDetail.id, selectedDetail.manualReviewLock?.version ?? 0, drafts);
+    }, 500);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [detailOpen, drafts, selectedDetail?.id, selectedDetail?.manualReviewLock?.version]);
+
+  useEffect(() => {
+    if (!detailOpen || !selectedDetail?.id || detailLoading || saving || publishing || aiScoring) {
+      return;
+    }
+
+    const currentDraftSnapshot = serializeDraftState(drafts);
+    if (currentDraftSnapshot === lastSyncedDraftRef.current) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setAutoSaving(true);
+      void submitReviewDraft("manual_reviewing")
+        .catch(() => {
+          // keep local draft as fallback
+        })
+        .finally(() => {
+          setAutoSaving(false);
+        });
+    }, 1800);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [aiScoring, detailLoading, detailOpen, drafts, publishing, saving, selectedDetail?.id]);
+
+  const buildReviewSubmissionItems = (): AdminMockExamReviewQuestionScoreInput[] =>
+    subjectiveQuestions.map((question) => ({
+      questionId: question.id,
+      reviewVoiceUrl: (drafts.reviewVoices[question.id]?.url ?? "").trim(),
+      reviewVoiceObjectKey: (drafts.reviewVoices[question.id]?.objectKey ?? "").trim(),
+      reviewVoiceDurationSeconds: Number(drafts.reviewVoices[question.id]?.durationSeconds ?? 0) || 0,
+      subQuestions: question.subjectiveSubQuestions.map((subQuestion) => {
+        const key = getSubQuestionKey(question.id, subQuestion.id);
+        const score = parseInteger(drafts.scores[key]);
+        if (!Number.isInteger(score)) {
+          throw new Error(`第 ${question.sortOrder} 题的小问分数必须是整数`);
+        }
+        return {
+          subQuestionId: subQuestion.id,
+          score,
+          reviewComment: (drafts.comments[key] ?? "").trim(),
+          referenceAnswer: (drafts.references[key] ?? "").trim(),
+          abilityLabel: (drafts.abilities[key] ?? "").trim() || subQuestion.title || "",
+          rubricGuidance: (drafts.rubricGuidance[key] ?? "").trim(),
+          rubricPoints: normalizeDraftRubricPointsForSave(drafts.rubricPoints[key] ?? []),
+          missedPoints: normalizeDraftMissedPointsForSave(drafts.missedPoints[key] ?? []),
+          answerMarks: normalizeDraftAnswerMarksForSave({
+            marks: drafts.marks[key] ?? [],
+            questionSortOrder: question.sortOrder,
+            subQuestionTitle: subQuestion.title,
+          }),
+        };
+      }),
+    }));
+
+  const submitReviewDraft = async (targetWorkflowStatus: "manual_reviewing" | "manual_pending" = "manual_pending") => {
+    if (!selectedDetail) {
+      return null;
+    }
+
+    const items = buildReviewSubmissionItems();
+    const detail = await mockApi.submitAdminMockExamReview(selectedDetail.id, {
+      items,
+      lockToken: currentLockToken,
+      version: currentLockVersion,
+      targetWorkflowStatus,
+    });
+    clearLocalReviewDraft(selectedDetail.id);
+    const nextDraft = buildDraftState(detail);
+    setSelectedDetail(detail);
+    setDrafts(nextDraft);
+    lastSyncedDraftRef.current = serializeDraftState(nextDraft);
+    return detail;
+  };
+
   const handleSave = async () => {
     if (!selectedDetail) return;
 
     try {
-      const items: AdminMockExamReviewQuestionScoreInput[] = subjectiveQuestions.map((question) => ({
-        questionId: question.id,
-        reviewVoiceUrl: (drafts.reviewVoices[question.id]?.url ?? "").trim(),
-        reviewVoiceObjectKey: (drafts.reviewVoices[question.id]?.objectKey ?? "").trim(),
-        reviewVoiceDurationSeconds: Number(drafts.reviewVoices[question.id]?.durationSeconds ?? 0) || 0,
-        subQuestions: question.subjectiveSubQuestions.map((subQuestion) => {
-          const key = getSubQuestionKey(question.id, subQuestion.id);
-          const score = parseInteger(drafts.scores[key]);
-          if (!Number.isInteger(score)) {
-            throw new Error(`第 ${question.sortOrder} 题的小问分数必须是整数`);
-          }
-          return {
-            subQuestionId: subQuestion.id,
-            score,
-            reviewComment: (drafts.comments[key] ?? "").trim(),
-            referenceAnswer: (drafts.references[key] ?? "").trim(),
-            abilityLabel: (drafts.abilities[key] ?? "").trim() || subQuestion.title || "",
-            rubricGuidance: (drafts.rubricGuidance[key] ?? "").trim(),
-            rubricPoints: normalizeDraftRubricPointsForSave(drafts.rubricPoints[key] ?? []),
-            missedPoints: normalizeDraftMissedPointsForSave(drafts.missedPoints[key] ?? []),
-            answerMarks: normalizeDraftAnswerMarksForSave({
-              marks: drafts.marks[key] ?? [],
-              questionSortOrder: question.sortOrder,
-              subQuestionTitle: subQuestion.title,
-            }),
-          };
-        }),
-      }));
-
       setSaving(true);
-      const detail = await mockApi.submitAdminMockExamReview(selectedDetail.id, {
-        items,
-        lockToken: currentLockToken,
-        version: currentLockVersion,
-      });
-      setSelectedDetail(detail);
-      setDrafts(buildDraftState(detail));
+      await submitReviewDraft("manual_pending");
       toast.success("批改结果已保存到待发送队列");
       await refreshQueues();
+      setReviewStatus("manual_pending");
+      setPage(1);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "保存批改失败");
     } finally {
@@ -1997,10 +2287,15 @@ export function MockExamReviewList() {
     if (!selectedDetail) return;
     try {
       setPublishing(true);
+      const latestDetail = await submitReviewDraft("manual_pending");
+      if (!latestDetail) {
+        return;
+      }
       const detail = await mockApi.publishAdminMockExamReview(selectedDetail.id, {
-        lockToken: currentLockToken,
-        version: currentLockVersion,
+        lockToken: latestDetail.manualReviewLock?.lockToken ?? currentLockToken,
+        version: latestDetail.manualReviewLock?.version ?? currentLockVersion,
       });
+      clearLocalReviewDraft(selectedDetail.id);
       setSelectedDetail(detail);
       setDrafts(buildDraftState(detail));
       toast.success("已发送给学生");
@@ -2365,7 +2660,9 @@ export function MockExamReviewList() {
                             {getQuestionDraftScore(question, drafts)}
                             <span className="ml-1 text-base font-medium text-slate-500">/ {question.score}</span>
                           </p>
-                          <p className="text-xs leading-5 text-slate-500">按小问分别录分，系统这里汇总展示。</p>
+                          <p className="text-xs leading-5 text-slate-500">
+                            {autoSaving ? "正在自动保存当前修改..." : "按小问分别录分，系统这里汇总展示。"}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -2408,10 +2705,7 @@ export function MockExamReviewList() {
                               }))
                             }
                             onMarksChange={(value) =>
-                              setDrafts((current) => ({
-                                ...current,
-                                marks: { ...current.marks, [key]: value },
-                              }))
+                              setDrafts((current) => applyMarksToDraftState(current, key, value))
                             }
                           />
                         );
@@ -2450,3 +2744,4 @@ export function MockExamReviewList() {
     </div>
   );
 }
+

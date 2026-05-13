@@ -18,6 +18,8 @@ type ResolvedMark = {
   status: "correct" | "wrong" | "score" | "neutral";
   score?: number;
   originalIndex: number;
+  start?: number;
+  end?: number;
 };
 
 type PositionedMark = ResolvedMark & {
@@ -66,6 +68,8 @@ const normalizeMarks = (marks?: MockExamSubjectiveAnswerMark[]) =>
         status: item.status === "wrong" ? "wrong" : item.status === "neutral" ? "neutral" : "correct",
         score: Number.isFinite(Number(item.score)) ? Number(item.score) : undefined,
         originalIndex: index,
+        start: Number.isInteger(Number(item.start)) && Number(item.start) >= 0 ? Number(item.start) : undefined,
+        end: Number.isInteger(Number(item.end)) && Number(item.end) > Number(item.start) ? Number(item.end) : undefined,
       } satisfies ResolvedMark;
     })
     .filter((item): item is ResolvedMark => Boolean(item));
@@ -164,7 +168,18 @@ const resolveMarkPositions = (value: string, marks: ResolvedMark[]) => {
   const usedRanges: Array<{ start: number; end: number }> = [];
   const positionedMarks: PositionedMark[] = [];
   const usedPositiveOccurrenceCount = new Map<string, number>();
+  const directPositionMarks = marks
+    .filter(
+      (mark) =>
+        Number.isInteger(mark.start) &&
+        Number.isInteger(mark.end) &&
+        Number(mark.start) >= 0 &&
+        Number(mark.end) > Number(mark.start) &&
+        Number(mark.end) <= value.length,
+    )
+    .sort((left, right) => Number(left.start) - Number(right.start) || Number(left.end) - Number(right.end) || left.originalIndex - right.originalIndex);
   const marksWithCandidates = marks
+    .filter((mark) => !(Number.isInteger(mark.start) && Number.isInteger(mark.end) && Number(mark.end) > Number(mark.start)))
     .map((mark) => ({
       mark,
       candidates: findAllOccurrences(value, mark.highlight),
@@ -188,6 +203,18 @@ const resolveMarkPositions = (value: string, marks: ResolvedMark[]) => {
       return left.mark.originalIndex - right.mark.originalIndex;
     });
 
+  for (const mark of directPositionMarks) {
+    const start = Number(mark.start);
+    const end = Number(mark.end);
+    positionedMarks.push({
+      ...mark,
+      highlight: value.slice(start, end),
+      start,
+      end,
+    });
+    usedRanges.push({ start, end });
+  }
+
   for (const item of marksWithCandidates) {
     const isPositiveMark = item.mark.status === "score" || item.mark.status === "correct";
     let resolvedCandidate = null;
@@ -208,10 +235,10 @@ const resolveMarkPositions = (value: string, marks: ResolvedMark[]) => {
       resolvedCandidate =
         item.candidates
           .map((candidate) => carveNonOverlappingRange({ value, candidate, usedRanges }))
-          .find((candidate) => candidate && candidate.end - candidate.start >= 2) ?? null;
+          .find((candidate) => candidate && candidate.end - candidate.start >= 1) ?? null;
     }
 
-    if (!resolvedCandidate || resolvedCandidate.end - resolvedCandidate.start < 2) {
+    if (!resolvedCandidate || resolvedCandidate.end - resolvedCandidate.start < 1) {
       continue;
     }
 

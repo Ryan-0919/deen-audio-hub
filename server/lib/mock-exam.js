@@ -307,12 +307,16 @@ const normalizeAnswerMarks = (value) => {
     .map((item, index) => {
       const normalizedStatus = ["correct", "wrong", "score", "neutral"].includes(`${item?.status ?? ""}`.trim()) ? `${item?.status}`.trim() : "wrong";
       const rawScore = Number(item?.score);
+      const rawStart = Number(item?.start);
+      const rawEnd = Number(item?.end);
       return {
         id: `${item?.id ?? `mark_${index + 1}`}`.trim(),
         highlight: `${item?.highlight ?? ""}`.trim(),
         comment: `${item?.comment ?? ""}`.trim(),
         status: normalizedStatus,
         score: (normalizedStatus === "score" || normalizedStatus === "correct") && Number.isFinite(rawScore) ? rawScore : null,
+        start: Number.isInteger(rawStart) && rawStart >= 0 ? rawStart : null,
+        end: Number.isInteger(rawEnd) && rawEnd > rawStart ? rawEnd : null,
       };
     })
     .filter((item) => item.highlight);
@@ -2826,6 +2830,11 @@ export const listMockExamReviewRecords = async ({
   const manualReviewingWhere = currentAdminId
     ? {
         manualReviewerId: currentAdminId,
+        NOT: {
+          reviewWorkflowStatus: {
+            in: ["manual_pending", "published"],
+          },
+        },
       }
     : {
         id: "__never__",
@@ -2967,6 +2976,11 @@ export const listMockExamReviewPaperSummaries = async ({ db, keyword = "", curre
             ? {
                 ...baseWhere,
                 manualReviewerId: currentAdminId,
+                NOT: {
+                  reviewWorkflowStatus: {
+                    in: ["manual_pending", "published"],
+                  },
+                },
               }
             : {
                 ...baseWhere,
@@ -3178,9 +3192,11 @@ export const reviewMockExamRecord = async ({
   lockToken,
   version,
   questionScores = [],
+  targetWorkflowStatus = "manual_pending",
   currentTime = new Date(),
 }) =>
   db.$transaction(async (tx) => {
+    const normalizedTargetWorkflowStatus = `${targetWorkflowStatus ?? ""}`.trim() === "manual_reviewing" ? "manual_reviewing" : "manual_pending";
     const record = await getReviewRecordWithPaper(tx, recordId);
     if (!record) {
       throw createHttpError("考试记录不存在", 404);
@@ -3388,7 +3404,7 @@ export const reviewMockExamRecord = async ({
       data: {
         totalScore: objectiveScore + subjectiveScoreTotal,
         reviewedAt: currentTime,
-        reviewWorkflowStatus: "manual_pending",
+        reviewWorkflowStatus: normalizedTargetWorkflowStatus,
         publishedAt: null,
         manualReviewVersion: {
           increment: 1,

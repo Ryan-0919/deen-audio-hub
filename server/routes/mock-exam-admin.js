@@ -813,6 +813,7 @@ mockExamAdminRouter.post("/reviews/:recordId/score", async (req, res) => {
       lockToken: `${req.body?.lockToken ?? ""}`.trim(),
       version: req.body?.version,
       questionScores: req.body?.items,
+      targetWorkflowStatus: `${req.body?.targetWorkflowStatus ?? ""}`.trim() === "manual_reviewing" ? "manual_reviewing" : "manual_pending",
     });
 
     return ok(

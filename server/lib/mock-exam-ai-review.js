@@ -3,7 +3,7 @@ import { normalizeDisplayText } from "./text.js";
 
 const subjectiveQuestionType = "subjective_case";
 const normalizeMultilineText = (value) => normalizeDisplayText(`${value ?? ""}`.replace(/\r\n/g, "\n")).trim();
-const AI_REVIEW_COMMENT_MAX_LENGTH = 350;
+const AI_REVIEW_COMMENT_MAX_LENGTH = 450;
 const AI_REVIEW_MARK_COMMENT_MAX_LENGTH = 60;
 const SUBJECTIVE_REVIEW_MIN_MEANINGFUL_LENGTH = 6;
 const KEYWORD_SPLIT_PATTERN = /[\n,，、；;]/;
@@ -156,7 +156,7 @@ const naturalizeMechanicalSuggestionParagraph = (value) => {
       .sort((left, right) => left.order - right.order)
       .map((item) => item.text);
 
-    return `你后面再答这类题，${buildNaturalSuggestionClause({
+    return `这题回去改时，${buildNaturalSuggestionClause({
       stepOne: orderedSteps[0],
       stepTwo: orderedSteps[1],
       stepThree: orderedSteps[2],
@@ -165,11 +165,11 @@ const naturalizeMechanicalSuggestionParagraph = (value) => {
   }
 
   return text
-    .replace(/^建议[:：]?\s*第一步[，,:：\s]*/u, "你后面再答这类题，先")
-    .replace(/^第一步[，,:：\s]*/u, "你后面再答这类题，先")
+    .replace(/^建议[:：]?\s*第一步[，,:：\s]*/u, "这题回去改时，先")
+    .replace(/^第一步[，,:：\s]*/u, "这题回去改时，先")
     .replace(/(?:；|;|。)\s*第二步[，,:：\s]*/gu, "，再")
     .replace(/(?:；|;|。)\s*第三步[，,:：\s]*/gu, "，最后")
-    .replace(/^建议[:：]?\s*/u, "建议你把写法调整成：")
+    .replace(/^建议[:：]?\s*/u, "更稳的写法是：")
     .replace(/\n{2,}/g, "\n")
     .trim();
 };
@@ -282,11 +282,12 @@ export const humanizeAiReviewComment = (value) => {
     .replace(/而你的答案目前缺少/g, "你现在还缺")
     .replace(/你目前的答题习惯，存在/g, "你现在的答题习惯有")
     .replace(/这会导致你容易/g, "这样写很容易让你")
-    .replace(/以后遇到这类题，建议你[:：]?\s*/g, "你后面再答这类题时")
+    .replace(/以后遇到这类题，建议你[:：]?\s*/g, "这道题回去改时，")
     .replace(/你这道题真正丢分的地方，我直接给你点出来[:：]?/g, "这道题你真正丢分的地方，其实就在")
     .replace(/你这一问重点要展开的是/g, "你这一问最该补上的其实是")
     .replace(/还有一个很明显的问题是/g, "还有一个问题你得留意")
-    .replace(/你下次可以这样答/g, "你后面答这类题时")
+    .replace(/你下次可以这样答/g, "这道题回去改时")
+    .replace(/你后面答这类题时/g, "这道题回去改时")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
@@ -321,7 +322,14 @@ export const sanitizeReviewExposureText = (value) => {
   return REVIEW_TEXT_EXPOSURE_REPLACEMENTS.reduce((result, [pattern, replacement]) => result.replace(pattern, replacement), text);
 };
 export const normalizeAiMarkComment = (value, maxLength = AI_REVIEW_MARK_COMMENT_MAX_LENGTH) => {
-  const normalized = sanitizeReviewExposureText(normalizeText(value)).replace(/\s+/g, " ");
+  const normalized = sanitizeReviewExposureText(normalizeText(value))
+    .replace(/^建议后面的修改为[:：]?\s*/u, "这句直接改成")
+    .replace(/^建议(?:修改为|改成)[:：]?\s*/u, "这句直接改成")
+    .replace(/^建议你(?:把)?这句改成[:：]?\s*/u, "这句直接改成")
+    .replace(/^建议你(?:把)?这里改成[:：]?\s*/u, "这里直接改成")
+    .replace(/^建议你(?:把)?/u, "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!normalized) {
     return "";
   }
@@ -408,7 +416,7 @@ export const DEFAULT_AI_REVIEW_SYSTEM_PROMPT = [
   "你的总点评不要复述学生原答案，不要一味重复学生写了什么。",
   "你的总点评可以有清晰结构，但不要写成生硬模板，不要像机器报告，也不要像公文。",
   "你的表达要像老师在给学生讲题，亲切、自然、有针对性，让学生一眼能看懂自己到底错在哪、下一次该怎么改。",
-  "你的总点评请控制在 350 字以内，尽量写成 2 到 4 个自然短段落。",
+  "你的总点评请控制在 450 字以内，尽量写成 2 到 4 个自然短段落。",
   "你的总点评请围绕这几个层次自然展开：核心失分点、采分点分析、思维诊断、可执行建议。",
   "你可以用这些层次来组织内容，但不要机械套话，不要每一段都写得像固定表格。",
   "在建议部分要直接告诉学生下一次该怎么改、怎么补，但不要写成“第一步、第二步、第三步”这种流程卡片式话术。",
@@ -639,7 +647,7 @@ const buildAiResponseDebugPreview = ({ payload, content, parsed }) =>
     1600,
   );
 
-const withAiDebugMessage = (message, debugPreview) => (debugPreview ? `${message}ã€‚AIåŽŸå§‹è¿”å›žï¼š${debugPreview}` : message);
+const withAiDebugMessage = (message, debugPreview) => (debugPreview ? `${message}。AI 原始返回：${debugPreview}` : message);
 
 const toSubQuestionSequenceId = (value) => {
   const text = normalizeText(value);
@@ -868,12 +876,16 @@ const normalizeAnswerMarks = (value) => {
             ? "wrong"
             : "wrong";
       const rawScore = Number(item?.score ?? item?.awardedScore ?? item?.awarded_score);
+      const rawStart = Number(item?.start);
+      const rawEnd = Number(item?.end);
       return {
         id: `${item?.id ?? item?.markId ?? item?.mark_id ?? `mark_${index + 1}`}`.trim(),
         highlight: `${item?.highlight ?? item?.selectedText ?? item?.selected_text ?? item?.text ?? ""}`.trim(),
         comment: normalizeAiMarkComment(item?.comment ?? item?.reviewComment ?? item?.review_comment ?? item?.remark ?? ""),
         status: normalizedStatus,
         score: (normalizedStatus === "score" || normalizedStatus === "correct") && Number.isFinite(rawScore) ? rawScore : null,
+        start: Number.isInteger(rawStart) && rawStart >= 0 ? rawStart : null,
+        end: Number.isInteger(rawEnd) && rawEnd > rawStart ? rawEnd : null,
       };
     })
     .filter((item) => item.highlight);
@@ -939,7 +951,7 @@ const findAnswerHighlight = (answerText, candidate) => {
 const dedupeAnswerMarks = (marks) => {
   const seen = new Set();
   return marks.filter((mark) => {
-    const key = [mark.highlight, mark.status, mark.score ?? "", mark.comment ?? ""].join("::");
+    const key = [mark.highlight, mark.status, mark.score ?? "", mark.comment ?? "", mark.start ?? "", mark.end ?? ""].join("::");
     if (seen.has(key)) {
       return false;
     }
@@ -1277,6 +1289,23 @@ const buildWrongPointComment = (point) => {
   return normalizeAiMarkComment(buildGenericWrongPointComment());
 };
 
+const buildFallbackWrongMarkComment = ({ rubricPoints = [] }) => {
+  const firstMissedPoint = getMissedRubricPoints(rubricPoints)[0];
+  const title = normalizeText(firstMissedPoint?.title);
+  const description = normalizeText(firstMissedPoint?.description);
+
+  if (title && description) {
+    return normalizeAiMarkComment(`这句没有把“${title}”答出来。回去改时把这层判断单独写明，再把${description}落回本案。`);
+  }
+  if (title) {
+    return normalizeAiMarkComment(`这句没把“${title}”落准。回去改时把这一层判断写清楚，再把依据和本案分析补上。`);
+  }
+  if (description) {
+    return normalizeAiMarkComment(`这句没有把关键判断落到位。回去改时直接把${description}写出来，再把理由扣回本案。`);
+  }
+  return normalizeAiMarkComment("这句判断没有落到本题采分点上，结论要写准，对应依据和本案分析也要补出来。");
+};
+
 const buildReviewCommentTemplate = ({
   coreLossPoint,
   keyPoints = [],
@@ -1416,37 +1445,37 @@ const buildSubQuestionSummaryComment = ({ score, maxScore, title, rubricPoints }
   const labels = missedPoints
     .map((point) => normalizeText(point?.title) || normalizeText(point?.description))
     .filter(Boolean);
-  const summaryText = labels.slice(0, 3).join("ã€");
-  const suffix = labels.length > 3 ? "ç­‰å…³é”®å†…å®¹" : "ç­‰å†…å®¹";
+  const summaryText = labels.slice(0, 3).join("、");
+  const suffix = labels.length > 3 ? "等关键内容" : "等内容";
   const hitPoints = (Array.isArray(rubricPoints) ? rubricPoints : []).filter((point) => point?.hit);
   const hitLabels = hitPoints
     .map((point) => normalizeText(point?.title) || normalizeText(point?.description))
     .filter(Boolean);
   const keyPoints = Array.from(new Set([...hitLabels, ...labels])).filter(Boolean);
-  const missingPointText = labels.length > 0 ? labels : ["å…³é”®é‡‡åˆ†ç‚¹"];
+  const missingPointText = labels.length > 0 ? labels : ["关键采分点"];
 
   if (Number(score ?? 0) <= 0) {
     return buildReviewCommentTemplate({
-      coreLossPoint: summaryText ? `å®Œå…¨æ²¡æœ‰è¦†ç›–${summaryText}${suffix}` : "ç»“è®ºã€ä¾æ®å’Œè®ºè¯éƒ½æ²¡æœ‰è½åˆ°æœ¬é¢˜é‡‡åˆ†ç‚¹ä¸Š",
+      coreLossPoint: summaryText ? `完全没有覆盖${summaryText}${suffix}` : "结论、依据和论证都没有落到本题采分点上",
       keyPoints,
       missingPoints: missingPointText,
-      thinkingIssue: "æ²¡æœ‰å…ˆå¯¹ç…§é¢˜ç›®é‡‡åˆ†ç‚¹ç»„ç»‡ç­”æ¡ˆï¼Œå†™å‡ºæ¥çš„å†…å®¹ä¸Žé—®é¢˜ä¸å¯¹åº”",
-      consequence: "æ•´é“é¢˜å†™äº†ä¸å°‘å†…å®¹ï¼Œä½†å¾—åˆ†ç‚¹å‘½ä¸­å¾ˆå°‘ï¼ŒåŸºæœ¬æ‹¿ä¸åˆ°æœ‰æ•ˆåˆ†",
-      stepOne: "å…ˆæŠŠé¢˜ç›®è¦æ±‚å›žç­”çš„ä¸»ç»“è®ºå†™å‡†ï¼Œä¸è¦ä¸€ä¸Šæ¥å…ˆèƒŒæ¦‚å¿µã€‚",
-      stepTwo: "æŠŠæ¯ä¸ªé‡‡åˆ†ç‚¹åœ¨æœ¬æ¡ˆä¸­çš„å¯¹åº”äº‹å®žã€æ³•å¾‹å…³ç³»å’Œåˆ¤æ–­æ ‡å‡†é€é¡¹åˆ—å‡ºæ¥ã€‚",
-      stepThree: "æŒ‰â€œç»“è®º+ä¾æ®+æœ¬æ¡ˆåˆ†æžâ€è¡¥å®Œæ•´ï¼Œä¸è¦åªåœç•™åœ¨æŠ½è±¡å®šä¹‰ã€‚",
+      thinkingIssue: "没有先对照题目采分点组织答案，写出来的内容和题目要求不对应",
+      consequence: "整道题看着写了不少，但真正命中的得分点很少，分数就上不去",
+      stepOne: "先把题目要求回答的主结论写准，不要一上来就先背概念",
+      stepTwo: "把每个采分点在本案中的对应事实、法律关系和判断标准逐项写出来",
+      stepThree: "按“结论 + 依据 + 本案分析”补完整，不要只停在抽象表述上",
     });
   }
 
   return buildReviewCommentTemplate({
-    coreLossPoint: summaryText ? `è¿˜æ¼äº†${summaryText}${suffix}` : `å›´ç»•â€œ${title || "æœ¬å°é—®"}â€çš„å…³é”®è®ºè¯æ²¡æœ‰å±•å¼€å®Œæ•´`,
+    coreLossPoint: summaryText ? `还漏了${summaryText}${suffix}` : `围绕“${title || "本小问"}”的关键论证没有展开完整`,
     keyPoints,
     missingPoints: missingPointText,
-    thinkingIssue: "çŸ¥é“å¤§æ–¹å‘ï¼Œä½†æ²¡æœ‰æŠŠé‡‡åˆ†ç‚¹æ‹†å¼€é€é¡¹ä½œç­”",
-    consequence: "ç»“è®ºå¯èƒ½æ²¡åï¼Œä½†ç†ç”±åˆ†å’Œå±•å¼€åˆ†æŒç»­ä¸¢å¤±",
-    stepOne: "å…ˆçœ‹æ¸…æœ¬é¢˜é‡‡åˆ†ç‚¹åˆ°åº•è¦æ±‚ä½ è®ºè¯å“ªå‡ ä¸ªå±‚æ¬¡ï¼Œä¸è¦åªå†™ä¸€ä¸ªç¬¼ç»Ÿç»“è®ºã€‚",
-    stepTwo: "é€é¡¹è¡¥å‡ºç¼ºå°‘çš„é‡‡åˆ†ç‚¹ï¼ŒæŠŠæ¯ä¸€é¡¹å’Œæœ¬æ¡ˆäº‹å®žå¯¹åº”èµ·æ¥ã€‚",
-    stepThree: "æœ€åŽæ£€æŸ¥æœ‰æ²¡æœ‰æŠŠå…³é”®æ³•å¾‹å…³ç³»ã€è¦ä»¶å’Œç»“è®ºé“¾æ¡å†™å®Œæ•´ã€‚",
+    thinkingIssue: "方向可能没偏，但还没有把采分点拆开逐层作答",
+    consequence: "结论分能拿到一些，可理由分和展开分会持续丢掉",
+    stepOne: "先看清本题到底要求你展开哪几个层次，不要只写一个笼统结论",
+    stepTwo: "把漏掉的采分点逐项补出来，每一项都和本案事实对应起来",
+    stepThree: "最后检查关键法律关系、判断标准和结论链条有没有真正写完整",
   });
 };
 
@@ -1487,7 +1516,7 @@ const normalizeWrongMarkComments = ({ marks, rubricPoints, reviewComment }) => {
     return {
       ...mark,
       comment: isGenericWrongMarkComment(mark.comment, reviewComment)
-        ? normalizeAiMarkComment("你这里这句话判断或表述不对，建议对照题干和规则，把对应结论、依据重新核对后再改。")
+        ? buildFallbackWrongMarkComment({ rubricPoints })
         : normalizeText(mark.comment),
     };
   });
@@ -1496,37 +1525,37 @@ const normalizeWrongMarkComments = ({ marks, rubricPoints, reviewComment }) => {
 const buildDefaultComment = ({ score, maxScore, title }) => {
   if (maxScore > 0 && score >= maxScore) {
     return buildReviewCommentTemplate({
-      coreLossPoint: "æ²¡æœ‰æ˜Žæ˜¾å¤±åˆ†ç‚¹ï¼Œä¸»è¦æ˜¯è¡¨è¿°ç»†èŠ‚è¿˜å¯ä»¥ç»§ç»­æ‰“ç£¨",
-      keyPoints: [title || "æœ¬é—®é‡‡åˆ†ç‚¹", "ç»“è®º", "ä¾æ®", "æœ¬æ¡ˆåˆ†æž"],
-      missingPoints: ["ç‰¹åˆ«æ˜Žæ˜¾çš„å¤±åˆ†é¡¹ä¸å¤šï¼Œæ›´å¤šæ˜¯è¡¨è¿°ç²¾åº¦å’Œå®Œæ•´åº¦"],
-      thinkingIssue: "å®¹æ˜“åœ¨å·²ç»ç­”å¯¹æ—¶æ”¾æ¾å¯¹è¡¨è¾¾å®Œæ•´æ€§çš„è¦æ±‚",
-      consequence: "ç¢°åˆ°æ›´ä¸¥æ ¼çš„é˜…å·æ ‡å‡†æ—¶ï¼Œå¯èƒ½å› ä¸ºç»†èŠ‚ä¸å¤Ÿå®Œæ•´è¢«æ‰£è¾¹ç¼˜åˆ†",
-      stepOne: "ç»§ç»­ä¿æŒå…ˆç»“è®ºã€å†ä¾æ®ã€å†æœ¬æ¡ˆåˆ†æžçš„å†™æ³•ã€‚",
-      stepTwo: "æŠŠå®¹æ˜“çœç•¥çš„é™å®šè¯­ã€æ¯”è¾ƒç‚¹å’Œç»“è®ºä¾æ®å†™å¾—æ›´æ˜Žç¡®ã€‚",
-      stepThree: "ç­”å®ŒåŽå›žçœ‹ä¸€éï¼Œæ£€æŸ¥æœ‰æ²¡æœ‰å¯ä»¥å†åŽ‹å®žçš„è¡¨è¾¾ç»†èŠ‚ã€‚",
+      coreLossPoint: "没有明显失分点，主要是表述细节还可以继续打磨",
+      keyPoints: [title || "本问采分点", "结论", "依据", "本案分析"],
+      missingPoints: ["明显遗漏不多，更多是表达精度和完整度还可以再抬一档"],
+      thinkingIssue: "容易在已经答对时放松对表达完整性的要求",
+      consequence: "碰到更严格的阅卷标准时，可能会因为细节不够扎实被扣掉边缘分",
+      stepOne: "继续保持先结论、再依据、再落回本案的写法",
+      stepTwo: "把容易省掉的限定语、比较点和结论依据写得更明确一些",
+      stepThree: "答完后回看一遍，专门检查还有没有能再压实的表述细节",
     });
   }
   if (score <= 0) {
     return buildReviewCommentTemplate({
-      coreLossPoint: "ç»“è®ºã€ä¾æ®å’Œæœ¬æ¡ˆåˆ†æžéƒ½æ²¡æœ‰çœŸæ­£å¯¹åº”åˆ°æœ¬é¢˜è¦æ±‚",
-      keyPoints: [title || "æœ¬é—®é‡‡åˆ†ç‚¹", "ç»“è®º", "ä¾æ®", "æœ¬æ¡ˆåˆ†æž"],
-      missingPoints: ["æ ¸å¿ƒå¾—åˆ†ç‚¹", "å¯¹åº”ä¾æ®", "é’ˆå¯¹æœ¬æ¡ˆçš„å±•å¼€"],
-      thinkingIssue: "ä½œç­”å‰æ²¡æœ‰å…ˆæ‹†é¢˜ï¼Œå¯¼è‡´å†™å‡ºæ¥çš„å†…å®¹å’Œé—®é¢˜è¦æ±‚é”™ä½",
-      consequence: "ç¯‡å¹…ä¸çŸ­ï¼Œä½†æœ‰æ•ˆå¾—åˆ†å¾ˆå°‘ï¼Œå®¹æ˜“æ•´é—®å¤±åˆ†",
-      stepOne: "å…ˆæŠŠæœ¬é¢˜é—®çš„æ ¸å¿ƒç»“è®ºå•ç‹¬å†™å‡ºæ¥ã€‚",
-      stepTwo: "å›´ç»•é¢˜å¹²å’Œé‡‡åˆ†ç‚¹é€é¡¹è¡¥ä¾æ®ï¼Œä¸è¦ç›´æŽ¥æ³›æ³›è€Œè°ˆã€‚",
-      stepThree: "æŠŠæ¯ä¸ªä¾æ®éƒ½è½å›žæœ¬æ¡ˆäº‹å®žï¼Œå½¢æˆå®Œæ•´çš„å¾—åˆ†é“¾æ¡ã€‚",
+      coreLossPoint: "结论、依据和本案分析都没有真正对应到本题要求",
+      keyPoints: [title || "本问采分点", "结论", "依据", "本案分析"],
+      missingPoints: ["核心得分点", "对应依据", "针对本案的展开"],
+      thinkingIssue: "下笔前没有先拆题，导致写出来的内容和题目要求错位",
+      consequence: "篇幅不一定短，但有效得分很少，容易整问失分",
+      stepOne: "先把本题要回答的核心结论单独写出来",
+      stepTwo: "围绕题干和采分点逐项补依据，不要泛泛而谈",
+      stepThree: "把每一层依据都落回本案事实，形成完整得分链条",
     });
   }
   return buildReviewCommentTemplate({
-    coreLossPoint: `å›´ç»•â€œ${title || "æœ¬é—®"}â€çš„å…³é”®è®ºè¯è¿˜ä¸å¤Ÿå®Œæ•´`,
-    keyPoints: [title || "æœ¬é—®é‡‡åˆ†ç‚¹", "ç»“è®º", "ä¾æ®", "æœ¬æ¡ˆåˆ†æž"],
-    missingPoints: ["éƒ¨åˆ†å…³é”®å¾—åˆ†ç‚¹", "è®ºè¯å±•å¼€", "æœ¬æ¡ˆå¯¹åº”åˆ†æž"],
-    thinkingIssue: "ä¼šå†™ç»“è®ºï¼Œä½†ä¸ä¼šæŠŠç†ç”±æ‹†æˆå¯å¾—åˆ†çš„å±‚æ¬¡",
-    consequence: "åŸºç¡€åˆ†èƒ½æ‹¿åˆ°ä¸€äº›ï¼Œä½†å±•å¼€åˆ†å’Œå®Œæ•´æ€§åˆ†é•¿æœŸæ‹¿ä¸æ»¡",
-    stepOne: "å…ˆç¡®è®¤æœ¬é¢˜è‡³å°‘è¦å±•å¼€å‡ ä¸ªé‡‡åˆ†ç‚¹ï¼Œå†å†³å®šç­”æ¡ˆç»“æž„ã€‚",
-    stepTwo: "æ¯ä¸ªé‡‡åˆ†ç‚¹è‡³å°‘å†™å‡ºä¸€å¥ä¾æ®å’Œä¸€å¥æœ¬æ¡ˆåˆ†æžã€‚",
-    stepThree: "æœ€åŽè¡¥ä¸€å±‚æ€»ç»“ï¼ŒæŠŠé›¶æ•£è§‚ç‚¹æ”¶æŸæˆå®Œæ•´ç»“è®ºã€‚",
+    coreLossPoint: `围绕“${title || "本问"}”的关键论证还不够完整`,
+    keyPoints: [title || "本问采分点", "结论", "依据", "本案分析"],
+    missingPoints: ["部分关键得分点", "论证展开", "本案对应分析"],
+    thinkingIssue: "会写结论，但不会把理由拆成可得分的层次",
+    consequence: "基础分能拿到一些，但展开分和完整性分长期拿不满",
+    stepOne: "先确认本题至少要展开几个采分点，再决定答案结构",
+    stepTwo: "每个采分点至少写出一句依据和一句本案分析",
+    stepThree: "最后补一层收束，把零散观点整理成完整结论",
   });
 };
 
@@ -1635,7 +1664,7 @@ const buildRuleBasedReviewJson = ({ question, answer, currentReviewJson }) => {
       score: scored.score,
       maxScore: Number(subQuestion.maxScore ?? 0),
       reviewComment: finalizedReview.reviewComment,
-      referenceAnswer: subQuestion.referenceAnswer || scored.pointResults.map((point) => point.title).join("ï¼›"),
+      referenceAnswer: subQuestion.referenceAnswer || scored.pointResults.map((point) => point.title).join("；"),
       reviewSource: "rule",
       reviewProvider: "rules",
       abilityLabel: subQuestion.abilityLabel || subQuestion.title,
@@ -1672,127 +1701,6 @@ const buildRuleBasedReviewJson = ({ question, answer, currentReviewJson }) => {
   };
 };
 
-const buildAiPrompt = ({ question, answer, allocations }) => {
-  const answerMap = parseSubjectiveAnswerMap(answer?.answerJson, question);
-  const payload = {
-    role: "å¸æ³•è€ƒè¯•ä¸»è§‚é¢˜é˜…å·è€å¸ˆ",
-    task: "å½“å‰è¯·æ±‚åªå¯¹åº”ä¸€é“ä¸»è§‚å¤§é¢˜ã€‚è¯·ä¸¥æ ¼ä¾æ®è¯¥é¢˜ä¸‹æ¯ä¸ªå°é—®çš„æ»¡åˆ†ã€å‚è€ƒç­”æ¡ˆã€æ‰¹æ”¹è¯´æ˜Žå’Œè¯„åˆ†ç‚¹ï¼Œå¯¹è€ƒç”Ÿç­”æ¡ˆåˆ†åˆ«è¯„åˆ†ï¼Œå¹¶åœ¨ä¸€æ¬¡ JSON è¿”å›žä¸­å®Œæ•´è¦†ç›–è¿™é“å¤§é¢˜ä¸‹çš„å…¨éƒ¨å°é—®ã€‚",
-    gradingPrinciples: [
-      "å‚è€ƒç­”æ¡ˆã€æ‰¹æ”¹è¯´æ˜Žã€è¯„åˆ†ç‚¹å±žäºŽæœ¬é¢˜å”¯ä¸€æ‰¹æ”¹ä¾æ®ï¼Œä¼˜å…ˆçº§é«˜äºŽä½ çš„é€šç”¨çŸ¥è¯†ã€‚",
-      "å¦‚æžœæœ¬é¢˜æä¾›çš„æ‰¹æ”¹è¯´æ˜Žæˆ–è¯„åˆ†ç‚¹ä¸Žå¸¸è¯†ã€æ³•å­¦æ•™æè¡¨è¿°ä¸ä¸€è‡´ï¼Œä¹Ÿå¿…é¡»ä»¥æœ¬é¢˜æä¾›çš„æ‰¹æ”¹ä¾æ®ä¸ºå‡†ã€‚",
-      "ä¸å¾—è‡ªè¡Œè¡¥å……æœ¬é¢˜æœªæä¾›çš„æ–°è¯„åˆ†ç‚¹ï¼Œä¸å¾—æ‰©å¤§è§£é‡Šå¾—åˆ†æ ‡å‡†ã€‚",
-      "æœ¬æ¬¡åªæ‰¹æ”¹å½“å‰è¿™ä¸€é“å¤§é¢˜ï¼Œä¸è¦æ‹†åˆ†æˆå¤šä¸ªæ‰¹æ”¹ä»»åŠ¡ï¼Œä¹Ÿä¸è¦å°†ä¸åŒå¤§é¢˜çš„å°é—®æ··åœ¨ä¸€èµ·è¿”å›žã€‚",
-      "reviewComment éœ€è¦å›´ç»•æœ¬é¢˜çš„è¯„åˆ†ç‚¹è¯´æ˜Žå¾—åˆ†ä¸Žå¤±åˆ†åŽŸå› ã€‚",
-      "referenceAnswerã€rubricGuidanceã€rubricPoints è¿”å›žæ—¶åº”å°½é‡ä¿æŒä¸Žæœ¬é¢˜æ‰¹æ”¹ä¾æ®ä¸€è‡´ï¼Œä¾¿äºŽäººå·¥å¤æ ¸ã€‚",
-      "missedPoints å¿…é¡»ç”±ä½ æ ¹æ®æœ¬å°é—®å®žé™…å¤±åˆ†æƒ…å†µç›´æŽ¥è¾“å‡ºï¼Œä¸å…è®¸è®©å‰ç«¯è‡ªå·±æ ¹æ® rubricPoints å†åŽ»æŽ¨ç®—ã€‚",
-      "missedPoints åªè¡¨ç¤ºå­¦ç”Ÿæ²¡æœ‰ç­”åˆ°çš„ç‚¹ï¼Œä¹Ÿå°±æ˜¯æœ¬è¯¥å‡ºçŽ°ä½†ç­”æ¡ˆä¸­å®Œå…¨æ²¡æœ‰è¦†ç›–çš„é‡‡åˆ†ç‚¹ã€è®ºè¯ç‚¹æˆ–ç»“è®ºç‚¹ã€‚",
-      "å¦‚æžœå­¦ç”Ÿå†™äº†ç›¸å…³å†…å®¹ä½†å†™é”™äº†ã€ç­”åäº†ã€è¡¨è¿°é”™è¯¯äº†ï¼Œè¿™å±žäºŽé”™è¯¯ç‚¹ï¼Œä¸å±žäºŽé—æ¼ç‚¹ï¼›è¿™ç±»å†…å®¹åº”æ”¾åœ¨ answerMarks çš„ wrong æ ‡æ³¨å’Œ reviewComment é‡Œï¼Œä¸è¦æ”¾è¿› missedPointsã€‚",
-    ],
-    outputRequirements: {
-      format: "json",
-      topLevelKeys: ["subQuestions"],
-      subQuestionShape: {
-        id: "string",
-        score: "integer",
-        reviewComment: "string",
-        referenceAnswer: "string",
-        abilityLabel: "string",
-        rubricGuidance: "string",
-        missedPoints: [
-          {
-            id: "string",
-            title: "string",
-            description: "string",
-            score: "integer",
-          },
-        ],
-        rubricPoints: [
-          {
-            id: "string",
-            title: "string",
-            score: "integer",
-            description: "string",
-            keywords: ["string"],
-            hit: "boolean",
-            awardedScore: "integer",
-            matchedText: "string",
-          },
-        ],
-        answerMarks: [
-          {
-            id: "string",
-            highlight: "string",
-            comment: "string",
-            status: "\"score\" | \"correct\" | \"wrong\"",
-            score: "number | null",
-          },
-        ],
-      },
-      constraints: [
-        "subQuestions å¿…é¡»ä¸€æ¬¡æ€§è¦†ç›–å½“å‰å¤§é¢˜ä¸‹çš„å…¨éƒ¨å°é—®ï¼Œæ¯ä¸ªå°é—®åªèƒ½è¿”å›žä¸€æ¬¡",
-        "æ¯ä¸ªå°é—® score å¿…é¡»æ˜¯æ•´æ•°",
-        "æ¯ä¸ªå°é—® score èŒƒå›´å¿…é¡»åœ¨ 0 åˆ° maxScore ä¹‹é—´",
-        "rubricPoints ä¸­æ¯ä¸ª awardedScore å¿…é¡»æ˜¯æ•´æ•°ä¸”ä¸å¤§äºŽè¯¥è¯„åˆ†ç‚¹åˆ†å€¼",
-        "missedPoints å¿…é¡»ç”±ä½ æ ¹æ®æœ¬å°é—®å®žé™…å¤±åˆ†æƒ…å†µè¾“å‡ºï¼Œä¸èƒ½çœç•¥ï¼›å¦‚æžœæœ¬å°é—®æ»¡åˆ†ä¸”æ— é—æ¼ï¼Œåˆ™è¿”å›žç©ºæ•°ç»„",
-        "missedPoints é‡Œåªèƒ½å†™å­¦ç”Ÿå®Œå…¨æ²¡æœ‰ç­”åˆ°çš„ç‚¹ï¼Œä¸èƒ½æŠŠå·²ç»ä½œç­”ä½†ç­”é”™ã€ç­”åã€ç­”åçš„å†…å®¹ç®—ä½œé—æ¼ç‚¹",
-        "å¦‚æžœå‘½ä¸­è¯„åˆ†ç‚¹ï¼Œhit=trueï¼Œå¹¶å°½é‡å¡«å†™ matchedText",
-        "answerMarks ä¸­çš„ highlight å¿…é¡»ç›´æŽ¥æˆªå–è‡ªè€ƒç”ŸåŽŸç­”æ¡ˆï¼Œä¸èƒ½æ”¹å†™ã€ä¸èƒ½æ¦‚æ‹¬ã€ä¸èƒ½æœæ’°",
-        "å¦‚æžœæ˜¯æ­£å‘å‘½ä¸­é‡‡åˆ†ç‚¹ï¼Œå¿…é¡»ä½¿ç”¨ status=scoreï¼Œå¹¶å¡«å†™å¯¹åº”å¾—åˆ†ï¼Œä¸å…è®¸åªç»™ correct ä¸å†™åˆ†å€¼",
-        "å¦‚æžœå­˜åœ¨æœªå‘½ä¸­çš„è¯„åˆ†ç‚¹ã€é—æ¼è®ºè¯ã€ç¼ºå¤±è§„åˆ™æˆ–å¤±åˆ†å†…å®¹ï¼Œå¿…é¡»è‡³å°‘è¿”å›ž 1 æ¡ status=wrong çš„ answerMarksï¼Œcomment å¿…é¡»ç›´æŽ¥è¯´æ˜Žé—æ¼äº†ä»€ä¹ˆ",
-        "å¦‚æžœå°é—® score å°äºŽ maxScoreï¼Œåˆ™è¯¥å°é—®çš„ answerMarks ä¸­å¿…é¡»è‡³å°‘åŒ…å« 1 æ¡ status=wrong",
-        "å¦‚æžœæŒ‡å‡ºæ˜Žæ˜¾å¤±åˆ†æˆ–é”™è¯¯è¡¨è¿°ï¼Œå¿…é¡»ä½¿ç”¨ status=wrongï¼›å¦‚æžœæ˜Žç¡®è¡¨è¿°æ­£ç¡®ä¸”éœ€è¦å•ç‹¬æ ‡å‡ºï¼Œå¯ä½¿ç”¨ status=correct",
-        "åªè¾“å‡º JSONï¼Œä¸è¦è¾“å‡ºé¢å¤–è§£é‡Š",
-      ],
-    },
-    question: {
-      id: question.id,
-      stem: normalizeText(question.stem),
-      material: normalizeText(question.material),
-      score: Math.max(0, Number(question.score ?? 0)),
-      subQuestions: allocations.map((item) => ({
-        id: item.id,
-        title: item.title,
-        maxScore: Math.max(0, Number(item.maxScore ?? 0)),
-        answer: answerMap[item.id] ?? "",
-        abilityLabel: item.abilityLabel || "",
-        referenceAnswer: item.referenceAnswer || "",
-        rubricGuidance: item.rubricGuidance || "",
-        rubricPoints: (item.rubricPoints ?? []).map((point) => ({
-          id: point.id,
-          title: point.title,
-          score: point.score,
-          description: point.description,
-          keywords: point.keywords,
-        })),
-      })),
-    },
-  };
-
-  payload.gradingPrinciples.push(
-    "answerMarks ä¸­ status=wrong çš„ comment åªèƒ½é’ˆå¯¹è¯¥æ¡å±€éƒ¨æ ‡æ³¨ç‰‡æ®µï¼ŒæŒ‡å‡ºè¿™ä¸€å¤„å…·ä½“é”™åœ¨å“ªé‡Œæˆ–æ¼äº†ä»€ä¹ˆï¼Œä¸èƒ½æŠŠæ•´ä¸ªå°é—®çš„æ€»è¯„å†™åœ¨è¿™é‡Œã€‚",
-    "è¯„è¯­è¯­æ°”è¦åƒè€å¸ˆåœ¨ç›´æŽ¥å¯¹å­¦ç”Ÿè¯´è¯ï¼Œå¯ä»¥ä½¿ç”¨â€œä½ è¿™é‡Œâ€â€œä½ è¿™ä¸€æ­¥â€â€œå»ºè®®ä½ â€è¿™ç±»è¡¨è¾¾ï¼Œä½†ä¸è¦å£è¯­åŒ–è¿‡å¤´ã€‚",
-    "æ— è®ºæ˜¯å±€éƒ¨ç‚¹è¯„è¿˜æ˜¯æ€»ç‚¹è¯„ï¼Œéƒ½è¦æ˜Žç¡®æŒ‡å‡ºå­¦ç”Ÿæ¼äº†ä»€ä¹ˆã€é”™äº†ä»€ä¹ˆï¼Œä»¥åŠåº”è¯¥å¦‚ä½•è¡¥å¼ºã€‚",
-    "reviewComment ä¸è¦å¤è¿°å­¦ç”ŸåŽŸç­”æ¡ˆï¼Œä¹Ÿä¸è¦ä¸€å‘³é‡å¤å­¦ç”Ÿå†™äº†ä»€ä¹ˆã€‚",
-    "reviewComment å¯ä»¥æŒ‰â€œæ ¸å¿ƒå¤±åˆ†ç‚¹ã€é‡‡åˆ†ç‚¹åˆ†æžã€æ€ç»´è¯Šæ–­ã€å¯æ‰§è¡Œå»ºè®®â€è¿™å‡ ä¸ªå±‚æ¬¡æ¥ç»„ç»‡ï¼Œä½†è¯­æ°”å¿…é¡»åƒè€å¸ˆåœ¨è®²é¢˜ï¼Œä¸èƒ½å†™æˆç”Ÿç¡¬æ¨¡æ¿ã€‚",
-    "reviewComment åœ¨â€œå¯æ‰§è¡Œå»ºè®®â€éƒ¨åˆ†è¦è‡ªç„¶å‘Šè¯‰å­¦ç”Ÿç¬¬ä¸€æ­¥åšä»€ä¹ˆã€ç¬¬äºŒæ­¥åšä»€ä¹ˆã€ç¬¬ä¸‰æ­¥åšä»€ä¹ˆã€‚",
-    "å¿…é¡»è‡ªå·±å®Œæˆæ­£å‘å’Œè´Ÿå‘æ ‡æ³¨ï¼Œä¸è¦åªç»™æ€»åˆ†ä¸æ‰“æ ‡è®°ã€‚",
-    "åªè¦å‘½ä¸­äº†é‡‡åˆ†ç‚¹ï¼Œå°±è¦åœ¨å¯¹åº”åŽŸæ–‡ä¸Šç”Ÿæˆ status=score çš„ answerMarksï¼Œå¹¶å¡«å†™å…·ä½“å¾—åˆ†ï¼Œä¸èƒ½åªç»™å¯¹å·ä¸å†™åˆ†ã€‚",
-    "åªè¦å­˜åœ¨é”™è¯¯ã€é—æ¼ã€ç­”åæˆ–å¤±åˆ†å†…å®¹ï¼Œå°±è¦åœ¨å¯¹åº”åŽŸæ–‡ä¸Šç”Ÿæˆ status=wrong çš„ answerMarksï¼Œè®©å‰ç«¯æ˜¾ç¤ºå‰å·ã€‚",
-  );
-  payload.outputRequirements.constraints.push(
-    "status=wrong çš„ answerMarks.comment åªèƒ½é’ˆå¯¹è¯¥æ¡å±€éƒ¨æ ‡æ³¨ç‰‡æ®µï¼ŒæŒ‡å‡ºè¿™ä¸€å¤„å…·ä½“é”™åœ¨å“ªé‡Œæˆ–æ¼äº†ä»€ä¹ˆï¼Œä¸èƒ½æŠŠæ•´ä¸ªå°é—®çš„æ€»è¯„å†™åœ¨è¿™é‡Œ",
-    "reviewComment å¿…é¡»æ˜¯å¯¹è¯¥å°é—®æ•´ä½“ä½œç­”çš„æ€»ç»“æ€§è¯„è¯­ï¼Œè¦è¯´æ˜Žæ•´ä½“è¿˜ç¼ºå°‘å“ªäº›å¾—åˆ†ç‚¹ã€è®ºè¯ç»“æž„æœ‰ä½•ä¸è¶³ï¼Œä¸å¾—å†™æˆå±€éƒ¨ç‰‡æ®µç‚¹è¯„",
-    "reviewComment çš„è¯­æ°”è¦åƒè€å¸ˆç›´æŽ¥å¯¹å­¦ç”Ÿè¯´è¯ï¼Œå¿…é¡»æ˜Žç¡®å†™å‡ºâ€œä½ è¿˜ç¼ºä»€ä¹ˆâ€â€œä½ å“ªé‡Œé”™äº†â€ä»¥åŠä¸‹ä¸€æ­¥æ€Žä¹ˆè¡¥ã€‚",
-    "reviewComment å¯ä»¥æŒ‰â€œæ ¸å¿ƒå¤±åˆ†ç‚¹ã€é‡‡åˆ†ç‚¹åˆ†æžã€æ€ç»´è¯Šæ–­ã€å¯æ‰§è¡Œå»ºè®®â€è¿™å‡ ä¸ªå±‚æ¬¡å±•å¼€ï¼Œä½†ä¸è¦å†™æˆæ­»æ¿æ¨¡æ¿è…”ã€‚",
-    "reviewComment åœ¨â€œå¯æ‰§è¡Œå»ºè®®â€éƒ¨åˆ†å¿…é¡»æ˜Žç¡®å†™å‡ºâ€œç¬¬ä¸€æ­¥ã€ç¬¬äºŒæ­¥ã€ç¬¬ä¸‰æ­¥â€ã€‚",
-    "å¦‚æžœæŸå°é—® score > 0ï¼Œåˆ™ answerMarks ä¸­å¿…é¡»è‡³å°‘æœ‰ 1 æ¡ status=score æˆ– status=correctã€‚",
-    "å¦‚æžœå‘½ä¸­äº†å¤šä¸ªé‡‡åˆ†ç‚¹ï¼Œåˆ™ answerMarks ä¸­åº”å°½é‡åˆ†åˆ«æ ‡å‡ºå¤šä¸ªæ­£å‘å‘½ä¸­ä½ç½®ï¼Œè€Œä¸æ˜¯åªç»™ 1 ä¸ªç¬¼ç»Ÿå¯¹å·ã€‚",
-    "status=wrong çš„ answerMarks.comment è¦å…·ä½“æŒ‡å‡ºè¿™ä¸€æ®µé”™åœ¨å“ªé‡Œã€æ¼äº†ä»€ä¹ˆï¼Œä»¥åŠå»ºè®®æ€Žä¹ˆæ”¹",
-  );
-
-  return JSON.stringify(payload, null, 2);
-};
-
 const buildAiPromptV2 = ({ question, answer, allocations, runtimeConfig }) => {
   const answerMap = parseSubjectiveAnswerMap(answer?.answerJson, question);
 
@@ -1814,12 +1722,13 @@ const buildAiPromptV2 = ({ question, answer, allocations, runtimeConfig }) => {
     "5.9 对局部标注也要区分“结论对”和“理由弱”这两件事：如果学生短短一句话已经把本问核心结论答对了，就不要把这句正确结论本身标成 wrong；这时更适合保留正向标注，并另外指出理由、依据或本案分析没有展开。",
     "5.10 只有在结论本身判断错误、方向错误或结论与本题批改依据相反时，才应直接把该结论句标成 wrong。",
     "6. reviewComment 不要复述学生原答案，也不要一味重复学生写了什么。",
-    "7. reviewComment 必须控制在 350 字以内，尽量写到 220 到 350 字这一档，确有必要时可以略短，但不能只写七八十个字的空泛点评；尽量写成 2 到 4 个自然短段落。",
+    "7. reviewComment 必须控制在 450 字以内，尽量写到 260 到 450 字这一档，确有必要时可以略短，但不能只写七八十个字的空泛点评；尽量写成 2 到 4 个自然短段落。",
     "8. reviewComment 不要按固定模板一段一段去套，也不要每次都用完全一样的句式，要像老师顺着学生这道题的实际问题往下讲，而且必须点到这道题具体漏了哪一层、错在哪一层。",
     "9. 建议部分要直接告诉学生下一次该怎么改、怎么补，最好明确写到应该往答案里补什么内容、补哪个层次、如何落回本案，但不要机械写成“第一步、第二步、第三步”这种流程模板。",
     "10. 不要先写“虽然你得出了正确结论”“方向是对的”“能/不能这两个字拿到了分”这类话，直接指出遗漏点、问题和改法。",
     "10.1 不要只写“理由不足”“展开不够”“分析不全面”这种空话，必须继续写清楚到底缺的是哪个采分点、哪层理由、哪段本案分析。",
     "11. answerMarks 中 status=wrong 的 comment 必须针对该段局部内容指出具体错误、遗漏或表达不足，不能把整道小问的总评写在这里，同时要写出修改建议。",
+    "11.1 局部评语不要写成“建议后面的修改为……”“建议改成……”这类固定模板，直接指出这一处哪里错了、漏了什么、该往哪一层补。",
     "12. 只要某小问得了分，answerMarks 中就必须出现正向标注，不能只给 wrong。",
     "13. 如果命中了多个采分点，尽量分别标出多个正向命中位置，让前端可以显示多个对号/加分点。",
     "13.1 answerMarks 的 highlight 必须尽量短、尽量准，优先截取能直接承载该采分点或错误点的最小必要原文片段，一般以词组、短句为主，不要动不动整句整段都划进去。",
@@ -1861,11 +1770,12 @@ const buildAiPromptV2 = ({ question, answer, allocations, runtimeConfig }) => {
     "reviewComment 不要复述学生原答案。",
     "reviewComment 要根据学生这道题的实际作答状态调整语气和重点：全错时重在指出错因，只写结论时重在告诉他该补什么，方向对但理由弱时重在指出缺失层次，接近满分时既要点出答得好的地方，也要告诉他怎样写会更稳、更完整。",
     "不要把总点评写成固定四段或固定句型，也不要把同一套开头结尾机械套给所有学生。",
-    "reviewComment 必须控制在 350 字以内，尽量写到 220 到 350 字这一档，确有必要时可以略短，但不能写成只有七八十个字的空泛点评；尽量分成 2 到 4 个自然短段落。",
+    "reviewComment 必须控制在 450 字以内，尽量写到 260 到 450 字这一档，确有必要时可以略短，但不能写成只有七八十个字的空泛点评；尽量分成 2 到 4 个自然短段落。",
     "reviewComment 不要按固定模板去套，不要每次都重复同一组句式，也不要先肯定一句再转折。",
     "reviewComment 必须给出可执行的修改办法，让学生看完就知道这道题现在该往答案里补什么、补到哪一步，而不是只知道自己错了。",
     "reviewComment 的建议部分要自然地告诉学生下一次该怎么改，但不要写成“第一步、第二步、第三步”这种说明书式结构。",
     "status=wrong 的 answerMarks.comment 要写成老师对该片段的局部提醒，必须同时包含：这里哪里不对或漏了什么、建议怎么改。",
+    "局部评语不要写“建议后面的修改为……”这类模板句，直接告诉学生这一句哪里有问题、该补什么、该怎么改。",
     "subQuestions 中每个对象都必须包含 id，且 id 必须与题目数据中的 subQuestionId 完全一致。",
     "除了 JSON 以外，不允许输出任何解释、前缀、Markdown 或代码块。",
   ].join("\n");
@@ -2107,7 +2017,7 @@ const normalizeAiSubQuestionResult = ({ item, allocation, fallbackAnswerText, fa
     referenceAnswer:
       sanitizeReviewExposureText(normalizeText(item?.referenceAnswer)) ||
       sanitizeReviewExposureText(allocation.referenceAnswer) ||
-      normalizedRubricPoints.map((point) => point.title).join("ï¼›"),
+      normalizedRubricPoints.map((point) => point.title).join("；"),
     reviewSource: "ai",
     reviewProvider: "openai-compatible",
     abilityLabel: sanitizeReviewExposureText(normalizeText(item?.abilityLabel)) || sanitizeReviewExposureText(allocation.abilityLabel) || fallbackTitle,
@@ -2284,16 +2194,16 @@ export const aiReviewMockExamRecord = async ({
   const initialWorkflowStatus = restoreWorkflowStatus(record?.reviewWorkflowStatus);
 
   if (!record) {
-    throw createHttpError("è€ƒè¯•è®°å½•ä¸å­˜åœ¨", 404);
+    throw createHttpError("考试记录不存在", 404);
   }
 
   if (record.status !== "submitted") {
-    throw createHttpError("è¯¥è€ƒè¯•è®°å½•å°šæœªäº¤å·", 409);
+    throw createHttpError("该考试记录尚未交卷", 409);
   }
 
   const subjectiveQuestions = (record.paper?.questions ?? []).filter((question) => isSubjectiveQuestion(question));
   if (subjectiveQuestions.length === 0) {
-    throw createHttpError("è¯¥è€ƒè¯•è®°å½•ä¸éœ€è¦ä¸»è§‚é¢˜æ‰¹æ”¹", 400);
+    throw createHttpError("该考试记录不需要主观题批改", 400);
   }
 
   try {
@@ -2416,7 +2326,7 @@ export const aiReviewMockExamRecord = async ({
       data: {
         reviewWorkflowStatus: initialWorkflowStatus,
         aiReviewFinishedAt: null,
-        lastAiReviewError: error instanceof Error ? error.message : "AIæ‰¹æ”¹å¤±è´¥",
+        lastAiReviewError: error instanceof Error ? error.message : "AI批改失败",
       },
     });
     throw error;

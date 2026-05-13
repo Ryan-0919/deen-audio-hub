@@ -745,6 +745,8 @@ export interface MockExamSubjectiveAnswerMark {
   comment: string;
   status?: "correct" | "wrong" | "score" | "neutral";
   score?: number;
+  start?: number;
+  end?: number;
 }
 
 export interface MockExamQuestion {
@@ -2167,7 +2169,12 @@ export const mockApi = {
     postJson<AdminMockExamReviewDetail>(`/api/admin/mock-exams/reviews/${recordId}/ai-score`, {}, "admin"),
   submitAdminMockExamReview: (
     recordId: string,
-    payload: { items: AdminMockExamReviewQuestionScoreInput[]; lockToken: string; version: number },
+    payload: {
+      items: AdminMockExamReviewQuestionScoreInput[];
+      lockToken: string;
+      version: number;
+      targetWorkflowStatus?: "manual_reviewing" | "manual_pending";
+    },
   ) => postJson<AdminMockExamReviewDetail>(`/api/admin/mock-exams/reviews/${recordId}/score`, payload, "admin"),
   publishAdminMockExamReview: (recordId: string, payload: { lockToken: string; version: number }) =>
     postJson<AdminMockExamReviewDetail>(`/api/admin/mock-exams/reviews/${recordId}/publish`, payload, "admin"),
