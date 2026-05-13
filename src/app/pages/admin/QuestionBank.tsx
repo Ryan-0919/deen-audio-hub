@@ -213,6 +213,55 @@ const truncate = (text: string, maxLength = 180) => {
   return `${text.slice(0, maxLength)}...`;
 };
 
+const extractQuestionBankItemTitle = (item: QuestionBankItem) => {
+  const stem = `${item.stem ?? ""}`.trim();
+  const stemLines = stem
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const firstLine = stemLines[0] ?? "";
+  const secondLine = stemLines[1] ?? "";
+  if (firstLine && !/^案情[:：]?$/.test(firstLine)) {
+    return firstLine;
+  }
+
+  if (item.questionType === "subjective_case") {
+    const folderName = `${item.folderName ?? ""}`.trim();
+    const firstSubQuestionTitle = `${item.subjectiveSubQuestions[0]?.title ?? ""}`.trim();
+
+    if (folderName) {
+      return `${folderName} · #${item.sortOrder}`;
+    }
+
+    if (secondLine) {
+      return truncate(secondLine, 32);
+    }
+
+    if (firstSubQuestionTitle) {
+      return truncate(firstSubQuestionTitle, 32);
+    }
+  }
+
+  return firstLine || secondLine || `${item.questionTypeLabel} #${item.sortOrder}`;
+};
+
+const extractQuestionBankItemSummary = (item: QuestionBankItem) => {
+  const stem = `${item.stem ?? ""}`.trim();
+  const normalizedStem = stem.replace(/^案情[:：]?\s*/u, "").trim();
+
+  if (normalizedStem) {
+    return truncate(normalizedStem, 88);
+  }
+
+  const firstSubQuestionTitle = `${item.subjectiveSubQuestions[0]?.title ?? ""}`.trim();
+  if (firstSubQuestionTitle) {
+    return truncate(firstSubQuestionTitle, 88);
+  }
+
+  return "";
+};
+
 const downloadBlob = (blob: Blob, fileName: string) => {
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -974,6 +1023,7 @@ export function QuestionBank() {
     }
 
     const optionCount = item.options.filter((option) => option.content).length;
+    const itemTitle = extractQuestionBankItemTitle(item);
 
     return (
       <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -987,7 +1037,8 @@ export function QuestionBank() {
           </div>
           <div className="mt-4 flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <h3 className="text-base font-semibold leading-7 text-slate-900">{item.stem}</h3>
+              <h3 className="text-base font-semibold leading-7 text-slate-900">{itemTitle}</h3>
+              <div className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">{item.stem}</div>
               {item.sectionDescription ? <p className="mt-2 text-sm leading-6 text-slate-500">{item.sectionDescription}</p> : null}
             </div>
             <div className="flex shrink-0 gap-2">
@@ -1510,6 +1561,8 @@ export function QuestionBank() {
                 {items.map((item) => {
                   const selected = selectedItemIds.includes(item.id);
                   const optionCount = item.options.filter((option) => option.content).length;
+                  const itemTitle = extractQuestionBankItemTitle(item);
+                  const itemSummary = extractQuestionBankItemSummary(item);
                   return (
                     <div
                       key={item.id}
@@ -1540,7 +1593,8 @@ export function QuestionBank() {
                             </div>
                             <div className="shrink-0 text-xs text-slate-400">{item.updatedAt}</div>
                           </div>
-                          <p className="mt-4 line-clamp-2 text-sm leading-6 text-slate-700">{truncate(item.stem, 88)}</p>
+                          <h3 className="mt-4 line-clamp-1 text-base font-semibold leading-7 text-slate-900">{itemTitle}</h3>
+                          {itemSummary ? <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-700">{itemSummary}</p> : null}
                           <div className="mt-4 grid grid-cols-3 gap-2 text-xs text-slate-500">
                             <div className="rounded-lg bg-slate-50 px-2 py-2">{item.questionType === "subjective_case" ? `${item.subjectiveSubQuestions.length} 问` : `${optionCount} 选项`}</div>
                             <div className="rounded-lg bg-slate-50 px-2 py-2">{item.analysis ? "有解析" : "无解析"}</div>
