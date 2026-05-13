@@ -366,6 +366,11 @@ function SubjectiveQuestionBlock({
   activeSubQuestionIndex: number;
 }) {
   const prompt = getQuestionPrompt(question, subQuestion, activeSubQuestionIndex);
+  const displayAudioUrl = question.lessonAudioUrl || question.reviewVoiceUrl || "";
+  const displayAudioDurationSeconds =
+    Number(question.lessonAudioDurationSeconds ?? 0) > 0
+      ? Number(question.lessonAudioDurationSeconds ?? 0)
+      : Number(question.reviewVoiceDurationSeconds ?? 0);
 
   return (
     <section className="rounded-[24px] border border-[#ececf1] bg-white px-5 py-5 shadow-[0_14px_30px_rgba(15,23,42,0.05)]">
@@ -376,7 +381,7 @@ function SubjectiveQuestionBlock({
           <div className="whitespace-pre-wrap">{prompt.intro}</div>
         </div>
       ) : null}
-      {question.reviewVoiceUrl ? <LessonAudioInlinePlayer url={question.reviewVoiceUrl} durationSeconds={question.reviewVoiceDurationSeconds} /> : null}
+      {displayAudioUrl ? <LessonAudioInlinePlayer url={displayAudioUrl} durationSeconds={displayAudioDurationSeconds} /> : null}
       <div className={prompt.intro ? "mt-4" : ""}>
         <div className="whitespace-pre-wrap text-[20px] leading-[2] text-[#18181b]">{prompt.title}</div>
       </div>

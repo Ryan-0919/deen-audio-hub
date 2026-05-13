@@ -212,25 +212,57 @@ const parseRecordPaperSnapshot = (record) => {
   };
 };
 
-const mergeSnapshotQuestionLessonAudio = (snapshotQuestion, liveQuestion) => {
-  if (!snapshotQuestion || !liveQuestion) {
-    return snapshotQuestion ?? liveQuestion;
-  }
+const getPreferredQuestionLessonAudio = (question) => {
+  const sourceBankItem = question?.sourceBankItem ?? null;
+  const sourceLessonAudioUrl = `${sourceBankItem?.lessonAudioUrl ?? ""}`.trim();
+  const sourceLessonAudioObjectKey = `${sourceBankItem?.lessonAudioObjectKey ?? ""}`.trim();
+  const sourceLessonAudioDurationSeconds = Number(sourceBankItem?.lessonAudioDurationSeconds ?? 0) || 0;
 
-  const snapshotUrl = `${snapshotQuestion.lessonAudioUrl ?? ""}`.trim();
-  const snapshotObjectKey = `${snapshotQuestion.lessonAudioObjectKey ?? ""}`.trim();
-  const snapshotDuration = Number(snapshotQuestion.lessonAudioDurationSeconds ?? 0) || 0;
-
-  if (snapshotUrl || snapshotObjectKey || snapshotDuration > 0) {
-    return snapshotQuestion;
+  if (sourceLessonAudioUrl || sourceLessonAudioObjectKey || sourceLessonAudioDurationSeconds > 0) {
+    return {
+      lessonAudioUrl: sourceLessonAudioUrl,
+      lessonAudioObjectKey: sourceLessonAudioObjectKey,
+      lessonAudioDurationSeconds: sourceLessonAudioDurationSeconds,
+    };
   }
 
   return {
-    ...snapshotQuestion,
-    lessonAudioUrl: `${liveQuestion.lessonAudioUrl ?? ""}`.trim(),
-    lessonAudioObjectKey: `${liveQuestion.lessonAudioObjectKey ?? ""}`.trim(),
-    lessonAudioDurationSeconds: Number(liveQuestion.lessonAudioDurationSeconds ?? 0) || 0,
+    lessonAudioUrl: `${question?.lessonAudioUrl ?? ""}`.trim(),
+    lessonAudioObjectKey: `${question?.lessonAudioObjectKey ?? ""}`.trim(),
+    lessonAudioDurationSeconds: Number(question?.lessonAudioDurationSeconds ?? 0) || 0,
   };
+};
+
+const mergeSnapshotQuestionLessonAudio = (snapshotQuestion, liveQuestion) => {
+  if (!snapshotQuestion && !liveQuestion) {
+    return null;
+  }
+
+  if (!liveQuestion) {
+    return snapshotQuestion;
+  }
+
+  const preferredLessonAudio = getPreferredQuestionLessonAudio(liveQuestion);
+  const hasPreferredLessonAudio =
+    Boolean(preferredLessonAudio.lessonAudioUrl) ||
+    Boolean(preferredLessonAudio.lessonAudioObjectKey) ||
+    preferredLessonAudio.lessonAudioDurationSeconds > 0;
+
+  if (!snapshotQuestion) {
+    return {
+      ...liveQuestion,
+      ...preferredLessonAudio,
+    };
+  }
+
+  if (hasPreferredLessonAudio) {
+    return {
+      ...snapshotQuestion,
+      ...preferredLessonAudio,
+    };
+  }
+
+  return snapshotQuestion;
 };
 
 const mergeSnapshotPaperWithLivePaper = (snapshotPaper, livePaper) => {
@@ -2050,6 +2082,13 @@ const getRecordWithPaper = (db, recordId) =>
               options: {
                 orderBy: { sortOrder: "asc" },
               },
+              sourceBankItem: {
+                select: {
+                  lessonAudioUrl: true,
+                  lessonAudioObjectKey: true,
+                  lessonAudioDurationSeconds: true,
+                },
+              },
             },
           },
         },
@@ -2119,6 +2158,13 @@ const getReviewRecordWithPaper = (db, recordId) =>
             include: {
               options: {
                 orderBy: { sortOrder: "asc" },
+              },
+              sourceBankItem: {
+                select: {
+                  lessonAudioUrl: true,
+                  lessonAudioObjectKey: true,
+                  lessonAudioDurationSeconds: true,
+                },
               },
             },
           },
