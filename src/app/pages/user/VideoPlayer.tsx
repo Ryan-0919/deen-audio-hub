@@ -7,6 +7,8 @@ import { Slider } from "../../components/ui/slider";
 import { Course, Tag, UserVideoProgress, Video, mockApi } from "../../lib/mockData";
 import { getUserId } from "../../lib/user-session";
 
+const DEFAULT_VIDEO_ASPECT_RATIO = 16 / 9;
+
 const formatTime = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
@@ -43,6 +45,7 @@ export function VideoPlayer() {
   const [completed, setCompleted] = useState(false);
   const [downloadingHandout, setDownloadingHandout] = useState(false);
   const [playerError, setPlayerError] = useState("");
+  const [videoAspectRatio, setVideoAspectRatio] = useState(DEFAULT_VIDEO_ASPECT_RATIO);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const progressRef = useRef(0);
@@ -88,6 +91,7 @@ export function VideoPlayer() {
         setDuration(detail.video.duration ?? 0);
         setCurrentTime(progress?.progress ?? 0);
         setCompleted(progress?.completed ?? false);
+        setVideoAspectRatio(DEFAULT_VIDEO_ASPECT_RATIO);
       } finally {
         setLoading(false);
       }
@@ -119,6 +123,9 @@ export function VideoPlayer() {
 
     const syncMetadata = () => {
       setDuration(Math.floor(node.duration || video.duration || 0));
+      if (node.videoWidth > 0 && node.videoHeight > 0) {
+        setVideoAspectRatio(node.videoWidth / node.videoHeight);
+      }
     };
 
     const onPlay = () => setIsPlaying(true);
@@ -201,6 +208,7 @@ export function VideoPlayer() {
   };
 
   const progressPercent = useMemo(() => (duration > 0 ? Math.min(100, Math.round((currentTime / duration) * 100)) : 0), [currentTime, duration]);
+  const isPortraitVideo = videoAspectRatio < 1;
 
   if (loading) {
     return <div className="p-8 text-white/60">视频加载中...</div>;
@@ -239,8 +247,19 @@ export function VideoPlayer() {
 
         <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
           <section className="overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] shadow-[0_24px_90px_rgba(0,0,0,0.20)] backdrop-blur-[20px]">
-            <div className="aspect-video w-full bg-black">
-              <video ref={videoRef} src={video.videoUrl} controls className="h-full w-full" autoPlay={Boolean((location.state as { autoplay?: boolean } | null)?.autoplay)} />
+            <div className="flex justify-center bg-black px-3 py-3 md:px-5 md:py-5">
+              <div
+                className={isPortraitVideo ? "w-full max-w-[420px] overflow-hidden rounded-[18px] bg-black" : "w-full overflow-hidden rounded-[18px] bg-black"}
+                style={{ aspectRatio: `${videoAspectRatio}` }}
+              >
+                <video
+                  ref={videoRef}
+                  src={video.videoUrl}
+                  controls
+                  className="h-full w-full bg-black"
+                  autoPlay={Boolean((location.state as { autoplay?: boolean } | null)?.autoplay)}
+                />
+              </div>
             </div>
             <div className="p-4 md:p-5">
               <div className="mb-2 flex items-center justify-between text-sm text-white/50">
