@@ -38,6 +38,25 @@ export function VideoCourseDetail() {
 
   const selectedTag = useMemo(() => tags.find((tag) => tag.id === selectedTagId) ?? null, [selectedTagId, tags]);
   const progressMap = useMemo(() => new Map(progressList.map((item) => [item.videoId, item])), [progressList]);
+  const tagSummaries = useMemo(
+    () =>
+      tags.map((tag) => {
+        const content = tagCache[tag.id] ?? { videos: [], progress: [] };
+        const currentProgressMap = new Map(content.progress.map((item) => [item.videoId, item]));
+        const completedCount = content.videos.filter((video) => currentProgressMap.get(video.id)?.completed).length;
+        const totalDuration = content.videos.reduce((sum, video) => sum + video.duration, 0);
+
+        return {
+          tag,
+          videoCount: content.videos.length,
+          completedCount,
+          totalDuration,
+          completionRate: content.videos.length ? Math.min(100, Math.round((completedCount / content.videos.length) * 100)) : 0,
+        };
+      }),
+    [tagCache, tags],
+  );
+  const selectedTagSummary = useMemo(() => tagSummaries.find((item) => item.tag.id === selectedTagId) ?? null, [selectedTagId, tagSummaries]);
 
   useEffect(() => {
     let active = true;
@@ -137,6 +156,103 @@ export function VideoCourseDetail() {
     navigate(`/user/video-player/${course.id}/${videoId}`);
   };
 
+  const renderMobileTagSelector = () => (
+    <div className="grid grid-cols-4 gap-2.5 md:hidden">
+      {tagSummaries.map((summary) => {
+        const active = summary.tag.id === selectedTagId;
+
+        return (
+          <button
+            key={summary.tag.id}
+            type="button"
+            onClick={() => setSelectedTagId(summary.tag.id)}
+            className={cn(
+              "min-w-0 rounded-[18px] border px-2 py-2.5 text-center text-sm font-medium tracking-[0.01em] transition-all backdrop-blur-xl",
+              active
+                ? "border-white/18 bg-white text-slate-950 shadow-[0_10px_24px_rgba(255,255,255,0.14)]"
+                : "border-white/10 bg-white/[0.05] text-white/68",
+            )}
+          >
+            <div className="truncate">{summary.tag.name}</div>
+            <div className={cn("mt-1 text-[11px]", active ? "text-slate-700/72" : "text-white/38")}>{summary.completionRate}%</div>
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const renderTagSelectorSection = (className?: string) => (
+    <section
+      className={cn(
+        "rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] p-5 shadow-[0_24px_90px_rgba(0,0,0,0.20)] backdrop-blur-[20px]",
+        className,
+      )}
+    >
+      <div className="flex items-center gap-2 text-white">
+        <Tags className="size-4 text-[#cdb4ff]" />
+        <h3 className="text-sm font-semibold">选择标签</h3>
+      </div>
+
+      <div className="mt-4 space-y-2">
+        {tagSummaries.map((summary) => {
+          const active = summary.tag.id === selectedTagId;
+
+          return (
+            <button
+              key={summary.tag.id}
+              type="button"
+              onClick={() => setSelectedTagId(summary.tag.id)}
+              className={cn(
+                "w-full rounded-[22px] border px-4 py-3 text-left transition-colors backdrop-blur-xl",
+                active
+                  ? "border-white/18 bg-white text-slate-950 shadow-[0_12px_30px_rgba(255,255,255,0.12)]"
+                  : "border-white/10 bg-black/14 text-white/72 hover:border-white/16 hover:bg-black/18",
+              )}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">{summary.tag.name}</p>
+                  <p className={cn("mt-1 text-xs", active ? "text-slate-700/72" : "text-white/42")}>
+                    {summary.videoCount} 条视频 · {formatDuration(summary.totalDuration)}
+                  </p>
+                </div>
+                <span
+                  className={cn(
+                    "rounded-full px-2.5 py-1 text-xs font-medium",
+                    active ? "bg-slate-950/8 text-slate-800" : "bg-white/[0.06] text-white/60",
+                  )}
+                >
+                  {summary.completionRate}%
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {selectedTagSummary ? (
+        <div className="mt-4 space-y-3 border-t border-white/8 pt-4 text-sm text-white/56">
+          <div className="flex items-center justify-between rounded-[20px] bg-white/[0.05] px-4 py-3">
+            <span>当前标签</span>
+            <span className="font-semibold text-white">{selectedTagSummary.tag.name}</span>
+          </div>
+
+          <div className="flex items-center justify-between rounded-[20px] bg-white/[0.05] px-4 py-3">
+            <span>视频数量</span>
+            <span className="font-semibold text-white">{selectedTagSummary.videoCount}</span>
+          </div>
+
+          <div className="flex items-center justify-between rounded-[20px] bg-white/[0.05] px-4 py-3">
+            <span>完成情况</span>
+            <span className="font-semibold text-white">
+              {selectedTagSummary.completedCount}/{selectedTagSummary.videoCount}
+            </span>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+
   if (loading) {
     return <div className="p-8 text-white/60">课程加载中...</div>;
   }
@@ -223,12 +339,20 @@ export function VideoCourseDetail() {
               ) : null}
             </section>
 
+            {tagSummaries.length > 0 ? renderMobileTagSelector() : null}
+
             <section className="rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] p-4 shadow-[0_24px_90px_rgba(0,0,0,0.20)] backdrop-blur-[20px] md:rounded-[30px] md:p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-white">{selectedTag?.name || "视频列表"}</h3>
                   <p className="mt-1 text-sm text-white/54">点击视频即可进入播放页。</p>
                 </div>
+
+                {selectedTagSummary ? (
+                  <Badge variant="secondary" className="rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-white/70">
+                    当前标签进度 {selectedTagSummary.completionRate}%
+                  </Badge>
+                ) : null}
               </div>
 
               <div className="mt-4 space-y-3 md:space-y-4">
@@ -292,32 +416,7 @@ export function VideoCourseDetail() {
           </main>
 
           <aside className="space-y-4 xl:sticky xl:top-24 xl:h-fit">
-            <section className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] p-5 shadow-[0_24px_90px_rgba(0,0,0,0.20)] backdrop-blur-[20px]">
-              <div className="flex items-center gap-2 text-white">
-                <Tags className="size-4 text-[#cdb4ff]" />
-                <h3 className="text-sm font-semibold">选择标签</h3>
-              </div>
-              <div className="mt-4 space-y-2">
-                {tags.map((tag) => {
-                  const active = tag.id === selectedTagId;
-                  return (
-                    <button
-                      key={tag.id}
-                      type="button"
-                      onClick={() => setSelectedTagId(tag.id)}
-                      className={cn(
-                        "w-full rounded-[22px] border px-4 py-3 text-left transition-colors backdrop-blur-xl",
-                        active
-                          ? "border-white/18 bg-white text-slate-950 shadow-[0_12px_30px_rgba(255,255,255,0.12)]"
-                          : "border-white/10 bg-black/14 text-white/72 hover:border-white/16 hover:bg-black/18",
-                      )}
-                    >
-                      <p className="truncate text-sm font-semibold">{tag.name}</p>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
+            {tagSummaries.length > 0 ? renderTagSelectorSection("hidden md:block") : null}
           </aside>
         </div>
       </div>
