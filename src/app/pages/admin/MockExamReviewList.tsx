@@ -586,6 +586,93 @@ const serializeDraftState = (drafts: DraftState) =>
     reviewVoices: drafts.reviewVoices,
   });
 
+const hasMeaningfulDraftContent = (drafts: DraftState | null | undefined) => {
+  if (!drafts) {
+    return false;
+  }
+
+  if (Object.values(drafts.comments ?? {}).some((value) => `${value ?? ""}`.trim().length > 0)) {
+    return true;
+  }
+
+  if (Object.values(drafts.references ?? {}).some((value) => `${value ?? ""}`.trim().length > 0)) {
+    return true;
+  }
+
+  if (Object.values(drafts.abilities ?? {}).some((value) => `${value ?? ""}`.trim().length > 0)) {
+    return true;
+  }
+
+  if (Object.values(drafts.rubricGuidance ?? {}).some((value) => `${value ?? ""}`.trim().length > 0)) {
+    return true;
+  }
+
+  if (
+    Object.values(drafts.scores ?? {}).some((value) => {
+      const parsed = Number.parseInt(`${value ?? ""}`.trim(), 10);
+      return Number.isInteger(parsed) && parsed > 0;
+    })
+  ) {
+    return true;
+  }
+
+  if (
+    Object.values(drafts.marks ?? {}).some((marks) =>
+      (Array.isArray(marks) ? marks : []).some(
+        (mark) => `${mark.highlight ?? ""}`.trim() || `${mark.comment ?? ""}`.trim() || `${mark.score ?? ""}`.trim(),
+      ),
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    Object.values(drafts.rubricPoints ?? {}).some((points) =>
+      (Array.isArray(points) ? points : []).some(
+        (point) =>
+          `${point.title ?? ""}`.trim() ||
+          `${point.description ?? ""}`.trim() ||
+          `${point.keywords ?? ""}`.trim() ||
+          `${point.score ?? ""}`.trim() ||
+          `${point.awardedScore ?? ""}`.trim() ||
+          `${point.matchedText ?? ""}`.trim() ||
+          Boolean(point.hit),
+      ),
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    Object.values(drafts.missedPoints ?? {}).some((points) =>
+      (Array.isArray(points) ? points : []).some(
+        (point) => `${point.title ?? ""}`.trim() || `${point.description ?? ""}`.trim() || `${point.score ?? ""}`.trim(),
+      ),
+    )
+  ) {
+    return true;
+  }
+
+  return Object.values(drafts.reviewVoices ?? {}).some(
+    (voice) => `${voice?.url ?? ""}`.trim() || `${voice?.objectKey ?? ""}`.trim() || Number(voice?.durationSeconds ?? 0) > 0,
+  );
+};
+
+const resolveInitialDraftState = (remoteDraft: DraftState, localDraft: DraftState | null) => {
+  if (!localDraft) {
+    return remoteDraft;
+  }
+
+  const localHasMeaningfulContent = hasMeaningfulDraftContent(localDraft);
+  const remoteHasMeaningfulContent = hasMeaningfulDraftContent(remoteDraft);
+
+  if (!localHasMeaningfulContent && remoteHasMeaningfulContent) {
+    return remoteDraft;
+  }
+
+  return localDraft;
+};
+
 const getQuestionDraftScore = (question: SubjectiveQuestion, drafts: DraftState) =>
   question.subjectiveSubQuestions.reduce((sum, subQuestion) => {
     return sum + getManualDraftSubQuestionScore(drafts, question.id, subQuestion.id);
@@ -2104,7 +2191,7 @@ export function MockExamReviewList() {
       setSelectedDetail(detail);
       const remoteDraft = buildDraftState(detail);
       const localDraft = loadLocalReviewDraft(detail.id, detail.manualReviewLock?.version ?? 0);
-      setDrafts(localDraft ?? remoteDraft);
+      setDrafts(resolveInitialDraftState(remoteDraft, localDraft));
       lastSyncedDraftRef.current = serializeDraftState(remoteDraft);
       setDetailOpen(true);
     } catch (error) {

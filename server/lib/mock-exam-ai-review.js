@@ -2437,6 +2437,9 @@ export const aiReviewMockExamRecord = async ({
           aiReviewFinishedAt: currentTime,
           lastAiReviewError: null,
           publishedAt: null,
+          manualReviewVersion: {
+            increment: 1,
+          },
         },
       });
     });
