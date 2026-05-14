@@ -903,6 +903,37 @@ const extractRemoteErrorMessage = (payload) => {
   return "";
 };
 
+const isOpenRouterBaseUrl = (value) => {
+  const normalized = `${value ?? ""}`.trim().toLowerCase();
+  return normalized.includes("openrouter.ai");
+};
+
+const buildOpenAiCompatibleResponseFormat = (runtimeConfig) => {
+  if (isOpenRouterBaseUrl(runtimeConfig?.baseUrl)) {
+    return {
+      type: "json_schema",
+      json_schema: {
+        name: "mock_exam_ai_review_result",
+        strict: false,
+        schema: {
+          type: "object",
+          properties: {
+            subQuestions: {
+              type: "array",
+            },
+          },
+          required: ["subQuestions"],
+          additionalProperties: true,
+        },
+      },
+    };
+  }
+
+  return {
+    type: "json_object",
+  };
+};
+
 const toSubQuestionSequenceId = (value) => {
   const text = normalizeText(value);
   if (!text) {
@@ -1956,31 +1987,48 @@ const requestOpenAiCompatibleReviewOnce = async ({ runtimeConfig, question, answ
   const rawTimeoutMs = Number(runtimeConfig.timeoutMs ?? 120000);
   const timeoutMs = Number.isFinite(rawTimeoutMs) ? Math.max(0, rawTimeoutMs) : 120000;
   const timer = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  const isOpenRouter = isOpenRouterBaseUrl(runtimeConfig?.baseUrl);
+  const siteUrl = `${config?.paySiteBaseUrl ?? ""}`.trim() || "https://denlaw.cn";
+  const requestHeaders = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${runtimeConfig.apiKey}`,
+  };
+  if (isOpenRouter) {
+    requestHeaders["HTTP-Referer"] = siteUrl;
+    requestHeaders["X-Title"] = "Denlaw Mock Exam Review";
+  }
+
+  const requestBody = {
+    model: runtimeConfig.model,
+    temperature: 0.2,
+    response_format: buildOpenAiCompatibleResponseFormat(runtimeConfig),
+    messages: [
+      {
+        role: "system",
+        content: normalizeAiReviewSystemPrompt(runtimeConfig?.systemPrompt),
+      },
+      {
+        role: "user",
+        content: buildAiPromptV2({ question, answer, allocations, runtimeConfig }),
+      },
+    ],
+  };
+  if (isOpenRouter) {
+    requestBody.provider = {
+      require_parameters: true,
+    };
+    requestBody.plugins = [
+      {
+        id: "response-healing",
+      },
+    ];
+  }
 
   try {
     const response = await fetch(endpoint, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${runtimeConfig.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: runtimeConfig.model,
-        temperature: 0.2,
-        response_format: {
-          type: "json_object",
-        },
-        messages: [
-          {
-            role: "system",
-            content: normalizeAiReviewSystemPrompt(runtimeConfig?.systemPrompt),
-          },
-          {
-            role: "user",
-            content: buildAiPromptV2({ question, answer, allocations, runtimeConfig }),
-          },
-        ],
-      }),
+      headers: requestHeaders,
+      body: JSON.stringify(requestBody),
       signal: controller.signal,
     });
 
