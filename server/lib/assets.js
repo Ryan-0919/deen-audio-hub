@@ -41,12 +41,18 @@ export const cleanupObjectIfUnused = async (objectKey = "") => {
   const normalized = `${objectKey ?? ""}`.trim();
   if (!normalized) return false;
 
-  const [audioCount, audioHandoutCount, courseCoverCount, courseHandoutCount, productCoverCount, productImageCount, bannerImageCount, systemConfig] =
+  const [audioCount, audioHandoutCount, videoCount, videoHandoutCount, courseCoverCount, courseHandoutCount, productCoverCount, productImageCount, bannerImageCount, systemConfig] =
     await Promise.all([
     prisma.audio.count({
       where: { objectKey: normalized },
     }),
     prisma.audio.count({
+      where: { handoutObjectKey: normalized },
+    }),
+    prisma.video.count({
+      where: { objectKey: normalized },
+    }),
+    prisma.video.count({
       where: { handoutObjectKey: normalized },
     }),
     prisma.course.count({
@@ -77,6 +83,8 @@ export const cleanupObjectIfUnused = async (objectKey = "") => {
   if (
     audioCount > 0 ||
     audioHandoutCount > 0 ||
+    videoCount > 0 ||
+    videoHandoutCount > 0 ||
     courseCoverCount > 0 ||
     courseHandoutCount > 0 ||
     productCoverCount > 0 ||

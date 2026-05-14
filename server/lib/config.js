@@ -66,6 +66,7 @@ export const config = {
     baseUrl: normalizeBaseUrl(optional("MOCK_EXAM_AI_BASE_URL")),
     apiKey: optional("MOCK_EXAM_AI_API_KEY"),
     model: optional("MOCK_EXAM_AI_MODEL"),
+    disableQueue: optionalBoolean("MOCK_EXAM_AI_DISABLE_QUEUE", false),
     timeoutMs: optionalNonNegativeInt("MOCK_EXAM_AI_TIMEOUT_MS", 120000),
     maxConcurrency: optionalPositiveInt("MOCK_EXAM_AI_MAX_CONCURRENCY", 3),
     maxRetryCount: optionalNonNegativeInt("MOCK_EXAM_AI_MAX_RETRY_COUNT", 3),

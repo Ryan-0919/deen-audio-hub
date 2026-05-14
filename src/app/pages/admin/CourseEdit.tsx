@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, KeyboardEvent } from "react";
-import { useNavigate, useParams } from "react-router";
-import { ArrowLeft, ImagePlus, Plus, Rows2, Trash2 } from "lucide-react";
+import { useLocation, useNavigate, useParams } from "react-router";
+import { ArrowLeft, ImagePlus, Plus, Rows2, Trash2, Video, Volume2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
-import { mockApi, Tag } from "../../lib/mockData";
+import { CourseType, mockApi, Tag } from "../../lib/mockData";
 
 type CourseMode = "open" | "closed" | "scheduled";
 
@@ -26,6 +26,19 @@ const modeMeta: Record<CourseMode, { label: string; desc: string }> = {
   },
 };
 
+const typeMeta: Record<CourseType, { label: string; desc: string; icon: typeof Volume2 }> = {
+  audio: {
+    label: "音频课程",
+    desc: "用户端以音频目录和音频播放器的方式学习。",
+    icon: Volume2,
+  },
+  video: {
+    label: "视频课程",
+    desc: "用户端以视频目录和视频播放器的方式学习。",
+    icon: Video,
+  },
+};
+
 const getDefaultOpenTime = () => {
   const now = new Date();
   const yyyy = now.getFullYear();
@@ -38,9 +51,12 @@ const getDefaultOpenTime = () => {
 
 export function CourseEdit() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { courseId } = useParams<{ courseId: string }>();
   const isEdit = Boolean(courseId);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
+
+  const initialType: CourseType = new URLSearchParams(location.search).get("type") === "video" ? "video" : "audio";
 
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
@@ -49,6 +65,7 @@ export function CourseEdit() {
   const [cover, setCover] = useState("");
   const [coverObjectKey, setCoverObjectKey] = useState("");
   const [description, setDescription] = useState("");
+  const [courseType, setCourseType] = useState<CourseType>(initialType);
   const [status, setStatus] = useState<CourseMode>("closed");
   const [openTime, setOpenTime] = useState("");
   const [currentTags, setCurrentTags] = useState<Tag[]>([]);
@@ -57,6 +74,7 @@ export function CourseEdit() {
 
   const normalizedOpenTime = useMemo(() => (openTime ? openTime.replace(" ", "T").slice(0, 16) : ""), [openTime]);
   const displayedTags = isEdit ? currentTags.map((tag) => ({ id: tag.id, name: tag.name })) : draftTags.map((tag) => ({ name: tag }));
+  const currentTypeMeta = typeMeta[courseType];
 
   useEffect(() => {
     if (!courseId) {
@@ -71,6 +89,7 @@ export function CourseEdit() {
         setCover(detail.course.cover);
         setCoverObjectKey(detail.course.coverObjectKey ?? "");
         setDescription(detail.course.description);
+        setCourseType(detail.course.courseType ?? "audio");
         setStatus(detail.course.status);
         setOpenTime(detail.course.openTime);
         setCurrentTags(detail.tags);
@@ -161,6 +180,7 @@ export function CourseEdit() {
         cover,
         coverObjectKey,
         description: description.trim(),
+        courseType,
         status,
         openTime: openTime || getDefaultOpenTime(),
       };
@@ -176,7 +196,7 @@ export function CourseEdit() {
         toast.success("课程已创建");
       }
 
-      navigate("/admin/courses");
+      navigate(`/admin/courses?type=${courseType}`);
     } catch {
       toast.error("保存课程失败");
     } finally {
@@ -194,15 +214,15 @@ export function CourseEdit() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => navigate("/admin/courses")}
+            onClick={() => navigate(`/admin/courses?type=${courseType}`)}
             className="flex size-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700"
           >
             <ArrowLeft className="size-5" />
           </button>
           <div>
             <p className="text-sm font-medium text-blue-600">{isEdit ? "编辑课程" : "新建课程"}</p>
-            <h1 className="mt-1 text-3xl font-semibold text-slate-900">{isEdit ? "课程设置" : "创建课程"}</h1>
-            <p className="mt-2 text-sm text-slate-500">维护课程名称、封面、简介、开放方式和课程标签。</p>
+            <h1 className="mt-1 text-3xl font-semibold text-slate-900">{isEdit ? "课程设置" : `创建${currentTypeMeta.label}`}</h1>
+            <p className="mt-2 text-sm text-slate-500">维护课程名称、封面、简介、课程类型、开放方式和课程标签。</p>
           </div>
         </div>
 
@@ -219,14 +239,41 @@ export function CourseEdit() {
           <section className="rounded-3xl border border-slate-200 bg-white p-8">
             <div className="mb-6">
               <h2 className="text-xl font-semibold text-slate-900">基础信息</h2>
-              <p className="mt-2 text-sm text-slate-500">维护课程名称、封面、简介、开放方式和课程标签。</p>
+              <p className="mt-2 text-sm text-slate-500">维护课程名称、封面、简介以及课程类型。</p>
+            </div>
+
+            <div className="mb-6 grid gap-4 md:grid-cols-2">
+              {(Object.keys(typeMeta) as CourseType[]).map((type) => {
+                const meta = typeMeta[type];
+                const Icon = meta.icon;
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setCourseType(type)}
+                    className={`rounded-2xl border px-4 py-4 text-left transition ${
+                      courseType === type ? "border-blue-600 bg-blue-50" : "border-slate-200 bg-white"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex size-11 items-center justify-center rounded-2xl bg-white text-slate-700 shadow-sm">
+                        <Icon className="size-5" />
+                      </div>
+                      <div>
+                        <p className="text-base font-semibold text-slate-900">{meta.label}</p>
+                        <p className="mt-2 text-sm leading-6 text-slate-500">{meta.desc}</p>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
 
             <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
               <div className="space-y-6">
                 <div className="space-y-2">
                   <Label htmlFor="name">课程名称</Label>
-                  <Input id="name" value={name} onChange={(event) => setName(event.target.value)} placeholder="请输入课程名称" />
+                  <Input id="name" value={name} onChange={(event) => setName(event.target.value)} placeholder={`请输入${currentTypeMeta.label}名称`} />
                 </div>
 
                 <div className="space-y-2">
@@ -236,11 +283,10 @@ export function CourseEdit() {
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
                     rows={8}
-                    placeholder="请输入课程简介"
+                    placeholder={`请输入${currentTypeMeta.label}简介`}
                     className="min-h-[180px]"
                   />
                 </div>
-
               </div>
 
               <div className="space-y-3">
@@ -308,7 +354,7 @@ export function CourseEdit() {
           <section className="rounded-3xl border border-slate-200 bg-white p-6">
             <div className="mb-4">
               <h2 className="text-lg font-semibold text-slate-900">课程标签</h2>
-              <p className="mt-2 text-sm text-slate-500">例如刑法、民法、真题、冲刺，管理员可以自行定义。</p>
+              <p className="mt-2 text-sm text-slate-500">例如民法、刑法、冲刺、基础课，管理员可以自行定义。</p>
             </div>
 
             <div className="flex gap-2">
@@ -347,17 +393,17 @@ export function CourseEdit() {
           <section className="rounded-3xl border border-slate-200 bg-white p-6">
             <h2 className="text-lg font-semibold text-slate-900">保存说明</h2>
             <div className="mt-4 space-y-3 text-sm leading-6 text-slate-500">
-              <p>课程保存后，可继续在内容管理中引用音频或直接上传音频。</p>
-              <p>课程删除后，仅移除课程内关联，不删除音频库中的音频。</p>
+              <p>课程保存后，可继续在内容管理中引用课程库内容，或直接上传到当前课程标签下。</p>
+              <p>课程删除后，仅移除课程内关联，不删除课程库中的原始内容。</p>
             </div>
           </section>
 
           <div className="flex justify-end gap-3">
-            <Button type="button" variant="outline" onClick={() => navigate("/admin/courses")}>
+            <Button type="button" variant="outline" onClick={() => navigate(`/admin/courses?type=${courseType}`)}>
               返回
             </Button>
             <Button type="submit" disabled={saving || coverUploading}>
-              {saving ? "保存中..." : isEdit ? "保存课程" : "创建课程"}
+              {saving ? "保存中..." : isEdit ? "保存课程" : `创建${currentTypeMeta.label}`}
             </Button>
           </div>
         </div>

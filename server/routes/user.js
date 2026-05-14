@@ -2,26 +2,30 @@ import { Router } from "express";
 import { Readable } from "node:stream";
 import { prisma } from "../lib/prisma.js";
 import { ok, fail } from "../lib/response.js";
-import { serializeAudio, serializeAudioListItem, serializeCourse, serializeTag } from "../lib/serializers.js";
+import { serializeAudio, serializeCourse, serializeTag, serializeVideo } from "../lib/serializers.js";
 import { formatDateTime } from "../lib/time.js";
 import { requireUserAuth } from "../middleware/auth.js";
 import { syncScheduledCourses } from "../lib/scheduler.js";
 import { getReadableObjectUrl } from "../lib/upload.js";
 import { serializeMockExamPaperSummary } from "../lib/mock-exam.js";
+import {
+  buildAudioProgressMap,
+  buildAudioTagContent,
+  buildVideoProgressMap,
+  buildVideoTagContent,
+  getOrderedCourseAudios,
+  getOrderedCourseVideos,
+  readyAudioRelationWhere,
+  serializeAudioProgress,
+  serializeCourseWithCounts,
+  serializeVideoProgress,
+} from "../lib/course-content.js";
 
 export const userRouter = Router();
 
 userRouter.use(requireUserAuth);
 
 const isUniqueConstraintError = (error) => error && typeof error === "object" && error.code === "P2002";
-const readyAudioRelationWhere = {
-  audio: {
-    is: {
-      processStatus: "ready",
-    },
-  },
-};
-
 const saveUserProgressRecord = async ({ userId, courseId, audioId, updateData, createData }) => {
   const where = { userId, courseId, audioId };
 
@@ -59,25 +63,43 @@ const saveUserProgressRecord = async ({ userId, courseId, audioId, updateData, c
   });
 };
 
-const serializeProgress = (progress) =>
-  progress
-    ? {
-        userId: progress.userId,
-        courseId: progress.courseId,
-        audioId: progress.audioId,
-        progress: progress.progress,
-        completed: progress.completed,
-        lastUpdated: formatDateTime(progress.lastUpdated),
+const serializeProgress = serializeAudioProgress;
+
+const saveUserVideoProgressRecord = async ({ userId, courseId, videoId, updateData, createData }) => {
+  const where = { userId, courseId, videoId };
+
+  const updated = await prisma.userVideoProgress.updateMany({
+    where,
+    data: updateData,
+  });
+
+  if (updated.count === 0) {
+    try {
+      return await prisma.userVideoProgress.create({
+        data: {
+          userId,
+          courseId,
+          videoId,
+          ...createData,
+        },
+      });
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) {
+        throw error;
       }
-    : undefined;
 
-const buildProgressMap = (progressList) => new Map(progressList.map((item) => [item.audioId, serializeProgress(item)]));
+      await prisma.userVideoProgress.updateMany({
+        where,
+        data: updateData,
+      });
+    }
+  }
 
-const buildTagContent = (courseAudios, progressMap) => {
-  return {
-    audios: courseAudios.map((item) => serializeAudioListItem(item.audio)),
-    progress: courseAudios.map((item) => progressMap.get(item.audioId)).filter(Boolean),
-  };
+  return prisma.userVideoProgress.findUnique({
+    where: {
+      userId_courseId_videoId: where,
+    },
+  });
 };
 
 const sanitizeDownloadFileName = (value, fallback = "course-handout") => {
@@ -128,7 +150,43 @@ const getTagAudiosWithProgress = async ({ tagId, userId, courseId, courseAudios 
             },
           });
 
-  return buildTagContent(resolvedCourseAudios, buildProgressMap(progressList));
+  return buildAudioTagContent(resolvedCourseAudios, buildAudioProgressMap(progressList));
+};
+
+const getTagVideosWithProgress = async ({ tagId, userId, courseId, courseVideos }) => {
+  const resolvedCourseVideos =
+    courseVideos ??
+    (
+      await prisma.tag.findUnique({
+        where: { id: tagId },
+        include: {
+          courseVideos: {
+            orderBy: { order: "asc" },
+            include: {
+              video: true,
+            },
+          },
+        },
+      })
+    )?.courseVideos;
+
+  if (!resolvedCourseVideos) {
+    return null;
+  }
+
+  const videoIds = resolvedCourseVideos.map((item) => item.videoId);
+  const progressList =
+    videoIds.length === 0
+      ? []
+      : await prisma.userVideoProgress.findMany({
+          where: {
+            userId,
+            courseId,
+            videoId: { in: videoIds },
+          },
+        });
+
+  return buildVideoTagContent(resolvedCourseVideos, buildVideoProgressMap(progressList));
 };
 
 const assertCoursePermission = async (userId, courseId) => {
@@ -148,6 +206,7 @@ const assertCoursePermission = async (userId, courseId) => {
           courseAudios: {
             where: readyAudioRelationWhere,
           },
+          courseVideos: true,
         },
       },
     },
@@ -164,28 +223,6 @@ const assertCoursePermission = async (userId, courseId) => {
   return permission.course;
 };
 
-const getOrderedCourseAudios = async (courseId) => {
-  const tags = await prisma.tag.findMany({
-    where: { courseId },
-    orderBy: { order: "asc" },
-    include: {
-      courseAudios: {
-        where: readyAudioRelationWhere,
-        orderBy: { order: "asc" },
-        include: { audio: true },
-      },
-    },
-  });
-
-  return tags.flatMap((tag) =>
-    tag.courseAudios.map((item) => ({
-      tag,
-      courseAudio: item,
-      audio: item.audio,
-    })),
-  );
-};
-
 userRouter.get("/courses", async (req, res) => {
   await syncScheduledCourses();
 
@@ -196,6 +233,13 @@ userRouter.get("/courses", async (req, res) => {
         include: {
           courseAudios: {
             where: readyAudioRelationWhere,
+          },
+          courseVideos: true,
+          _count: {
+            select: {
+              courseAudios: true,
+              courseVideos: true,
+            },
           },
         },
       },
@@ -211,7 +255,7 @@ userRouter.get("/courses", async (req, res) => {
     .map((item) => item.course)
     .filter((course) => course.status === "open")
     .sort((a, b) => new Date(b.openTime).getTime() - new Date(a.openTime).getTime())
-    .map((course) => serializeCourse(course, course.courseAudios.length));
+    .map((course) => serializeCourseWithCounts(course));
 
   return ok(res, list);
 });
@@ -257,6 +301,12 @@ userRouter.get("/home-overview", async (req, res) => {
           },
           take: 1,
         },
+        _count: {
+          select: {
+            courseAudios: true,
+            courseVideos: true,
+          },
+        },
       },
     });
 
@@ -268,6 +318,7 @@ userRouter.get("/home-overview", async (req, res) => {
       recentCourseProgress = {
         courseId: course.id,
         courseName: course.name,
+        courseType: course.courseType ?? "audio",
         audioId: recentProgress.audioId,
         audioName: recentProgress.audio.name,
         tagName,
@@ -346,6 +397,53 @@ userRouter.get("/courses/:courseId/detail", async (req, res) => {
     const course = await assertCoursePermission(req.auth.userId, req.params.courseId);
     const tags = course.tags ?? [];
     const selectedTagId = tags[0]?.id ?? "";
+
+    if ((course.courseType ?? "audio") === "video") {
+      const tagDetails =
+        tags.length === 0
+          ? []
+          : await prisma.tag.findMany({
+              where: { courseId: course.id },
+              orderBy: { order: "asc" },
+              include: {
+                courseVideos: {
+                  orderBy: { order: "asc" },
+                  include: {
+                    video: true,
+                  },
+                },
+              },
+            });
+
+      const videoIds = tagDetails.flatMap((tag) => tag.courseVideos.map((item) => item.videoId));
+      const progressList =
+        videoIds.length === 0
+          ? []
+          : await prisma.userVideoProgress.findMany({
+              where: {
+                userId: req.auth.userId,
+                courseId: course.id,
+                videoId: { in: videoIds },
+              },
+            });
+      const progressMap = buildVideoProgressMap(progressList);
+
+      const tagContents = tagDetails.map((tag) => ({
+        tagId: tag.id,
+        ...buildVideoTagContent(tag.courseVideos, progressMap),
+      }));
+      const initialTagContent = tagContents.find((item) => item.tagId === selectedTagId) ?? null;
+
+      return ok(res, {
+        course: serializeCourseWithCounts(course),
+        tags: tags.map(serializeTag),
+        selectedTagId,
+        tagContents,
+        initialVideos: initialTagContent?.videos ?? [],
+        initialVideoProgress: initialTagContent?.progress ?? [],
+      });
+    }
+
     const tagDetails =
       tags.length === 0
         ? []
@@ -374,16 +472,16 @@ userRouter.get("/courses/:courseId/detail", async (req, res) => {
               audioId: { in: audioIds },
             },
           });
-    const progressMap = buildProgressMap(progressList);
+    const progressMap = buildAudioProgressMap(progressList);
 
     const tagContents = tagDetails.map((tag) => ({
       tagId: tag.id,
-      ...buildTagContent(tag.courseAudios, progressMap),
+      ...buildAudioTagContent(tag.courseAudios, progressMap),
     }));
     const initialTagContent = tagContents.find((item) => item.tagId === selectedTagId) ?? null;
 
     return ok(res, {
-      course: serializeCourse(course, course.courseAudios.length),
+      course: serializeCourseWithCounts(course),
       tags: tags.map(serializeTag),
       selectedTagId,
       tagContents,
@@ -494,6 +592,46 @@ userRouter.get("/tags/:tagId/audios", async (req, res) => {
   });
 });
 
+userRouter.get("/tags/:tagId/videos", async (req, res) => {
+  await syncScheduledCourses();
+
+  const tag = await prisma.tag.findUnique({
+    where: { id: req.params.tagId },
+    include: {
+      course: {
+        include: {
+          permissions: true,
+        },
+      },
+      courseVideos: {
+        orderBy: { order: "asc" },
+        include: {
+          video: true,
+        },
+      },
+    },
+  });
+
+  if (!tag) return fail(res, "标签不存在", 404);
+
+  const hasPermission = tag.course.permissions.some((item) => item.userId === req.auth.userId);
+  if (!hasPermission || tag.course.status !== "open") {
+    return fail(res, "无权访问该标签内容", 403);
+  }
+
+  const payload = await getTagVideosWithProgress({
+    tagId: tag.id,
+    userId: req.auth.userId,
+    courseId: tag.courseId,
+    courseVideos: tag.courseVideos,
+  });
+
+  return ok(res, {
+    videos: payload?.videos ?? [],
+    progress: payload?.progress ?? [],
+  });
+});
+
 userRouter.get("/courses/:courseId/audios/:audioId/detail", async (req, res) => {
   try {
     const course = await assertCoursePermission(req.auth.userId, req.params.courseId);
@@ -521,7 +659,7 @@ userRouter.get("/courses/:courseId/audios/:audioId/detail", async (req, res) => 
     return ok(res, {
       audio: serializeAudio(relation.audio),
       tag: serializeTag(relation.tag),
-      course: serializeCourse(course, course.courseAudios.length),
+      course: serializeCourseWithCounts(course),
       prev: prev ? serializeAudio(prev) : undefined,
       next: next ? serializeAudio(next) : undefined,
       first: first ? serializeAudio(first) : undefined,
@@ -554,6 +692,124 @@ userRouter.get("/audios/:audioId/progress", async (req, res) => {
   });
 
   return ok(res, serializeProgress(record));
+});
+
+userRouter.get("/courses/:courseId/videos/:videoId/detail", async (req, res) => {
+  try {
+    const course = await assertCoursePermission(req.auth.userId, req.params.courseId);
+    const relation = await prisma.courseVideo.findFirst({
+      where: {
+        courseId: course.id,
+        videoId: req.params.videoId,
+      },
+      include: {
+        video: true,
+        tag: true,
+      },
+    });
+
+    if (!relation) return fail(res, "视频不存在", 404);
+
+    const ordered = await getOrderedCourseVideos(course.id);
+    const currentIndex = ordered.findIndex((item) => item.video.id === req.params.videoId);
+    const prev = currentIndex > 0 ? ordered[currentIndex - 1].video : undefined;
+    const next = currentIndex >= 0 && currentIndex < ordered.length - 1 ? ordered[currentIndex + 1].video : undefined;
+    const first = ordered.length > 0 ? ordered[0].video : undefined;
+    const last = ordered.length > 0 ? ordered[ordered.length - 1].video : undefined;
+
+    return ok(res, {
+      video: serializeVideo(relation.video),
+      tag: serializeTag(relation.tag),
+      course: serializeCourseWithCounts(course),
+      prev: prev ? serializeVideo(prev) : undefined,
+      next: next ? serializeVideo(next) : undefined,
+      first: first ? serializeVideo(first) : undefined,
+      last: last ? serializeVideo(last) : undefined,
+    });
+  } catch (error) {
+    return fail(res, error.message || "视频不存在", 404);
+  }
+});
+
+userRouter.get("/courses/:courseId/videos/:videoId/handout/download", async (req, res) => {
+  try {
+    const course = await assertCoursePermission(req.auth.userId, req.params.courseId);
+    const relation = await prisma.courseVideo.findFirst({
+      where: {
+        courseId: course.id,
+        videoId: req.params.videoId,
+      },
+      include: {
+        video: true,
+      },
+    });
+
+    if (!relation) {
+      return fail(res, "视频不存在", 404);
+    }
+
+    const handoutUrl = getReadableObjectUrl({
+      objectKey: relation.video.handoutObjectKey ?? "",
+      fallbackUrl: relation.video.handoutUrl ?? "",
+    });
+
+    if (!handoutUrl) {
+      return fail(res, "讲义不存在", 404);
+    }
+
+    const upstream = await fetch(handoutUrl);
+    if (!upstream.ok || !upstream.body) {
+      return fail(res, "讲义下载失败", 502);
+    }
+
+    const fileName = sanitizeDownloadFileName(relation.video.handoutName || `${relation.video.name}-讲义`, "video-handout");
+    const contentType = upstream.headers.get("content-type") || "application/octet-stream";
+    const contentLength = upstream.headers.get("content-length");
+
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Disposition", buildAttachmentDisposition(fileName));
+    res.setHeader("Cache-Control", "private, no-store, max-age=0");
+    if (contentLength) {
+      res.setHeader("Content-Length", contentLength);
+    }
+
+    const stream = Readable.fromWeb(upstream.body);
+    stream.on("error", (error) => {
+      console.error("Video handout stream failed:", error);
+      if (!res.headersSent) {
+        res.status(500).end();
+      } else {
+        res.destroy(error);
+      }
+    });
+    stream.pipe(res);
+  } catch (error) {
+    return fail(res, error.message || "讲义下载失败", 500);
+  }
+});
+
+userRouter.get("/videos/:videoId/progress", async (req, res) => {
+  const courseId = req.query?.courseId ? `${req.query.courseId}` : undefined;
+  if (courseId) {
+    try {
+      await assertCoursePermission(req.auth.userId, courseId);
+    } catch (error) {
+      return fail(res, error.message || "无权访问该课程进度", 403);
+    }
+  }
+
+  const record = await prisma.userVideoProgress.findFirst({
+    where: {
+      userId: req.auth.userId,
+      videoId: req.params.videoId,
+      ...(courseId ? { courseId } : {}),
+    },
+    orderBy: {
+      lastUpdated: "desc",
+    },
+  });
+
+  return ok(res, serializeVideoProgress(record));
 });
 
 userRouter.post("/progress", async (req, res) => {

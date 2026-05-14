@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  Bot,
   FileText,
   FolderOpen,
   History,
@@ -12,13 +13,13 @@ import {
   Settings,
   ShieldCheck,
   Users,
-  Bot,
+  Video,
 } from "lucide-react";
 import { Link, Navigate, Outlet, useLocation } from "react-router";
 import { AppLogo } from "../components/branding/AppLogo";
 import { Button } from "../components/ui/button";
-import { clearAdminSessionForMode, getAdminAccountForMode, getAdminHomePathForRole, getAdminRoleForMode, getAdminTokenForMode } from "../lib/admin-session";
 import { cn } from "../components/ui/utils";
+import { clearAdminSessionForMode, getAdminAccountForMode, getAdminHomePathForRole, getAdminRoleForMode, getAdminTokenForMode } from "../lib/admin-session";
 
 const navigationGroups = [
   {
@@ -26,8 +27,10 @@ const navigationGroups = [
     items: [
       { name: "管理员账号", href: "/admin/admins", icon: ShieldCheck },
       { name: "用户管理", href: "/admin/users", icon: Users },
-      { name: "课程管理", href: "/admin/courses", icon: BookOpen },
-      { name: "音频库", href: "/admin/library", icon: Music2 },
+      { name: "音频课程管理", href: "/admin/courses?type=audio", icon: BookOpen },
+      { name: "视频课程管理", href: "/admin/courses?type=video", icon: Video },
+      { name: "音频课程库", href: "/admin/library", icon: Music2 },
+      { name: "视频课程库", href: "/admin/video-library", icon: Video },
       { name: "法条检索", href: "/admin/laws", icon: Scale },
     ],
   },
@@ -54,8 +57,6 @@ const navigationGroups = [
   },
 ];
 
-const navigationItems = navigationGroups.flatMap((group) => group.items);
-
 const filterNavigationByRole = (role: string) => {
   if (role === "user_admin") {
     return navigationGroups
@@ -67,6 +68,18 @@ const filterNavigationByRole = (role: string) => {
   }
 
   return navigationGroups;
+};
+
+const isNavActive = (pathname: string, href: string) => {
+  if (href.includes("?")) {
+    const [pathOnly, queryString] = href.split("?");
+    const current = new URLSearchParams(window.location.search);
+    const expected = new URLSearchParams(queryString);
+    if (!pathname.startsWith(pathOnly)) return false;
+    return Array.from(expected.entries()).every(([key, value]) => current.get(key) === value);
+  }
+
+  return pathname.startsWith(href);
 };
 
 export function AdminLayout() {
@@ -91,7 +104,7 @@ export function AdminLayout() {
 
   const currentNav = [...visibleNavigationItems]
     .sort((left, right) => right.href.length - left.href.length)
-    .find((item) => location.pathname.startsWith(item.href));
+    .find((item) => isNavActive(location.pathname, item.href));
 
   if (!currentNav && !location.pathname.startsWith("/admin/login")) {
     return <Navigate to={getAdminHomePathForRole(role)} replace />;
@@ -119,7 +132,7 @@ export function AdminLayout() {
               <div className="px-4 pb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{group.title}</div>
               {group.items.map((item) => {
                 const Icon = item.icon;
-                const isActive = location.pathname.startsWith(item.href);
+                const isActive = isNavActive(location.pathname, item.href);
 
                 return (
                   <Link
@@ -158,7 +171,7 @@ export function AdminLayout() {
         <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-8">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">{currentNav?.name ?? "后台管理"}</h2>
-            <p className="text-sm text-slate-500">得恩法考音频系统</p>
+            <p className="text-sm text-slate-500">得恩法考课程系统</p>
           </div>
         </header>
 

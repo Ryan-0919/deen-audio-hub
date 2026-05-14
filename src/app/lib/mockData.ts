@@ -9,6 +9,7 @@ import { clearUserSession as clearPersistedUserSession, getUserToken } from "./u
 
 export type UserStatus = "active" | "disabled";
 export type CourseStatus = "open" | "closed" | "scheduled";
+export type CourseType = "audio" | "video";
 export type AudioProcessStatus = "pending" | "processing" | "ready" | "failed";
 export type AdminRole = "super_admin" | "operations_admin" | "user_admin" | "review_admin";
 
@@ -37,10 +38,14 @@ export interface Course {
   id: string;
   name: string;
   cover: string;
+  coverObjectKey?: string;
   description: string;
+  courseType: CourseType;
   status: CourseStatus;
   openTime: string;
   audioCount: number;
+  videoCount: number;
+  contentCount: number;
   createdAt: string;
   sortOrder: number;
 }
@@ -70,6 +75,21 @@ export interface Audio {
   audioUrl?: string;
 }
 
+export interface Video {
+  id: string;
+  name: string;
+  folderId: string;
+  duration: number;
+  hasScript: boolean;
+  script?: string;
+  handoutUrl?: string;
+  handoutObjectKey?: string;
+  handoutName?: string;
+  hasHandout?: boolean;
+  uploadedAt?: string;
+  videoUrl?: string;
+}
+
 export interface UserProgress {
   userId: string;
   courseId: string;
@@ -79,10 +99,25 @@ export interface UserProgress {
   lastUpdated: string;
 }
 
+export interface UserVideoProgress {
+  userId: string;
+  courseId: string;
+  videoId: string;
+  progress: number;
+  completed: boolean;
+  lastUpdated: string;
+}
+
 export interface Folder {
   id: string;
   name: string;
   audioCount: number;
+}
+
+export interface VideoFolder {
+  id: string;
+  name: string;
+  videoCount: number;
 }
 
 export interface Device {
@@ -407,8 +442,11 @@ export interface UserHomeConfig {
 export interface UserHomeOverviewRecentCourse {
   courseId: string;
   courseName: string;
-  audioId: string;
-  audioName: string;
+  courseType: CourseType;
+  audioId?: string;
+  audioName?: string;
+  videoId?: string;
+  videoName?: string;
   tagName: string;
   progressSeconds: number;
   durationSeconds: number;
@@ -451,6 +489,8 @@ export interface CourseDetailPayload {
   tagContents?: TagContentPayload[];
   initialAudios?: Audio[];
   initialProgress?: UserProgress[];
+  initialVideos?: Video[];
+  initialVideoProgress?: UserVideoProgress[];
 }
 
 export interface TagAudiosPayload {
@@ -460,6 +500,25 @@ export interface TagAudiosPayload {
 
 export interface TagContentPayload extends TagAudiosPayload {
   tagId: string;
+}
+
+export interface TagVideosPayload {
+  videos: Video[];
+  progress: UserVideoProgress[];
+}
+
+export interface VideoTagContentPayload extends TagVideosPayload {
+  tagId: string;
+}
+
+export interface UserCourseVideoDetailPayload {
+  video: Video;
+  tag: Tag;
+  course: Course;
+  prev?: Video;
+  next?: Video;
+  first?: Video;
+  last?: Video;
 }
 
 export interface UserSummary {
@@ -481,7 +540,19 @@ export interface AudioLibraryMeta {
   tagOptions: AudioLibraryTagOption[];
 }
 
+export interface VideoLibraryMeta {
+  totalVideoCount: number;
+  referencedCount: number;
+  pendingScriptCount: number;
+  tagOptions: AudioLibraryTagOption[];
+}
+
 export interface AudioLibraryItem extends Audio {
+  folderName: string;
+  courseRefs: { courseId: string; courseName: string; tagId: string; tagName: string }[];
+}
+
+export interface VideoLibraryItem extends Video {
   folderName: string;
   courseRefs: { courseId: string; courseName: string; tagId: string; tagName: string }[];
 }
@@ -1821,8 +1892,10 @@ type AdminCacheEntry<T> = {
 
 let adminCourseListCache: AdminCacheEntry<Course[]> | null = null;
 let folderListCache: AdminCacheEntry<Folder[]> | null = null;
+let videoFolderListCache: AdminCacheEntry<VideoFolder[]> | null = null;
 let adminCourseListPromise: Promise<Course[]> | null = null;
 let folderListPromise: Promise<Folder[]> | null = null;
+let videoFolderListPromise: Promise<VideoFolder[]> | null = null;
 
 const readCache = <T>(entry: AdminCacheEntry<T> | null) => {
   if (!entry) return null;
@@ -1843,6 +1916,11 @@ const invalidateAdminCourseListCache = () => {
 const invalidateFolderListCache = () => {
   folderListCache = null;
   folderListPromise = null;
+};
+
+const invalidateVideoFolderListCache = () => {
+  videoFolderListCache = null;
+  videoFolderListPromise = null;
 };
 
 const request = async <T>(path: string, options?: RequestInit & { auth?: "user" | "admin" | "auto" }): Promise<T> => {
@@ -2031,11 +2109,20 @@ export const mockApi = {
       { auth: scope === "admin-preview" ? "admin" : "user" },
     ),
 
+  getTagVideos: (tagId: string, scope: string) =>
+    request<TagVideosPayload>(
+      scope === "admin-preview" ? `/api/admin/tags/${tagId}/videos` : `/api/user/tags/${tagId}/videos`,
+      { auth: scope === "admin-preview" ? "admin" : "user" },
+    ),
+
   getAudioDetail: (audioId: string, courseId: string) =>
     request<{ audio: Audio; tag: Tag; course: Course; prev?: Audio; next?: Audio; first?: Audio; last?: Audio }>(
       `/api/user/courses/${courseId}/audios/${audioId}/detail`,
       { auth: "user" },
     ),
+
+  getVideoDetail: (videoId: string, courseId: string) =>
+    request<UserCourseVideoDetailPayload>(`/api/user/courses/${courseId}/videos/${videoId}/detail`, { auth: "user" }),
 
   saveProgress: (_userId: string, courseId: string, audioId: string, progress: number) =>
     postJson<UserProgress>("/api/user/progress", { courseId, audioId, progress }, "user"),
@@ -2045,6 +2132,15 @@ export const mockApi = {
 
   getUserProgress: (_userId: string, courseId: string, audioId: string) =>
     request<UserProgress | undefined>(`/api/user/audios/${audioId}/progress?courseId=${encodeURIComponent(courseId)}`, { auth: "user" }),
+
+  saveVideoProgress: (_userId: string, courseId: string, videoId: string, progress: number) =>
+    postJson<UserVideoProgress>("/api/user/video-progress", { courseId, videoId, progress }, "user"),
+
+  markVideoCompleted: (_userId: string, courseId: string, videoId: string, progress?: number) =>
+    postJson<UserVideoProgress>("/api/user/video-progress/complete", { courseId, videoId, progress }, "user"),
+
+  getUserVideoProgress: (_userId: string, courseId: string, videoId: string) =>
+    request<UserVideoProgress | undefined>(`/api/user/videos/${videoId}/progress?courseId=${encodeURIComponent(courseId)}`, { auth: "user" }),
 
   getLawOverview: () => request<LawOverviewPayload>("/api/user/laws/overview", { auth: "user" }),
   getLawContent: (nodeId: string) =>
@@ -2652,6 +2748,7 @@ export const mockApi = {
     cover: string;
     coverObjectKey?: string;
     description: string;
+    courseType?: CourseType;
     status: CourseStatus;
     openTime: string;
     tags?: string[];
@@ -2688,13 +2785,25 @@ export const mockApi = {
     invalidateAdminCourseListCache();
     return postJson<{ success: boolean }>(`/api/admin/courses/${courseId}/tags/${tagId}/audios/reference`, { audioIds }, "admin");
   },
+  addVideoToCourse: async (courseId: string, tagId: string, videoIds: string[]) => {
+    invalidateAdminCourseListCache();
+    return postJson<{ success: boolean }>(`/api/admin/courses/${courseId}/tags/${tagId}/videos/reference`, { videoIds }, "admin");
+  },
   updateAudioOrder: (courseId: string, tagId: string, items: { id: string; order: number }[]) =>
     patchJson<{ success: boolean }>(`/api/admin/courses/${courseId}/tags/${tagId}/audios/order`, { items }, "admin"),
+  updateVideoOrder: (courseId: string, tagId: string, items: { id: string; order: number }[]) =>
+    patchJson<{ success: boolean }>(`/api/admin/courses/${courseId}/tags/${tagId}/videos/order`, { items }, "admin"),
   updateAudioTag: (courseId: string, audioId: string, tagId: string) =>
     patchJson<{ success: boolean }>(`/api/admin/courses/${courseId}/audios/${audioId}/tag`, { tagId }, "admin"),
+  updateVideoTag: (courseId: string, videoId: string, tagId: string) =>
+    patchJson<{ success: boolean }>(`/api/admin/courses/${courseId}/videos/${videoId}/tag`, { tagId }, "admin"),
   removeAudioFromCourse: async (courseId: string, audioId: string) => {
     invalidateAdminCourseListCache();
     return deleteRequest<{ success: boolean }>(`/api/admin/courses/${courseId}/audios/${audioId}`, "admin");
+  },
+  removeVideoFromCourse: async (courseId: string, videoId: string) => {
+    invalidateAdminCourseListCache();
+    return deleteRequest<{ success: boolean }>(`/api/admin/courses/${courseId}/videos/${videoId}`, "admin");
   },
 
   getFolders: async () => {
@@ -2714,19 +2823,49 @@ export const mockApi = {
 
     return folderListPromise;
   },
+  getVideoFolders: async () => {
+    const cached = readCache(videoFolderListCache);
+    if (cached) return cached;
+
+    if (!videoFolderListPromise) {
+      videoFolderListPromise = request<VideoFolder[]>("/api/admin/video-library/folders", { auth: "admin" })
+        .then((data) => {
+          videoFolderListCache = writeCache(data);
+          return data;
+        })
+        .finally(() => {
+          videoFolderListPromise = null;
+        });
+    }
+
+    return videoFolderListPromise;
+  },
   createFolder: async (name: string) => {
     invalidateFolderListCache();
     return postJson<Folder>("/api/admin/library/folders", { name }, "admin");
+  },
+  createVideoFolder: async (name: string) => {
+    invalidateVideoFolderListCache();
+    return postJson<VideoFolder>("/api/admin/video-library/folders", { name }, "admin");
   },
   updateFolder: async (folderId: string, name: string) => {
     invalidateFolderListCache();
     return patchJson<Folder>(`/api/admin/library/folders/${folderId}`, { name }, "admin");
   },
+  updateVideoFolder: async (folderId: string, name: string) => {
+    invalidateVideoFolderListCache();
+    return patchJson<VideoFolder>(`/api/admin/video-library/folders/${folderId}`, { name }, "admin");
+  },
   deleteFolder: async (folderId: string) => {
     invalidateFolderListCache();
     return deleteRequest<{ success: boolean }>(`/api/admin/library/folders/${folderId}`, "admin");
   },
+  deleteVideoFolder: async (folderId: string) => {
+    invalidateVideoFolderListCache();
+    return deleteRequest<{ success: boolean }>(`/api/admin/video-library/folders/${folderId}`, "admin");
+  },
   getAudioLibraryMeta: () => request<AudioLibraryMeta>("/api/admin/library/meta", { auth: "admin" }),
+  getVideoLibraryMeta: () => request<VideoLibraryMeta>("/api/admin/video-library/meta", { auth: "admin" }),
   getAudioLibraryItems: (params?: {
     folderId?: string;
     keyword?: string;
@@ -2758,8 +2897,39 @@ export const mockApi = {
       })}`,
       { auth: "admin" },
     ),
+  getVideoLibraryItems: (params?: {
+    folderId?: string;
+    keyword?: string;
+    courseId?: string;
+    excludeCourseId?: string;
+    tagId?: string;
+    refFilter?: "all" | "referenced" | "unreferenced";
+    scriptFilter?: "all" | "scripted" | "unscripted";
+    searchScope?: "current" | "all";
+    sortMode?: "uploaded-desc" | "name-asc";
+    page?: number;
+    pageSize?: number;
+  }) =>
+    request<PagedResult<VideoLibraryItem>>(
+      `/api/admin/video-library/videos${buildQueryString({
+        folderId: params?.folderId,
+        keyword: params?.keyword,
+        courseId: params?.courseId && params.courseId !== "all" ? params.courseId : undefined,
+        excludeCourseId: params?.excludeCourseId,
+        tagId: params?.tagId && params.tagId !== "all" ? params.tagId : undefined,
+        refFilter: params?.refFilter && params.refFilter !== "all" ? params.refFilter : undefined,
+        scriptFilter: params?.scriptFilter && params.scriptFilter !== "all" ? params.scriptFilter : undefined,
+        searchScope: params?.searchScope,
+        sortMode: params?.sortMode,
+        page: params?.page,
+        pageSize: params?.pageSize,
+      })}`,
+      { auth: "admin" },
+    ),
   updateAudioName: (audioId: string, name: string) => patchJson<Audio>(`/api/admin/library/audios/${audioId}/name`, { name }, "admin"),
+  updateVideoName: (videoId: string, name: string) => patchJson<Video>(`/api/admin/video-library/videos/${videoId}/name`, { name }, "admin"),
   updateAudioScript: (audioId: string, script: string) => patchJson<Audio>(`/api/admin/library/audios/${audioId}/script`, { script }, "admin"),
+  updateVideoScript: (videoId: string, script: string) => patchJson<Video>(`/api/admin/video-library/videos/${videoId}/script`, { script }, "admin"),
   updateAudioHandout: (
     audioId: string,
     payload: {
@@ -2768,23 +2938,48 @@ export const mockApi = {
       handoutName?: string | null;
     },
   ) => patchJson<Audio>(`/api/admin/library/audios/${audioId}/handout`, payload, "admin"),
+  updateVideoHandout: (
+    videoId: string,
+    payload: {
+      handoutUrl?: string | null;
+      handoutObjectKey?: string | null;
+      handoutName?: string | null;
+    },
+  ) => patchJson<Video>(`/api/admin/video-library/videos/${videoId}/handout`, payload, "admin"),
   moveAudiosToFolder: async (audioIds: string[], folderId: string) => {
     invalidateFolderListCache();
     return postJson<{ success: boolean }>("/api/admin/library/audios/move-folder", { audioIds, folderId }, "admin");
   },
+  moveVideosToFolder: async (videoIds: string[], folderId: string) => {
+    invalidateVideoFolderListCache();
+    return postJson<{ success: boolean }>("/api/admin/video-library/videos/move-folder", { videoIds, folderId }, "admin");
+  },
   deleteAudio: async (audioId: string) => {
     invalidateFolderListCache();
     return deleteRequest<{ success: boolean }>(`/api/admin/library/audios/${audioId}`, "admin");
+  },
+  deleteVideo: async (videoId: string) => {
+    invalidateVideoFolderListCache();
+    return deleteRequest<{ success: boolean }>(`/api/admin/video-library/videos/${videoId}`, "admin");
   },
 
   uploadAudioToLibrary: async (folderId: string, files: File[], script = "") => {
     invalidateFolderListCache();
     return uploadFiles<Audio[]>("/api/admin/library/audios/upload", files, { folderId, script }, "admin");
   },
+  uploadVideoToLibrary: async (folderId: string, files: File[], script = "") => {
+    invalidateVideoFolderListCache();
+    return uploadFiles<Video[]>("/api/admin/video-library/videos/upload", files, { folderId, script }, "admin");
+  },
   uploadAudioDirectlyToCourse: async (courseId: string, tagId: string, files: File[], script = "") => {
     invalidateFolderListCache();
     invalidateAdminCourseListCache();
     return uploadFiles<Audio>(`/api/admin/courses/${courseId}/tags/${tagId}/audios/upload`, files, { script }, "admin");
+  },
+  uploadVideoDirectlyToCourse: async (courseId: string, tagId: string, files: File[], script = "") => {
+    invalidateVideoFolderListCache();
+    invalidateAdminCourseListCache();
+    return uploadFiles<Video>(`/api/admin/courses/${courseId}/tags/${tagId}/videos/upload`, files, { script }, "admin");
   },
 
   getBrandingConfig: () => request<BrandingConfig>("/api/auth/branding", { auth: "auto" }),
@@ -2792,6 +2987,8 @@ export const mockApi = {
   getUserHomeOverview: () => request<UserHomeOverview>("/api/user/home-overview", { auth: "user" }),
   downloadAudioHandout: (courseId: string, audioId: string) =>
     requestBlob(`/api/user/courses/${courseId}/audios/${audioId}/handout/download`, { auth: "user" }),
+  downloadVideoHandout: (courseId: string, videoId: string) =>
+    requestBlob(`/api/user/courses/${courseId}/videos/${videoId}/handout/download`, { auth: "user" }),
   getSystemConfig: () => request<SystemConfig>("/api/admin/system-config", { auth: "admin" }),
   updateSystemConfig: (payload: Partial<SystemConfig>) => patchJson<SystemConfig>("/api/admin/system-config", payload, "admin"),
   testWebhook: (webhookUrl: string) => postJson<{ success: boolean }>("/api/admin/system-config/test-webhook", { webhookUrl }, "admin"),

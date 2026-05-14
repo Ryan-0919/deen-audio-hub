@@ -11,6 +11,11 @@ enum UserStatus {
   disabled
 }
 
+enum CourseContentType {
+  audio
+  video
+}
+
 enum CourseStatus {
   open
   closed
@@ -151,6 +156,7 @@ model User {
   permissions    UserCoursePermission[]
   devices        UserDevice[]
   progresses     UserProgress[]
+  videoProgresses UserVideoProgress[]
   addresses      UserAddress[]
   cartItems      ShopCartItem[]
   shopOrders     ShopOrder[]
@@ -185,6 +191,7 @@ model Course {
   handoutObjectKey  String?                @db.VarChar(255)
   handoutName       String?                @db.VarChar(255)
   description       String                 @db.LongText
+  courseType        CourseContentType      @default(audio)
   status            CourseStatus           @default(closed)
   openTime          DateTime
   sortOrder         Int                    @default(0)
@@ -195,8 +202,10 @@ model Course {
   tags              Tag[]
   permissions       UserCoursePermission[]
   courseAudios      CourseAudio[]
+  courseVideos      CourseVideo[]
   shopProducts      ShopProductCourse[]
 
+  @@index([courseType, status, openTime])
   @@index([status, openTime])
 }
 
@@ -209,6 +218,7 @@ model Tag {
   updatedAt    DateTime     @updatedAt
   course       Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
   courseAudios CourseAudio[]
+  courseVideos CourseVideo[]
 
   @@unique([courseId, name])
   @@index([courseId, order])
@@ -247,6 +257,36 @@ model Audio {
   @@index([processStatus, uploadedAt])
 }
 
+model VideoFolder {
+  id        String   @id @default(cuid())
+  name      String   @unique @db.VarChar(100)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  videos    Video[]
+}
+
+model Video {
+  id               String            @id @default(cuid())
+  name             String            @db.VarChar(191)
+  folderId         String
+  duration         Int               @default(0)
+  scriptText       String?           @db.LongText
+  handoutUrl       String?           @db.VarChar(500)
+  handoutObjectKey String?           @db.VarChar(255)
+  handoutName      String?           @db.VarChar(255)
+  objectKey        String?           @unique @db.VarChar(255)
+  objectUrl        String?           @db.VarChar(500)
+  mimeType         String?           @db.VarChar(100)
+  uploadedAt       DateTime          @default(now())
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  folder           VideoFolder       @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  courseVideos     CourseVideo[]
+  progresses       UserVideoProgress[]
+
+  @@index([folderId, uploadedAt])
+}
+
 model CourseAudio {
   id        String   @id @default(cuid())
   courseId  String
@@ -263,6 +303,24 @@ model CourseAudio {
   @@index([tagId, order])
   @@index([courseId])
   @@index([audioId])
+}
+
+model CourseVideo {
+  id        String   @id @default(cuid())
+  courseId  String
+  tagId     String
+  videoId   String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  video     Video    @relation(fields: [videoId], references: [id], onDelete: Restrict)
+
+  @@unique([courseId, videoId])
+  @@index([tagId, order])
+  @@index([courseId])
+  @@index([videoId])
 }
 
 model UserCoursePermission {
@@ -291,6 +349,22 @@ model UserProgress {
   @@unique([userId, courseId, audioId])
   @@index([courseId])
   @@index([audioId])
+}
+
+model UserVideoProgress {
+  id          String   @id @default(cuid())
+  userId      String
+  courseId    String
+  videoId     String
+  progress    Int      @default(0)
+  completed   Boolean  @default(false)
+  lastUpdated DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video       Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId, videoId])
+  @@index([courseId])
+  @@index([videoId])
 }
 
 model SystemConfig {

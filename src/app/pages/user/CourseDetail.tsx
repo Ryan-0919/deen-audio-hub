@@ -1,6 +1,6 @@
 import { ArrowLeft, Clock3, ListMusic, PlayCircle, Sparkles, Tags } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router";
+import { Navigate, useLocation, useNavigate, useParams } from "react-router";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../components/ui/utils";
@@ -512,6 +512,10 @@ export function CourseDetail() {
         </div>
       </div>
     );
+  }
+
+  if ((course.courseType ?? "audio") === "video") {
+    return <Navigate to={`/user/video-course/${course.id}`} replace state={{ course }} />;
   }
 
   return (

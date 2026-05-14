@@ -53,9 +53,9 @@ export function AdminLogin() {
       <div className="mx-auto grid min-h-[calc(100vh-5rem)] max-w-6xl items-center gap-10 lg:grid-cols-[1.1fr_440px]">
         <div className="hidden lg:block">
           <p className="text-sm font-medium text-blue-600">电脑端后台</p>
-          <h1 className="mt-4 text-5xl font-semibold leading-tight text-slate-900">法考音频课程后台</h1>
+          <h1 className="mt-4 text-5xl font-semibold leading-tight text-slate-900">法考课程后台</h1>
           <p className="mt-6 max-w-xl text-base leading-8 text-slate-500">
-            用于统一管理用户、课程、课程标签、音频库以及课程开放通知。整体界面采用白底简约教育风，适合电脑端长时间操作。
+            用于统一管理用户、音频课程、视频课程、课程标签、课程库以及课程开放通知。整体界面采用白底简约教育风，适合电脑端长时间操作。
           </p>
         </div>
 

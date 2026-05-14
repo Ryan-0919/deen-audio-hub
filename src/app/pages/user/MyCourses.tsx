@@ -115,8 +115,8 @@ const DEFAULT_ACTIONS: Array<Omit<HomeActionCard, "meta">> = [
   {
     path: "/user/my-courses",
     eyebrow: "课程入口",
-    title: "进入我的微课",
-    description: "进入我的微课目录，查看已开通课程并继续今天的学习进度。",
+    title: "进入我的课程",
+    description: "进入我的课程目录，查看已开通的音频课程和视频课程，并继续今天的学习进度。",
     icon: Library,
     iconClassName: "text-[#8fd6ff]",
     glowClassName: "from-[#38a6ff]/30 via-[#1f6fff]/16 to-transparent",

@@ -1,11 +1,22 @@
 import { Router } from "express";
 import multer from "multer";
 import { randomUUID } from "node:crypto";
-import { extname } from "node:path";
+import { mkdir, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { extname, join } from "node:path";
 import { prisma } from "../lib/prisma.js";
 import { ok, fail } from "../lib/response.js";
 import { requireAdminAuth, requireAdminRoles } from "../middleware/auth.js";
-import { serializeAudio, serializeCourse, serializeDevice, serializeFolder, serializeTag, serializeUser } from "../lib/serializers.js";
+import {
+  serializeAudio,
+  serializeCourse,
+  serializeDevice,
+  serializeFolder,
+  serializeTag,
+  serializeUser,
+  serializeVideo,
+  serializeVideoFolder,
+} from "../lib/serializers.js";
 import { formatDateTime } from "../lib/time.js";
 import { hashPassword } from "../lib/auth.js";
 import { normalizeAdminRole } from "../lib/admin-role.js";
@@ -35,6 +46,17 @@ import { extractScriptFromFile } from "../lib/script-file.js";
 import { isValidPhone, normalizePhone, validatePasswordOrThrow, validatePhoneOrThrow } from "../lib/security.js";
 import { extractObjectKeyFromUrl, getReadableObjectUrl, uploadBuffer } from "../lib/upload.js";
 import { getDisplayNameFromUpload } from "../lib/text.js";
+import { getVideoDuration } from "../lib/video.js";
+import {
+  getAdminTagAudios,
+  getAdminTagVideos,
+  getCourseDetailForAdminByType,
+  getCourseListWithCounts,
+  getVideoFoldersWithCounts,
+  getVideoLibraryItems,
+  getVideoLibraryMeta,
+  serializeCourseWithCounts,
+} from "../lib/course-content.js";
 import { normalizePortalConfig } from "../../src/shared/portal-config.js";
 
 const DEFAULT_USER_PASSWORD = "den2024";
@@ -81,6 +103,15 @@ const AUDIO_MIME_TYPES = new Set([
   "audio/ogg",
   "audio/flac",
 ]);
+const VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv"]);
+const VIDEO_MIME_TYPES = new Set([
+  "video/mp4",
+  "video/quicktime",
+  "video/x-msvideo",
+  "video/x-matroska",
+  "video/webm",
+]);
+const VIDEO_UPLOAD_TEMP_ROOT = join(tmpdir(), "denlaw-video-upload");
 
 const buildUploadValidationError = (message) => {
   const error = new Error(message);
@@ -199,6 +230,37 @@ const createPendingAudioRecord = async ({ fileName, folderId, scriptText, mimeTy
       mimeType: mimeType || null,
       processStatus: "pending",
       processMessage: "文件已上传，等待后台处理",
+    },
+  });
+
+const uploadLibraryVideo = createUploadMiddleware({
+  maxFileSize: 500 * MB,
+  maxFileCount: 20,
+  allowedExtensions: VIDEO_EXTENSIONS,
+  allowedMimeTypes: VIDEO_MIME_TYPES,
+  ignoreMimeType: true,
+  fileLabel: "视频文件",
+});
+
+const uploadCourseVideo = createUploadMiddleware({
+  maxFileSize: 500 * MB,
+  maxFileCount: 1,
+  allowedExtensions: VIDEO_EXTENSIONS,
+  allowedMimeTypes: VIDEO_MIME_TYPES,
+  ignoreMimeType: true,
+  fileLabel: "视频文件",
+});
+
+const createVideoRecord = async ({ fileName, folderId, scriptText, mimeType, duration, objectKey, objectUrl }) =>
+  prisma.video.create({
+    data: {
+      name: getDisplayNameFromUpload(fileName, "未命名视频"),
+      folderId,
+      duration: duration ?? 0,
+      scriptText: scriptText?.trim() ? scriptText : null,
+      mimeType: mimeType || null,
+      objectKey: objectKey || null,
+      objectUrl: objectUrl || null,
     },
   });
 
@@ -358,43 +420,9 @@ const getCourseNamesByIds = async (courseIds = []) => {
   return normalizedIds.map((courseId) => courseMap.get(courseId)).filter(Boolean);
 };
 
-const getCourseList = async () => {
-  const courses = await prisma.course.findMany({
-    include: {
-      _count: {
-        select: {
-          courseAudios: true,
-        },
-      },
-    },
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
-  });
+const getCourseList = async () => getCourseListWithCounts();
 
-  return courses.map((course) => serializeCourse(course, course._count.courseAudios));
-};
-
-const getCourseDetailForAdmin = async (courseId) => {
-  const course = await prisma.course.findUnique({
-    where: { id: courseId },
-    include: {
-      tags: {
-        orderBy: { order: "asc" },
-      },
-      _count: {
-        select: {
-          courseAudios: true,
-        },
-      },
-    },
-  });
-
-  if (!course) return null;
-
-  return {
-    course: serializeCourse(course, course._count.courseAudios),
-    tags: course.tags.map(serializeTag),
-  };
-};
+const getCourseDetailForAdmin = async (courseId) => getCourseDetailForAdminByType(courseId);
 
 const getAudioLibraryMeta = async () => {
   const [totalAudioCount, referencedCount, pendingScriptCount, tagOptions] = await Promise.all([
@@ -617,26 +645,7 @@ const getFolders = async () => {
   return folders.map((folder) => serializeFolder(folder, folder._count.audios));
 };
 
-const getTagAudiosForAdmin = async (tagId) => {
-  const tag = await prisma.tag.findUnique({
-    where: { id: tagId },
-    include: {
-      courseAudios: {
-        orderBy: { order: "asc" },
-        include: {
-          audio: true,
-        },
-      },
-    },
-  });
-
-  if (!tag) return null;
-
-  return {
-    audios: tag.courseAudios.map((item) => serializeAudio(item.audio)),
-    progress: [],
-  };
-};
+const getTagAudiosForAdmin = async (tagId) => getAdminTagAudios(tagId);
 
 const createCoursePermissionLinks = async (userId, courseIds) => {
   const normalizedCourseIds = toStringArray(courseIds);
@@ -1875,11 +1884,11 @@ adminRouter.delete("/users/:userId/devices", async (req, res) => {
 });
 
 adminRouter.get("/courses", requireAdminRoles("super_admin", "operations_admin", "user_admin"), async (_req, res) => {
-  return ok(res, await getCourseList());
+  return ok(res, await getCourseListWithCounts());
 });
 
 adminRouter.get("/courses/:courseId/detail", requireAdminRoles("super_admin", "operations_admin"), async (req, res) => {
-  const detail = await getCourseDetailForAdmin(req.params.courseId);
+  const detail = await getCourseDetailForAdminByType(req.params.courseId);
   if (!detail) return fail(res, "课程不存在", 404);
   return ok(res, detail);
 });
@@ -1887,7 +1896,7 @@ adminRouter.get("/courses/:courseId/detail", requireAdminRoles("super_admin", "o
 adminRouter.use("/courses", requireAdminRoles("super_admin", "operations_admin"));
 
 adminRouter.post("/courses", async (req, res) => {
-  const { name, cover, coverObjectKey, description, status, openTime, tags = [] } = req.body ?? {};
+  const { name, cover, coverObjectKey, description, status, openTime, tags = [], courseType = "audio" } = req.body ?? {};
   if (!name || !cover || !description) return fail(res, "请填写完整的课程信息", 400);
   const resolvedCoverObjectKey = coverObjectKey || extractObjectKeyFromUrl(cover) || null;
   const lastCourse = await prisma.course.findFirst({
@@ -1900,6 +1909,7 @@ adminRouter.post("/courses", async (req, res) => {
       coverUrl: cover,
       coverObjectKey: resolvedCoverObjectKey,
       description,
+      courseType: `${courseType}`.trim() === "video" ? "video" : "audio",
       status,
       openTime: toDate(openTime),
       sortOrder: (lastCourse?.sortOrder ?? -1) + 1,
@@ -1984,6 +1994,9 @@ adminRouter.patch("/courses/:courseId", async (req, res) => {
   if (payload.status === "scheduled") {
     payload.webhookNotifiedAt = null;
   }
+  if (payload.courseType !== undefined) {
+    payload.courseType = `${payload.courseType}`.trim() === "video" ? "video" : "audio";
+  }
 
   const course = await prisma.course.update({
     where: { id: req.params.courseId },
@@ -1992,6 +2005,7 @@ adminRouter.patch("/courses/:courseId", async (req, res) => {
       _count: {
         select: {
           courseAudios: true,
+          courseVideos: true,
         },
       },
     },
@@ -2036,6 +2050,7 @@ adminRouter.patch("/courses/:courseId", async (req, res) => {
     entityName: course.name,
     detail: {
       status: course.status,
+      courseType: course.courseType,
       previousStatus: previousCourse?.status ?? "",
       openTime: course.openTime,
     },
@@ -2051,6 +2066,9 @@ adminRouter.delete("/courses/:courseId", async (req, res) => {
   });
   await prisma.$transaction([
     prisma.userProgress.deleteMany({
+      where: { courseId: req.params.courseId },
+    }),
+    prisma.userVideoProgress.deleteMany({
       where: { courseId: req.params.courseId },
     }),
     prisma.course.delete({
@@ -2167,7 +2185,7 @@ adminRouter.patch("/courses/:courseId/tags/order", async (req, res) => {
 });
 
 adminRouter.get("/tags/:tagId/audios", async (req, res) => {
-  const detail = await getTagAudiosForAdmin(req.params.tagId);
+  const detail = await getAdminTagAudios(req.params.tagId);
   if (!detail) return fail(res, "标签不存在", 404);
   return ok(res, detail);
 });

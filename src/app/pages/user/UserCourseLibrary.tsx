@@ -7,6 +7,7 @@ import { Button } from "../../components/ui/button";
 import { type Course, mockApi } from "../../lib/mockData";
 import { clearUserSession, getUserDeviceKey, getUserId } from "../../lib/user-session";
 
+const courseTypeText = (courseType: Course["courseType"]) => (courseType === "video" ? "视频课程" : "音频课程");
 const courseStatusText = (status: Course["status"]) => (status === "open" ? "在学中" : status === "scheduled" ? "待开课" : "已关闭");
 
 export function UserCourseLibrary() {
@@ -39,6 +40,10 @@ export function UserCourseLibrary() {
     } catch {}
     clearUserSession();
     navigate("/");
+  };
+
+  const openCourse = (course: Course) => {
+    navigate(course.courseType === "video" ? `/user/video-course/${course.id}` : `/user/course/${course.id}`, { state: { course } });
   };
 
   if (loading) {
@@ -81,7 +86,7 @@ export function UserCourseLibrary() {
             <div>
               <div className="text-[11px] uppercase tracking-[0.28em] text-white/36">Course Library</div>
               <h1 className="mt-2 text-[24px] font-semibold tracking-[-0.05em] text-white md:text-[38px]">课程学习</h1>
-              <p className="mt-2 text-sm text-white/54 md:text-[15px]">已开通课程 {courses.length} 门，直接进入课程目录继续学习。</p>
+              <p className="mt-2 text-sm text-white/54 md:text-[15px]">已开通课程 {courses.length} 门，音频课程和视频课程统一在这里继续学习。</p>
             </div>
 
             <Button
@@ -99,7 +104,7 @@ export function UserCourseLibrary() {
               <motion.button
                 key={course.id}
                 type="button"
-                onClick={() => navigate(`/user/course/${course.id}`, { state: { course } })}
+                onClick={() => openCourse(course)}
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: 0.08 + index * 0.04 }}
@@ -119,24 +124,26 @@ export function UserCourseLibrary() {
                 </div>
 
                 <div className="flex flex-1 flex-col p-2.5 sm:p-3">
-                  <div className="text-[9px] uppercase tracking-[0.18em] text-white/38">{course.audioCount} 节内容</div>
+                  <div className="text-[9px] uppercase tracking-[0.18em] text-white/38">
+                    {courseTypeText(course.courseType)} · {course.contentCount} 节内容
+                  </div>
                   <h2 className="mt-1.5 line-clamp-2 text-[15px] font-semibold leading-5 tracking-[-0.04em] text-white sm:text-[16px]">
                     {course.name}
                   </h2>
                   <p className="mt-1 hidden line-clamp-2 text-[11px] leading-[1.35rem] text-white/58 sm:block">
-                    {course.description || "进入课程后可查看完整目录与音频内容。"}
+                    {course.description || "进入课程后可查看完整目录与课程内容。"}
                   </p>
                   <div className="mt-auto pt-2 text-[11px] font-medium text-[#8fd6ff]">进入课程</div>
                 </div>
               </motion.button>
             ))}
 
-            {courses.length === 0 && (
+            {courses.length === 0 ? (
               <div className="col-span-full rounded-[24px] border border-dashed border-white/12 bg-white/[0.04] p-8 text-center">
                 <BookMarked className="mx-auto mb-3 size-8 text-white/30" />
                 <div className="text-sm font-medium text-white/58">暂无课程记录</div>
               </div>
-            )}
+            ) : null}
           </div>
         </motion.section>
       </div>

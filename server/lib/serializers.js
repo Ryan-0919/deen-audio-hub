@@ -2,17 +2,25 @@ import { formatDate, formatDateTime } from "./time.js";
 import { getReadableObjectUrl } from "./upload.js";
 import { normalizeDisplayText } from "./text.js";
 
-export const serializeCourse = (course, audioCount = 0) => ({
+export const serializeCourse = (
+  course,
+  audioCount = course?._count?.courseAudios ?? 0,
+  videoCount = course?._count?.courseVideos ?? 0,
+) => ({
   id: course.id,
   name: normalizeDisplayText(course.name),
   cover: getReadableObjectUrl({
     objectKey: course.coverObjectKey ?? "",
     fallbackUrl: course.coverUrl,
   }),
+  coverObjectKey: course.coverObjectKey ?? "",
   description: normalizeDisplayText(course.description),
+  courseType: course.courseType ?? "audio",
   status: course.status,
   openTime: formatDateTime(course.openTime),
   audioCount,
+  videoCount,
+  contentCount: (course.courseType ?? "audio") === "video" ? videoCount : audioCount,
   createdAt: formatDate(course.createdAt),
   sortOrder: course.sortOrder,
 });
@@ -69,6 +77,42 @@ export const serializeAudioListItem = (audio) => ({
   hasHandout: Boolean(audio.handoutObjectKey || audio.handoutUrl),
 });
 
+export const serializeVideo = (video) => ({
+  id: video.id,
+  name: normalizeDisplayText(video.name),
+  folderId: video.folderId,
+  duration: video.duration,
+  hasScript: Boolean(video.scriptText?.trim()),
+  script: video.scriptText ? normalizeDisplayText(video.scriptText) : undefined,
+  handoutUrl: getReadableObjectUrl({
+    objectKey: video.handoutObjectKey ?? "",
+    fallbackUrl: video.handoutUrl ?? "",
+  }),
+  handoutObjectKey: video.handoutObjectKey ?? "",
+  handoutName: video.handoutName ? normalizeDisplayText(video.handoutName) : "",
+  hasHandout: Boolean(video.handoutObjectKey || video.handoutUrl),
+  uploadedAt: formatDateTime(video.uploadedAt),
+  videoUrl: getReadableObjectUrl({
+    objectKey: video.objectKey ?? "",
+    fallbackUrl: video.objectUrl ?? "",
+  }),
+});
+
+export const serializeVideoListItem = (video) => ({
+  id: video.id,
+  name: normalizeDisplayText(video.name),
+  folderId: video.folderId,
+  duration: video.duration,
+  hasScript: Boolean(video.scriptText?.trim()),
+  handoutUrl: getReadableObjectUrl({
+    objectKey: video.handoutObjectKey ?? "",
+    fallbackUrl: video.handoutUrl ?? "",
+  }),
+  handoutObjectKey: video.handoutObjectKey ?? "",
+  handoutName: video.handoutName ? normalizeDisplayText(video.handoutName) : "",
+  hasHandout: Boolean(video.handoutObjectKey || video.handoutUrl),
+});
+
 export const serializeUser = (user) => ({
   id: user.id,
   phone: user.phone,
@@ -102,4 +146,10 @@ export const serializeFolder = (folder, audioCount = 0) => ({
   id: folder.id,
   name: normalizeDisplayText(folder.name),
   audioCount,
+});
+
+export const serializeVideoFolder = (folder, videoCount = 0) => ({
+  id: folder.id,
+  name: normalizeDisplayText(folder.name),
+  videoCount,
 });

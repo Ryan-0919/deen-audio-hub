@@ -10,7 +10,9 @@ import { startMockExamAiReviewQueue } from "./lib/mock-exam-ai-review-queue.js";
 import { startScheduledCourseSync } from "./lib/scheduler.js";
 import { authRouter } from "./routes/auth.js";
 import { userRouter } from "./routes/user.js";
+import { videoUserRouter } from "./routes/video-user.js";
 import { adminRouter } from "./routes/admin.js";
+import { videoAdminRouter } from "./routes/video-admin.js";
 import { lawUserRouter } from "./routes/law-user.js";
 import { lawAdminRouter } from "./routes/law-admin.js";
 import { mockExamUserRouter } from "./routes/mock-exam-user.js";
@@ -90,7 +92,9 @@ app.use("/api/admin/laws", lawAdminRouter);
 app.use("/api/user/shop", shopUserRouter);
 app.use("/api/admin/shop", shopAdminRouter);
 app.use("/api/user", userRouter);
+app.use("/api/user", videoUserRouter);
 app.use("/api/admin", adminRouter);
+app.use("/api/admin", videoAdminRouter);
 
 app.use((error, _req, res, _next) => {
   if (error instanceof multer.MulterError) {
@@ -122,7 +126,11 @@ const start = async () => {
     await prisma.$connect();
     await bootstrap();
     await resumePendingAudioProcessingJobs();
-    startMockExamAiReviewQueue({ db: prisma });
+    if (!config.mockExamAiReview.disableQueue) {
+      startMockExamAiReviewQueue({ db: prisma });
+    } else {
+      console.warn("Mock exam AI review queue disabled by MOCK_EXAM_AI_DISABLE_QUEUE");
+    }
     startScheduledCourseSync(config.schedulerIntervalMs);
     app.listen(config.port, () => {
       console.log(`API server listening on http://localhost:${config.port}`);

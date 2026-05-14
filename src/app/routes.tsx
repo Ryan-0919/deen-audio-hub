@@ -46,6 +46,8 @@ const QuestionBank = lazyPage(() => import("./pages/admin/QuestionBank"), "Quest
 const TypingPracticeAdmin = lazyPage(() => import("./pages/admin/TypingPracticeAdmin"), "TypingPracticeAdmin");
 const CourseDetail = lazyPage(() => import("./pages/user/CourseDetail"), "CourseDetail");
 const AudioPlayer = lazyPage(() => import("./pages/user/AudioPlayer"), "AudioPlayer");
+const VideoCourseDetail = lazyPage(() => import("./pages/user/VideoCourseDetail"), "VideoCourseDetail");
+const VideoPlayer = lazyPage(() => import("./pages/user/VideoPlayer"), "VideoPlayer");
 const UserMe = lazyPage(() => import("./pages/user/UserMe"), "UserMe");
 const AdminLogin = lazyPage(() => import("./pages/admin/AdminLogin"), "AdminLogin");
 const ReviewLogin = lazyPage(() => import("./pages/review/ReviewLogin"), "ReviewLogin");
@@ -56,6 +58,7 @@ const CourseList = lazyPage(() => import("./pages/admin/CourseList"), "CourseLis
 const CourseEdit = lazyPage(() => import("./pages/admin/CourseEdit"), "CourseEdit");
 const CourseContent = lazyPage(() => import("./pages/admin/CourseContent"), "CourseContent");
 const AudioLibrary = lazyPage(() => import("./pages/admin/AudioLibrary"), "AudioLibrary");
+const VideoLibrary = lazyPage(() => import("./pages/admin/VideoLibrary"), "VideoLibrary");
 const LawAdmin = lazyPage(() => import("./pages/admin/LawAdmin"), "LawAdmin");
 const AdminAccountList = lazyPage(() => import("./pages/admin/AdminAccountList"), "AdminAccountList");
 const SystemConfig = lazyPage(() => import("./pages/admin/SystemConfig"), "SystemConfig");
@@ -99,6 +102,8 @@ export const router = createBrowserRouter([
       { path: "typing-practice/records/:recordId", element: withSuspense(<TypingPracticeResult />) },
       { path: "course/:courseId", element: withSuspense(<CourseDetail />) },
       { path: "player/:courseId/:audioId", element: withSuspense(<AudioPlayer />) },
+      { path: "video-course/:courseId", element: withSuspense(<VideoCourseDetail />) },
+      { path: "video-player/:courseId/:videoId", element: withSuspense(<VideoPlayer />) },
       { path: "me", element: withSuspense(<UserMe />) },
     ],
   },
@@ -124,6 +129,7 @@ export const router = createBrowserRouter([
       { path: "courses/:courseId/edit", element: withSuspense(<CourseEdit />) },
       { path: "courses/:courseId/content", element: withSuspense(<CourseContent />) },
       { path: "library", element: withSuspense(<AudioLibrary />) },
+      { path: "video-library", element: withSuspense(<VideoLibrary />) },
       { path: "laws", element: withSuspense(<LawAdmin />) },
       { path: "mock-exams", element: <Navigate to="/admin/mock-exams/papers" replace /> },
       { path: "mock-exams/question-bank", element: withSuspense(<QuestionBank />) },

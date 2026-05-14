@@ -9,7 +9,11 @@ const navigation = [
     label: "首页",
     to: "/user/courses",
     icon: BookMarked,
-    isActive: (pathname: string) => pathname === "/user/courses" || pathname.startsWith("/user/player/"),
+    isActive: (pathname: string) =>
+      pathname === "/user/courses" ||
+      pathname.startsWith("/user/player/") ||
+      pathname.startsWith("/user/video-player/") ||
+      pathname.startsWith("/user/video-course/"),
   },
   {
     label: "我的",
@@ -29,16 +33,19 @@ export function UserLayout() {
 
   const isImmersiveMode =
     location.pathname.startsWith("/user/player/") ||
+    location.pathname.startsWith("/user/video-player/") ||
     location.pathname.startsWith("/user/mock-exams/papers/") ||
     location.pathname.startsWith("/user/mock-exams/records/");
 
   const isHome =
     location.pathname === "/user/courses" ||
     location.pathname === "/user/my-courses" ||
-    location.pathname.startsWith("/user/course/");
+    location.pathname.startsWith("/user/course/") ||
+    location.pathname.startsWith("/user/video-course/");
   const isDarkShell =
     isHome ||
     location.pathname.startsWith("/user/player/") ||
+    location.pathname.startsWith("/user/video-player/") ||
     location.pathname === "/user/mock-exams" ||
     location.pathname.startsWith("/user/my-exams") ||
     location.pathname.startsWith("/user/me") ||

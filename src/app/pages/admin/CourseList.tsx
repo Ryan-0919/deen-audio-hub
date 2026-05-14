@@ -1,13 +1,13 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router";
-import { ArrowDown, ArrowUp, Eye, EyeOff, GripVertical, Pencil, Plus, Rows2, Trash2 } from "lucide-react";
+import { useLocation, useNavigate } from "react-router";
+import { ArrowDown, ArrowUp, Eye, EyeOff, GripVertical, Pencil, Plus, Rows2, Trash2, Video } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
-import { Course, mockApi } from "../../lib/mockData";
+import { Course, CourseType, mockApi } from "../../lib/mockData";
 
 type CourseStatusFilter = "all" | "open" | "closed" | "scheduled";
 
@@ -17,8 +17,14 @@ const statusMeta: Record<Exclude<CourseStatusFilter, "all">, { label: string; cl
   scheduled: { label: "定时开放中", className: "bg-amber-100 text-amber-700", hint: "到时间自动开放并通知" },
 };
 
+const getCourseTypeMeta = (courseType: CourseType) =>
+  courseType === "video"
+    ? { label: "视频课程", countLabel: "视频数", queryValue: "video" as const }
+    : { label: "音频课程", countLabel: "音频数", queryValue: "audio" as const };
+
 export function CourseList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState("");
@@ -26,11 +32,15 @@ export function CourseList() {
   const [draggingCourseId, setDraggingCourseId] = useState("");
   const deferredKeyword = useDeferredValue(keyword.trim());
 
+  const searchParams = new URLSearchParams(location.search);
+  const mode: CourseType = searchParams.get("type") === "video" ? "video" : "audio";
+  const modeMeta = getCourseTypeMeta(mode);
+
   const loadCourses = async () => {
     try {
       const list = await mockApi.getAllCourses();
       setCourses(list);
-    } catch (error) {
+    } catch {
       toast.error("加载课程失败");
     } finally {
       setLoading(false);
@@ -41,33 +51,37 @@ export function CourseList() {
     void loadCourses();
   }, []);
 
+  const modeCourses = useMemo(() => courses.filter((course) => (course.courseType ?? "audio") === mode), [courses, mode]);
+
   const summary = useMemo(
     () => ({
-      total: courses.length,
-      open: courses.filter((course) => course.status === "open").length,
-      scheduled: courses.filter((course) => course.status === "scheduled").length,
-      closed: courses.filter((course) => course.status === "closed").length,
+      total: modeCourses.length,
+      open: modeCourses.filter((course) => course.status === "open").length,
+      scheduled: modeCourses.filter((course) => course.status === "scheduled").length,
+      closed: modeCourses.filter((course) => course.status === "closed").length,
     }),
-    [courses],
+    [modeCourses],
   );
 
   const sortingEnabled = !deferredKeyword && statusFilter === "all";
 
   const filteredCourses = useMemo(() => {
-    return courses.filter((course) => {
+    return modeCourses.filter((course) => {
       const matchesKeyword = deferredKeyword ? course.name.includes(deferredKeyword) : true;
       const matchesStatus = statusFilter === "all" ? true : course.status === statusFilter;
       return matchesKeyword && matchesStatus;
     });
-  }, [courses, deferredKeyword, statusFilter]);
+  }, [modeCourses, deferredKeyword, statusFilter]);
 
   const persistCourseOrder = async (nextCourses: Course[]) => {
-    const normalized = nextCourses.map((course, index) => ({ ...course, sortOrder: index }));
-    setCourses(normalized);
+    const untouchedCourses = courses.filter((course) => (course.courseType ?? "audio") !== mode);
+    const normalizedModeCourses = nextCourses.map((course, index) => ({ ...course, sortOrder: index }));
+    const merged = [...untouchedCourses, ...normalizedModeCourses];
+    setCourses(merged);
     try {
-      await mockApi.updateCourseOrder(normalized.map((course) => ({ id: course.id, order: course.sortOrder })));
+      await mockApi.updateCourseOrder(normalizedModeCourses.map((course) => ({ id: course.id, order: course.sortOrder })));
       toast.success("课程顺序已更新");
-    } catch (error) {
+    } catch {
       toast.error("课程顺序更新失败");
       await loadCourses();
     }
@@ -79,12 +93,12 @@ export function CourseList() {
       return;
     }
 
-    const index = courses.findIndex((course) => course.id === courseId);
+    const index = filteredCourses.findIndex((course) => course.id === courseId);
     if (index < 0) return;
     const targetIndex = direction === "up" ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= courses.length) return;
+    if (targetIndex < 0 || targetIndex >= filteredCourses.length) return;
 
-    const nextCourses = [...courses];
+    const nextCourses = [...filteredCourses];
     [nextCourses[index], nextCourses[targetIndex]] = [nextCourses[targetIndex], nextCourses[index]];
     await persistCourseOrder(nextCourses);
   };
@@ -100,14 +114,14 @@ export function CourseList() {
       return;
     }
 
-    const sourceIndex = courses.findIndex((course) => course.id === draggingCourseId);
-    const targetIndex = courses.findIndex((course) => course.id === targetCourseId);
+    const sourceIndex = filteredCourses.findIndex((course) => course.id === draggingCourseId);
+    const targetIndex = filteredCourses.findIndex((course) => course.id === targetCourseId);
     if (sourceIndex < 0 || targetIndex < 0) {
       setDraggingCourseId("");
       return;
     }
 
-    const nextCourses = [...courses];
+    const nextCourses = [...filteredCourses];
     const [draggedCourse] = nextCourses.splice(sourceIndex, 1);
     nextCourses.splice(targetIndex, 0, draggedCourse);
     setDraggingCourseId("");
@@ -121,7 +135,7 @@ export function CourseList() {
       });
       toast.success(course.status === "open" ? "课程已关闭" : "课程已开放");
       await loadCourses();
-    } catch (error) {
+    } catch {
       toast.error("课程状态更新失败");
     }
   };
@@ -131,7 +145,7 @@ export function CourseList() {
       await mockApi.deleteCourse(courseId);
       toast.success("课程已删除");
       await loadCourses();
-    } catch (error) {
+    } catch {
       toast.error("删除课程失败");
     }
   };
@@ -144,8 +158,15 @@ export function CourseList() {
     <div className="p-8">
       <div className="rounded-3xl border border-slate-200 bg-white">
         <div className="border-b border-slate-200 px-8 py-6">
-          <h1 className="text-2xl font-semibold text-slate-900">课程管理</h1>
-          <p className="mt-2 text-sm text-slate-500">维护课程基础信息、开放状态、排序以及进入内容管理的入口。</p>
+          <div className="flex items-center gap-3">
+            <div className="flex size-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
+              <Video className="size-5" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-semibold text-slate-900">{modeMeta.label}管理</h1>
+              <p className="mt-2 text-sm text-slate-500">维护{modeMeta.label}基础信息、开放状态、排序以及进入内容管理的入口。</p>
+            </div>
+          </div>
         </div>
 
         <div className="space-y-6 px-8 py-6">
@@ -153,7 +174,7 @@ export function CourseList() {
             <div className="rounded-2xl border border-slate-200 bg-white p-5">
               <p className="text-sm text-slate-500">全部课程</p>
               <p className="mt-2 text-3xl font-semibold text-slate-900">{summary.total}</p>
-              <p className="mt-2 text-sm text-slate-500">当前后台可管理课程总数</p>
+              <p className="mt-2 text-sm text-slate-500">当前后台可管理{modeMeta.label}总数</p>
             </div>
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
               <p className="text-sm text-emerald-700">已开放</p>
@@ -173,7 +194,7 @@ export function CourseList() {
           </div>
 
           <div className="grid gap-4 md:grid-cols-[1fr_220px_auto_auto]">
-            <Input placeholder="按课程名称搜索" value={keyword} onChange={(event) => setKeyword(event.target.value)} />
+            <Input placeholder={`按${modeMeta.label}名称搜索`} value={keyword} onChange={(event) => setKeyword(event.target.value)} />
             <Select value={statusFilter} onValueChange={(value: CourseStatusFilter) => setStatusFilter(value)}>
               <SelectTrigger>
                 <SelectValue placeholder="课程状态" />
@@ -194,9 +215,9 @@ export function CourseList() {
             >
               重置
             </Button>
-            <Button onClick={() => navigate("/admin/courses/new")}>
+            <Button onClick={() => navigate(`/admin/courses/new?type=${modeMeta.queryValue}`)}>
               <Plus className="mr-2 size-4" />
-              新建课程
+              新建{modeMeta.label}
             </Button>
           </div>
 
@@ -211,10 +232,11 @@ export function CourseList() {
                   <TableHead>排序</TableHead>
                   <TableHead>封面</TableHead>
                   <TableHead>课程名称</TableHead>
+                  <TableHead>课程类型</TableHead>
                   <TableHead>课程简介</TableHead>
                   <TableHead>课程状态</TableHead>
                   <TableHead>开放时间</TableHead>
-                  <TableHead>音频数</TableHead>
+                  <TableHead>{modeMeta.countLabel}</TableHead>
                   <TableHead>创建时间</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
@@ -272,6 +294,11 @@ export function CourseList() {
                       </div>
                     </TableCell>
                     <TableCell>
+                      <Badge variant="secondary" className={(course.courseType ?? "audio") === "video" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}>
+                        {(course.courseType ?? "audio") === "video" ? "视频课程" : "音频课程"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
                       <div className="line-clamp-3 max-w-[320px] whitespace-normal text-sm leading-6 text-slate-600">{course.description}</div>
                     </TableCell>
                     <TableCell>
@@ -283,7 +310,7 @@ export function CourseList() {
                       </div>
                     </TableCell>
                     <TableCell>{course.openTime}</TableCell>
-                    <TableCell>{course.audioCount}</TableCell>
+                    <TableCell>{mode === "video" ? course.videoCount : course.audioCount}</TableCell>
                     <TableCell>{course.createdAt}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
@@ -318,7 +345,7 @@ export function CourseList() {
                 ))}
                 {filteredCourses.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="py-14 text-center text-slate-500">
+                    <TableCell colSpan={10} className="py-14 text-center text-slate-500">
                       暂无课程
                     </TableCell>
                   </TableRow>
