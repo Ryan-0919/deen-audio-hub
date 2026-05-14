@@ -110,7 +110,7 @@ const modeMeta: Record<
     libraryLabel: "视频库",
     countLabel: "课程视频数",
     uploadAccept: ".mp4,.mov,.m4v,.webm,.avi,.mkv",
-    uploadHint: "单个视频不超过 500MB，文案文件不超过 10MB。",
+    uploadHint: "单个视频不超过 500MB。",
     icon: VideoIcon,
   },
 };
@@ -147,7 +147,6 @@ export function CourseContent() {
   const MediaIcon = meta.icon;
   const deferredLibraryKeyword = useDeferredValue(libraryKeyword.trim());
   const selectedTag = useMemo(() => tags.find((tag) => tag.id === selectedTagId) ?? null, [selectedTagId, tags]);
-  const currentTagScriptedCount = useMemo(() => items.filter((item) => item.hasScript).length, [items]);
   const hasProcessingItems = useMemo(
     () => mode === "audio" && items.some((item) => isAudioItem(item) && item.processStatus !== "ready"),
     [items, mode],
@@ -198,7 +197,6 @@ export function CourseContent() {
         const result = await mockApi.getVideoLibraryItems({
           keyword: deferredLibraryKeyword,
           excludeCourseId: courseId,
-          scriptFilter: "scripted",
           searchScope: "all",
           sortMode: "uploaded-desc",
           page: libraryPage,
@@ -423,7 +421,7 @@ export function CourseContent() {
 
     try {
       if (mode === "video") {
-        await mockApi.uploadVideoDirectlyToCourse(courseId, selectedTagId, [uploadFile], uploadScript);
+        await mockApi.uploadVideoDirectlyToCourse(courseId, selectedTagId, [uploadFile]);
       } else {
         await mockApi.uploadAudioDirectlyToCourse(courseId, selectedTagId, [uploadFile], uploadScript);
       }
@@ -519,9 +517,9 @@ export function CourseContent() {
           <p className="mt-2 text-sm text-slate-500">当前课程已关联的{meta.pluralLabel}总数</p>
         </div>
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-          <p className="text-sm text-emerald-700">当前标签已上传文案</p>
-          <p className="mt-2 text-3xl font-semibold text-emerald-800">{currentTagScriptedCount}</p>
-          <p className="mt-2 text-sm text-emerald-700">没有文案的内容不能被课程引用</p>
+          <p className="text-sm text-emerald-700">当前标签内容数</p>
+          <p className="mt-2 text-3xl font-semibold text-emerald-800">{items.length}</p>
+          <p className="mt-2 text-sm text-emerald-700">展示当前标签下已关联的{meta.pluralLabel}数量</p>
         </div>
         <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
           <p className="text-sm text-blue-700">当前标签</p>
@@ -691,9 +689,6 @@ export function CourseContent() {
                               </span>
                               <span>上传时间 {item.uploadedAt || "--"}</span>
                               {mode === "audio" ? getProcessBadge((item as Audio).processStatus, (item as Audio).processMessage) : getProcessBadge("ready")}
-                              <Badge variant="secondary" className={item.hasScript ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}>
-                                {item.hasScript ? "已上传文案" : "未上传文案"}
-                              </Badge>
                               {item.hasHandout ? (
                                 <Badge variant="secondary" className="bg-blue-100 text-blue-700">
                                   已上传讲义
@@ -772,7 +767,7 @@ export function CourseContent() {
         <DialogContent className="max-w-5xl">
           <DialogHeader>
             <DialogTitle>从{meta.libraryLabel}引用{meta.label}</DialogTitle>
-            <DialogDescription>仅显示已上传文案且未被当前课程引用的{meta.pluralLabel}，可批量选择后加入当前标签。</DialogDescription>
+            <DialogDescription>仅显示未被当前课程引用的{meta.pluralLabel}，可批量选择后加入当前标签。</DialogDescription>
           </DialogHeader>
           <div className="py-4">
             <div className="mb-4 grid gap-3 md:grid-cols-[1fr_auto]">
@@ -809,9 +804,6 @@ export function CourseContent() {
                           {item.folderName} · 时长 {formatDuration(item.duration)}
                         </p>
                       </div>
-                      <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">
-                        已上传文案
-                      </Badge>
                     </div>
 
                     {item.courseRefs.length > 0 ? (
@@ -886,24 +878,28 @@ export function CourseContent() {
               <Input type="file" accept={meta.uploadAccept} onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)} />
             </div>
             {uploadFile ? <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">已选择文件：{uploadFile.name}</div> : null}
-            <div className="space-y-2">
-              <Label>文案文件</Label>
-              <Input type="file" accept=".txt,.md,.text,.srt,.lrc,.doc,.docx" onChange={(event) => void loadScriptFromFile(event.target.files?.[0] ?? null)} />
-              <p className="text-xs leading-6 text-slate-500">支持 txt、md、srt、lrc、doc、docx，读取后会自动填入下方文案框。</p>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>{meta.label}文案</Label>
-                <span className="text-xs text-slate-400">{uploadScript.length} 字</span>
-              </div>
-              <Textarea
-                rows={12}
-                value={uploadScript}
-                onChange={(event) => setUploadScript(event.target.value)}
-                className="min-h-[320px] max-h-[45vh] overflow-y-auto [field-sizing:fixed]"
-                placeholder={`可先留空，后续在${meta.libraryLabel}或课程中继续编辑文案`}
-              />
-            </div>
+            {mode === "audio" ? (
+              <>
+                <div className="space-y-2">
+                  <Label>文案文件</Label>
+                  <Input type="file" accept=".txt,.md,.text,.srt,.lrc,.doc,.docx" onChange={(event) => void loadScriptFromFile(event.target.files?.[0] ?? null)} />
+                  <p className="text-xs leading-6 text-slate-500">支持 txt、md、srt、lrc、doc、docx，读取后会自动填入下方文案框。</p>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>{meta.label}文案</Label>
+                    <span className="text-xs text-slate-400">{uploadScript.length} 字</span>
+                  </div>
+                  <Textarea
+                    rows={12}
+                    value={uploadScript}
+                    onChange={(event) => setUploadScript(event.target.value)}
+                    className="min-h-[320px] max-h-[45vh] overflow-y-auto [field-sizing:fixed]"
+                    placeholder={`可先留空，后续在${meta.libraryLabel}或课程中继续编辑文案`}
+                  />
+                </div>
+              </>
+            ) : null}
           </div>
           <DialogFooter className="border-t border-slate-200 pt-4">
             <Button variant="outline" onClick={() => setShowUploadDialog(false)}>

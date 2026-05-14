@@ -302,18 +302,6 @@ export function VideoPlayer() {
               ) : null}
             </section>
 
-            <section className="overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] shadow-[0_24px_90px_rgba(0,0,0,0.20)] backdrop-blur-[20px]">
-              <div className="border-b border-white/8 px-4 py-4">
-                <h2 className="text-[24px] font-semibold tracking-[-0.05em] text-white">课程文稿</h2>
-              </div>
-              <div className="p-3">
-                <div className="min-h-[300px] overflow-hidden rounded-[20px] border border-white/8 bg-black/18">
-                  <div className="h-full max-h-[56vh] overflow-y-auto px-4 py-4 text-[14px] leading-7 text-white/72">
-                    {video.script ? <div className="whitespace-pre-wrap">{video.script}</div> : <div className="flex min-h-[220px] items-center justify-center text-center text-sm text-white/38">暂无文稿内容</div>}
-                  </div>
-                </div>
-              </div>
-            </section>
           </aside>
         </div>
       </div>

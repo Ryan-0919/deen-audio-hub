@@ -144,7 +144,8 @@ export const getVideoLibraryMeta = async () => {
     }),
     prisma.video.count({
       where: {
-        scriptText: null,
+        handoutUrl: null,
+        handoutObjectKey: null,
       },
     }),
     prisma.tag.findMany({

@@ -183,7 +183,7 @@ export function AudioLibrary() {
   const deferredKeyword = useDeferredValue(keyword.trim());
   const selectedFolder = useMemo(() => folders.find((folder) => folder.id === selectedFolderId) ?? null, [folders, selectedFolderId]);
   const selectedItems = useMemo(() => items.filter((item) => selectedIds.includes(item.id)), [items, selectedIds]);
-  const selectedContainsUnscripted = selectedItems.some((item) => !item.hasScript);
+  const selectedContainsUnscripted = mode === "audio" && selectedItems.some((item) => !item.hasScript);
   const selectedContainsUnready = mode === "audio" && selectedItems.some((item) => isAudioItem(item) && item.processStatus !== "ready");
   const hasProcessingItems = mode === "audio" && items.some((item) => isAudioItem(item) && item.processStatus !== "ready");
   const allSelected = items.length > 0 && items.every((item) => selectedIds.includes(item.id));
@@ -222,7 +222,6 @@ export function AudioLibrary() {
           courseId: courseFilter,
           tagId: tagFilter,
           refFilter,
-          scriptFilter,
           searchScope,
           sortMode,
           page: currentPage,
@@ -633,7 +632,7 @@ export function AudioLibrary() {
               </div>
               <div>
                 <h1 className="text-2xl font-semibold text-slate-900">{metaLabels.libraryLabel}管理</h1>
-                <p className="mt-2 text-sm text-slate-500">维护{metaLabels.folderLabel}、上传{metaLabels.pluralLabel}、补充文案与讲义，并可批量加入课程。</p>
+                <p className="mt-2 text-sm text-slate-500">{mode === "video" ? `维护${metaLabels.folderLabel}、上传${metaLabels.pluralLabel}、维护讲义，并可批量加入课程。` : `维护${metaLabels.folderLabel}、上传${metaLabels.pluralLabel}、补充文案与讲义，并可批量加入课程。`}</p>
               </div>
             </div>
           </div>
@@ -656,9 +655,9 @@ export function AudioLibrary() {
                 <p className="mt-2 text-sm text-blue-700">至少被一个课程标签引用的内容数</p>
               </div>
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-                <p className="text-sm text-amber-700">待补文案</p>
+                <p className="text-sm text-amber-700">{mode === "video" ? "未上传讲义" : "待补文案"}</p>
                 <p className="mt-2 text-3xl font-semibold text-amber-900">{summary.pendingScriptCount}</p>
-                <p className="mt-2 text-sm text-amber-800">尚未上传完整文案的内容数</p>
+                <p className="mt-2 text-sm text-amber-800">{mode === "video" ? "当前未上传讲义的视频数量" : "尚未上传完整文案的内容数"}</p>
               </div>
             </div>
 
@@ -789,14 +788,16 @@ export function AudioLibrary() {
                       <SelectItem value="unreferenced">未引用</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Select value={scriptFilter} onValueChange={(value: ScriptFilter) => { setScriptFilter(value); setPage(1); }}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">全部文案状态</SelectItem>
-                      <SelectItem value="scripted">已上传文案</SelectItem>
-                      <SelectItem value="unscripted">未上传文案</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  {mode === "audio" ? (
+                    <Select value={scriptFilter} onValueChange={(value: ScriptFilter) => { setScriptFilter(value); setPage(1); }}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">全部文案状态</SelectItem>
+                        <SelectItem value="scripted">已上传文案</SelectItem>
+                        <SelectItem value="unscripted">未上传文案</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : null}
                 </div>
                 <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-4">
                   <Select value={searchScope} onValueChange={(value: SearchScope) => { setSearchScope(value); setPage(1); }}>
@@ -846,7 +847,7 @@ export function AudioLibrary() {
                           <TableHead>上传时间</TableHead>
                           <TableHead>时长</TableHead>
                           <TableHead>处理状态</TableHead>
-                          <TableHead>文案</TableHead>
+                          {mode === "audio" ? <TableHead>文案</TableHead> : null}
                           <TableHead>讲义</TableHead>
                           <TableHead className="text-right">操作</TableHead>
                         </TableRow>
@@ -854,7 +855,7 @@ export function AudioLibrary() {
                       <TableBody>
                         {listLoading ? (
                           <TableRow>
-                            <TableCell colSpan={11} className="py-16 text-center text-slate-500">{metaLabels.libraryLabel}加载中...</TableCell>
+                            <TableCell colSpan={mode === "audio" ? 11 : 10} className="py-16 text-center text-slate-500">{metaLabels.libraryLabel}加载中...</TableCell>
                           </TableRow>
                         ) : null}
 
@@ -894,19 +895,21 @@ export function AudioLibrary() {
                             <TableCell>{item.uploadedAt}</TableCell>
                             <TableCell>{formatDuration(item.duration)}</TableCell>
                             <TableCell>{mode === "video" ? getProcessBadge("ready") : getProcessBadge((item as AudioLibraryItem).processStatus, (item as AudioLibraryItem).processMessage)}</TableCell>
-                            <TableCell>
-                              {item.hasScript ? (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
-                                  <CheckCircle2 className="size-3.5" />
-                                  已上传文案
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-700">
-                                  <FileText className="size-3.5" />
-                                  未上传文案
-                                </span>
-                              )}
-                            </TableCell>
+                            {mode === "audio" ? (
+                              <TableCell>
+                                {item.hasScript ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
+                                    <CheckCircle2 className="size-3.5" />
+                                    已上传文案
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-700">
+                                    <FileText className="size-3.5" />
+                                    未上传文案
+                                  </span>
+                                )}
+                              </TableCell>
+                            ) : null}
                             <TableCell>
                               {item.hasHandout ? (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700">
@@ -923,10 +926,12 @@ export function AudioLibrary() {
                                   <Pencil className="mr-2 size-4" />
                                   改名
                                 </Button>
-                                <Button variant="outline" size="sm" onClick={() => { setEditingItem(item); setScriptText(item.script ?? ""); setShowScriptDialog(true); }}>
-                                  <FileText className="mr-2 size-4" />
-                                  文案
-                                </Button>
+                                {mode === "audio" ? (
+                                  <Button variant="outline" size="sm" onClick={() => { setEditingItem(item); setScriptText(item.script ?? ""); setShowScriptDialog(true); }}>
+                                    <FileText className="mr-2 size-4" />
+                                    文案
+                                  </Button>
+                                ) : null}
                                 <Button variant="outline" size="sm" onClick={() => openHandoutDialog(item)}>
                                   <FileText className="mr-2 size-4" />
                                   讲义
@@ -942,7 +947,7 @@ export function AudioLibrary() {
 
                         {!listLoading && items.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={11} className="py-16 text-center text-slate-500">
+                            <TableCell colSpan={mode === "audio" ? 11 : 10} className="py-16 text-center text-slate-500">
                               {searchScope === "current" && !selectedFolderId ? "请先选择文件夹" : `暂无${metaLabels.pluralLabel}数据`}
                             </TableCell>
                           </TableRow>
@@ -986,26 +991,30 @@ export function AudioLibrary() {
         <DialogContent className="grid max-h-[85vh] max-w-3xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
           <DialogHeader>
             <DialogTitle>单个上传{metaLabels.label}</DialogTitle>
-            <DialogDescription>单个上传可同步上传文案，也可后续在{metaLabels.libraryLabel}继续编辑。</DialogDescription>
+            <DialogDescription>{mode === "video" ? `单个上传后可后续补充讲义。` : `单个上传可同步上传文案，也可后续在${metaLabels.libraryLabel}继续编辑。`}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 overflow-y-auto py-1 pr-1">
-            {singleUploading ? <UploadingNotice title={`${metaLabels.label}正在上传`} description={`系统正在处理${metaLabels.label}文件和文案，请稍等。`} /> : null}
+            {singleUploading ? <UploadingNotice title={`${metaLabels.label}正在上传`} description={mode === "video" ? `系统正在处理${metaLabels.label}文件，请稍等。` : `系统正在处理${metaLabels.label}文件和文案，请稍等。`} /> : null}
             <div className="space-y-2">
               <Label>{metaLabels.label}文件</Label>
               <Input type="file" accept={metaLabels.uploadAccept} disabled={singleUploading} onChange={(event) => setSingleFile(event.target.files?.[0] ?? null)} />
               {singleFile ? <p className="text-xs text-slate-500">已选择：{singleFile.name}</p> : null}
             </div>
-            <div className="space-y-2">
-              <Label>文案文件</Label>
-              <Input type="file" accept=".txt,.md,.text,.srt,.lrc,.doc,.docx" disabled={singleUploading} onChange={(event) => void loadScriptFromFile(event.target.files?.[0] ?? null, setScriptText)} />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>文案内容</Label>
-                <span className="text-xs text-slate-400">{scriptText.length} 字</span>
-              </div>
-              <Textarea value={scriptText} disabled={singleUploading} onChange={(event) => setScriptText(event.target.value)} rows={12} className="min-h-[320px] max-h-[45vh] overflow-y-auto [field-sizing:fixed]" placeholder="可先留空，后续再补录文案" />
-            </div>
+            {mode === "audio" ? (
+              <>
+                <div className="space-y-2">
+                  <Label>文案文件</Label>
+                  <Input type="file" accept=".txt,.md,.text,.srt,.lrc,.doc,.docx" disabled={singleUploading} onChange={(event) => void loadScriptFromFile(event.target.files?.[0] ?? null, setScriptText)} />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>文案内容</Label>
+                    <span className="text-xs text-slate-400">{scriptText.length} 字</span>
+                  </div>
+                  <Textarea value={scriptText} disabled={singleUploading} onChange={(event) => setScriptText(event.target.value)} rows={12} className="min-h-[320px] max-h-[45vh] overflow-y-auto [field-sizing:fixed]" placeholder="可先留空，后续再补录文案" />
+                </div>
+              </>
+            ) : null}
           </div>
           <DialogFooter className="border-t border-slate-200 pt-4">
             <Button variant="outline" onClick={() => setShowSingleUploadDialog(false)} disabled={singleUploading}>取消</Button>
@@ -1020,7 +1029,7 @@ export function AudioLibrary() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>批量上传{metaLabels.pluralLabel}</DialogTitle>
-            <DialogDescription>批量上传后默认使用文件名作为名称，文案后续逐条补录。</DialogDescription>
+            <DialogDescription>{mode === "video" ? `批量上传后默认使用文件名作为名称，讲义可后续逐条补充。` : `批量上传后默认使用文件名作为名称，文案后续逐条补录。`}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             {batchUploading ? <UploadingNotice title={`${metaLabels.pluralLabel}正在上传`} description="系统正在批量处理文件，上传完成后会自动关闭当前窗口。" /> : null}
