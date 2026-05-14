@@ -314,11 +314,11 @@ export function CourseList() {
                     <TableCell>{course.createdAt}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button variant="outline" size="sm" onClick={() => navigate(`/admin/courses/${course.id}/edit`)}>
+                        <Button variant="outline" size="sm" onClick={() => navigate(`/admin/courses/${course.id}/edit?type=${modeMeta.queryValue}`)}>
                           <Pencil className="mr-2 size-4" />
                           编辑
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => navigate(`/admin/courses/${course.id}/content`)}>
+                        <Button variant="outline" size="sm" onClick={() => navigate(`/admin/courses/${course.id}/content?type=${modeMeta.queryValue}`)}>
                           <Rows2 className="mr-2 size-4" />
                           内容管理
                         </Button>

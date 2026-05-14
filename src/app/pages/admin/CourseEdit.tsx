@@ -227,7 +227,7 @@ export function CourseEdit() {
         </div>
 
         {isEdit && courseId ? (
-          <Button variant="outline" onClick={() => navigate(`/admin/courses/${courseId}/content`)}>
+          <Button variant="outline" onClick={() => navigate(`/admin/courses/${courseId}/content?type=${courseType}`)}>
             <Rows2 className="mr-2 size-4" />
             进入内容管理
           </Button>
