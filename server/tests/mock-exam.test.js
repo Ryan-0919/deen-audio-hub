@@ -36,6 +36,87 @@ const createQuestion = (overrides = {}) => ({
   ...overrides,
 });
 
+const isPlainObject = (value) => Object.prototype.toString.call(value) === "[object Object]";
+
+const matchesOperatorCondition = (value, condition) => {
+  if (!isPlainObject(condition)) {
+    return Object.is(value, condition);
+  }
+
+  return Object.entries(condition).every(([operator, expected]) => {
+    if (operator === "contains") {
+      return `${value ?? ""}`.includes(`${expected ?? ""}`);
+    }
+
+    if (operator === "in") {
+      return Array.isArray(expected) && expected.some((item) => Object.is(item, value));
+    }
+
+    if (operator === "not") {
+      if (expected === null) {
+        return value !== null && value !== undefined;
+      }
+      return !matchesOperatorCondition(value, expected);
+    }
+
+    if (operator === "gt") {
+      return value > expected;
+    }
+
+    if (operator === "gte") {
+      return value >= expected;
+    }
+
+    if (operator === "lt") {
+      return value < expected;
+    }
+
+    if (operator === "lte") {
+      return value <= expected;
+    }
+
+    if (operator === "some") {
+      return Array.isArray(value) && value.some((item) => matchesWhere(item, expected));
+    }
+
+    if (operator === "is") {
+      return value !== null && value !== undefined && matchesWhere(value, expected);
+    }
+
+    return matchesWhere(value?.[operator], expected);
+  });
+};
+
+function matchesWhere(record, where) {
+  if (!where || !isPlainObject(where) || Object.keys(where).length === 0) {
+    return true;
+  }
+
+  return Object.entries(where).every(([key, value]) => {
+    if (key === "AND") {
+      return (Array.isArray(value) ? value : []).every((item) => matchesWhere(record, item));
+    }
+
+    if (key === "OR") {
+      return (Array.isArray(value) ? value : []).some((item) => matchesWhere(record, item));
+    }
+
+    if (key === "NOT") {
+      if (Array.isArray(value)) {
+        return value.every((item) => !matchesWhere(record, item));
+      }
+      return !matchesWhere(record, value);
+    }
+
+    const currentValue = record?.[key];
+    if (isPlainObject(value)) {
+      return matchesOperatorCondition(currentValue, value);
+    }
+
+    return Object.is(currentValue, value);
+  });
+}
+
 test("buildMockExamSections groups all supported question types", () => {
   const sections = buildMockExamSections([
     createQuestion({ id: "q1", type: "single_choice", score: 2 }),
@@ -3253,12 +3334,9 @@ test("listMockExamReviewRecords recovers stale ai_processing records before quer
         return { count: 1 };
       },
       count: async ({ where }) => {
-        if (where.reviewWorkflowStatus === "ai_pending") {
-          return 1;
-        }
-        return 0;
+        return records.filter((record) => matchesWhere(record, where)).length;
       },
-      findMany: async () => records,
+      findMany: async ({ where }) => records.filter((record) => matchesWhere(record, where)),
     },
   };
 
@@ -3273,6 +3351,110 @@ test("listMockExamReviewRecords recovers stale ai_processing records before quer
   assert.equal(result.summary.aiPending, 1);
   assert.equal(result.summary.aiProcessing, 0);
   assert.equal(result.list.length, 1);
+});
+
+test("listMockExamReviewRecords excludes current admin claimed records from ai_pending and counts them as manual_reviewing", async () => {
+  const now = new Date("2026-05-14T10:00:00.000Z");
+  const activeLockExpiresAt = new Date("2026-05-14T10:30:00.000Z");
+  const records = [
+    {
+      id: "record_claimed_by_current_admin",
+      status: "submitted",
+      reviewWorkflowStatus: "ai_pending",
+      reviewedAt: null,
+      submittedAt: new Date("2026-05-14T09:00:00.000Z"),
+      manualReviewerId: "admin_current",
+      manualReviewerName: "当前老师",
+      manualReviewLockToken: "lock_current",
+      manualReviewClaimedAt: new Date("2026-05-14T09:55:00.000Z"),
+      manualReviewLockExpiresAt: activeLockExpiresAt,
+      manualReviewVersion: 2,
+      paperId: "paper_state_a",
+      user: { id: "user_1", phone: "13800000011" },
+      paper: {
+        id: "paper_state_a",
+        code: "paper_state_a",
+        title: "Paper State A",
+        phase: "主观题",
+        year: 2026,
+        totalScore: 20,
+        passScore: 12,
+        reviewEnabled: true,
+        paperType: "subjective",
+        questions: [createQuestion({ id: "paper_state_a_q1", type: "subjective_case", correctAnswerJson: "[]", options: [] })],
+      },
+      answers: [],
+    },
+    {
+      id: "record_plain_pending",
+      status: "submitted",
+      reviewWorkflowStatus: "ai_pending",
+      reviewedAt: null,
+      submittedAt: new Date("2026-05-14T09:10:00.000Z"),
+      manualReviewerId: null,
+      manualReviewerName: null,
+      manualReviewLockToken: null,
+      manualReviewClaimedAt: null,
+      manualReviewLockExpiresAt: null,
+      manualReviewVersion: 0,
+      paperId: "paper_state_a",
+      user: { id: "user_2", phone: "13800000012" },
+      paper: {
+        id: "paper_state_a",
+        code: "paper_state_a",
+        title: "Paper State A",
+        phase: "主观题",
+        year: 2026,
+        totalScore: 20,
+        passScore: 12,
+        reviewEnabled: true,
+        paperType: "subjective",
+        questions: [createQuestion({ id: "paper_state_a_q2", type: "subjective_case", correctAnswerJson: "[]", options: [] })],
+      },
+      answers: [],
+    },
+  ];
+
+  const fakeDb = {
+    systemConfig: {
+      findUnique: async () => ({
+        mockExamAiReviewConfigJson: JSON.stringify({
+          timeoutMs: 120000,
+        }),
+      }),
+    },
+    mockExamRecord: {
+      updateMany: async () => ({ count: 0 }),
+      count: async ({ where }) => {
+        const matched = records.filter((record) => matchesWhere(record, where));
+        return matched.length;
+      },
+      findMany: async ({ where }) => records.filter((record) => matchesWhere(record, where)),
+    },
+  };
+
+  const aiPendingResult = await listMockExamReviewRecords({
+    db: fakeDb,
+    reviewStatus: "ai_pending",
+    currentAdminId: "admin_current",
+    currentTime: now,
+  });
+
+  assert.equal(aiPendingResult.summary.aiPending, 1);
+  assert.equal(aiPendingResult.summary.manualReviewing, 1);
+  assert.equal(aiPendingResult.list.length, 1);
+  assert.equal(aiPendingResult.list[0].id, "record_plain_pending");
+
+  const manualReviewingResult = await listMockExamReviewRecords({
+    db: fakeDb,
+    reviewStatus: "manual_reviewing",
+    currentAdminId: "admin_current",
+    currentTime: now,
+  });
+
+  assert.equal(manualReviewingResult.list.length, 1);
+  assert.equal(manualReviewingResult.list[0].id, "record_claimed_by_current_admin");
+  assert.equal(manualReviewingResult.list[0].reviewStatus, "manual_reviewing");
 });
 
 test("enqueueMockExamAiReview resets record into ai queue state", async () => {
@@ -3319,6 +3501,62 @@ test("enqueueMockExamAiReview resets record into ai queue state", async () => {
   assert.equal(record.aiReviewFinishedAt, null);
   assert.equal(record.lastAiReviewError, null);
   assert.equal(record.publishedAt, null);
+  assert.equal(record.aiReviewNextRetryAt?.toISOString(), currentTime.toISOString());
+});
+
+test("enqueueMockExamAiReview allows admin to requeue reviewed records and bumps version", async () => {
+  __resetMockExamAiReviewQueueForTests();
+
+  const currentTime = new Date("2026-05-14T10:00:00.000Z");
+  let record = {
+    id: "record_queue_requeue_admin",
+    status: "submitted",
+    reviewWorkflowStatus: "manual_pending",
+    aiReviewRetryCount: 1,
+    aiReviewNextRetryAt: new Date("2026-05-14T09:00:00.000Z"),
+    aiReviewStartedAt: new Date("2026-05-14T09:00:00.000Z"),
+    aiReviewFinishedAt: new Date("2026-05-14T09:05:00.000Z"),
+    lastAiReviewError: "old error",
+    reviewedAt: new Date("2026-05-14T09:05:00.000Z"),
+    publishedAt: new Date("2026-05-14T09:06:00.000Z"),
+    manualReviewerId: "admin_current",
+    manualReviewLockToken: "lock_current",
+    manualReviewVersion: 4,
+  };
+
+  const fakeDb = {
+    mockExamRecord: {
+      findUnique: async () => record,
+      update: async ({ data }) => {
+        record = {
+          ...record,
+          ...data,
+          manualReviewVersion:
+            data?.manualReviewVersion?.increment !== undefined
+              ? Number(record.manualReviewVersion ?? 0) + Number(data.manualReviewVersion.increment ?? 0)
+              : record.manualReviewVersion,
+        };
+        return record;
+      },
+      findMany: async () => [],
+    },
+  };
+
+  await enqueueMockExamAiReview({
+    db: fakeDb,
+    recordId: record.id,
+    adminId: "admin_current",
+    currentTime,
+  });
+
+  assert.equal(record.reviewWorkflowStatus, "ai_pending");
+  assert.equal(record.aiReviewRetryCount, 0);
+  assert.equal(record.aiReviewStartedAt, null);
+  assert.equal(record.aiReviewFinishedAt, null);
+  assert.equal(record.lastAiReviewError, null);
+  assert.equal(record.reviewedAt, null);
+  assert.equal(record.publishedAt, null);
+  assert.equal(record.manualReviewVersion, 5);
   assert.equal(record.aiReviewNextRetryAt?.toISOString(), currentTime.toISOString());
 });
 

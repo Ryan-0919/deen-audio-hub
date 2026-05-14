@@ -2194,6 +2194,7 @@ export function MockExamReviewList() {
       setDrafts(resolveInitialDraftState(remoteDraft, localDraft));
       lastSyncedDraftRef.current = serializeDraftState(remoteDraft);
       setDetailOpen(true);
+      await refreshQueues();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "领取试卷失败");
     } finally {
@@ -2361,10 +2362,13 @@ export function MockExamReviewList() {
     if (!selectedDetail) return;
     try {
       setAiScoring(true);
+      clearLocalReviewDraft(selectedDetail.id);
       const detail = await mockApi.aiScoreAdminMockExamReview(selectedDetail.id);
       setSelectedDetail(detail);
-      setDrafts(buildDraftState(detail));
-      toast.success("批改结果已更新");
+      const nextDraft = buildDraftState(detail);
+      setDrafts(nextDraft);
+      lastSyncedDraftRef.current = serializeDraftState(nextDraft);
+      toast.success("已加入自动批改队列");
       await refreshQueues();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "批改失败");

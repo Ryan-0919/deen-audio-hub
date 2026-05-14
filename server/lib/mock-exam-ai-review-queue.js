@@ -108,7 +108,7 @@ export const enqueueMockExamAiReview = async ({ db = prisma, recordId, adminId =
   }
 
   const workflowStatus = `${record.reviewWorkflowStatus ?? ""}`.trim();
-  if (workflowStatus === "published" || workflowStatus === "manual_pending") {
+  if (!normalizedAdminId && (workflowStatus === "published" || workflowStatus === "manual_pending")) {
     throw Object.assign(new Error("当前试卷已完成批改，无需进入自动批改队列"), { statusCode: 409 });
   }
 
@@ -137,7 +137,11 @@ export const enqueueMockExamAiReview = async ({ db = prisma, recordId, adminId =
       aiReviewRetryCount: 0,
       aiReviewNextRetryAt: currentTime,
       lastAiReviewError: null,
+      reviewedAt: null,
       publishedAt: null,
+      manualReviewVersion: {
+        increment: 1,
+      },
     },
   });
 

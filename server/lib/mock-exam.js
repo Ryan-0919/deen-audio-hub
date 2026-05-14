@@ -990,6 +990,91 @@ const getAdminMockExamReviewStatus = (record, adminId = "", currentTime = new Da
   return "ai_pending";
 };
 
+const buildCurrentAdminActiveReviewLockWhere = (currentAdminId = "", currentTime = new Date()) => {
+  const normalizedAdminId = `${currentAdminId ?? ""}`.trim();
+  if (!normalizedAdminId) {
+    return null;
+  }
+
+  return {
+    manualReviewerId: normalizedAdminId,
+    manualReviewLockToken: {
+      not: null,
+    },
+    manualReviewLockExpiresAt: {
+      gt: currentTime,
+    },
+  };
+};
+
+const buildAdminMockExamReviewStatusWhere = ({
+  reviewStatus = "all",
+  currentAdminId = "",
+  currentTime = new Date(),
+}) => {
+  const activeCurrentAdminLockWhere = buildCurrentAdminActiveReviewLockWhere(currentAdminId, currentTime);
+
+  if (reviewStatus === "manual_reviewing") {
+    if (!activeCurrentAdminLockWhere) {
+      return {
+        id: "__never__",
+      };
+    }
+
+    return {
+      ...activeCurrentAdminLockWhere,
+      NOT: {
+        reviewWorkflowStatus: {
+          in: ["manual_pending", "published"],
+        },
+      },
+    };
+  }
+
+  if (reviewStatus === "manual_pending") {
+    return {
+      reviewWorkflowStatus: "manual_pending",
+    };
+  }
+
+  if (reviewStatus === "published") {
+    return {
+      reviewWorkflowStatus: "published",
+    };
+  }
+
+  if (reviewStatus === "ai_processing") {
+    return {
+      reviewWorkflowStatus: "ai_processing",
+      ...(activeCurrentAdminLockWhere
+        ? {
+            NOT: activeCurrentAdminLockWhere,
+          }
+        : {}),
+    };
+  }
+
+  if (reviewStatus === "ai_pending") {
+    const excludedFilters = [
+      {
+        reviewWorkflowStatus: {
+          in: ["ai_processing", "manual_pending", "published"],
+        },
+      },
+    ];
+
+    if (activeCurrentAdminLockWhere) {
+      excludedFilters.push(activeCurrentAdminLockWhere);
+    }
+
+    return {
+      NOT: excludedFilters,
+    };
+  }
+
+  return {};
+};
+
 const serializeRecordSummary = (record, currentTime = new Date()) => {
   if (!record) return null;
 
@@ -2937,30 +3022,36 @@ export const listMockExamReviewRecords = async ({
         : []),
     ],
   };
-  const manualReviewingWhere = currentAdminId
-    ? {
-        manualReviewerId: currentAdminId,
-        NOT: {
-          reviewWorkflowStatus: {
-            in: ["manual_pending", "published"],
-          },
-        },
-      }
-    : {
-        id: "__never__",
-      };
-  const normalizedReviewWhere =
-    reviewStatus === "ai_pending"
-      ? { reviewWorkflowStatus: "ai_pending" }
-      : reviewStatus === "ai_processing"
-        ? { reviewWorkflowStatus: "ai_processing" }
-        : reviewStatus === "manual_reviewing"
-          ? manualReviewingWhere
-        : reviewStatus === "manual_pending"
-          ? { reviewWorkflowStatus: "manual_pending" }
-          : reviewStatus === "published"
-            ? { reviewWorkflowStatus: "published" }
-            : {};
+  const aiPendingWhere = buildAdminMockExamReviewStatusWhere({
+    reviewStatus: "ai_pending",
+    currentAdminId,
+    currentTime,
+  });
+  const aiProcessingWhere = buildAdminMockExamReviewStatusWhere({
+    reviewStatus: "ai_processing",
+    currentAdminId,
+    currentTime,
+  });
+  const manualReviewingWhere = buildAdminMockExamReviewStatusWhere({
+    reviewStatus: "manual_reviewing",
+    currentAdminId,
+    currentTime,
+  });
+  const manualPendingWhere = buildAdminMockExamReviewStatusWhere({
+    reviewStatus: "manual_pending",
+    currentAdminId,
+    currentTime,
+  });
+  const publishedWhere = buildAdminMockExamReviewStatusWhere({
+    reviewStatus: "published",
+    currentAdminId,
+    currentTime,
+  });
+  const normalizedReviewWhere = buildAdminMockExamReviewStatusWhere({
+    reviewStatus,
+    currentAdminId,
+    currentTime,
+  });
   const where = {
     ...baseWhere,
     ...normalizedReviewWhere,
@@ -2968,11 +3059,11 @@ export const listMockExamReviewRecords = async ({
 
   const [total, aiPendingCount, aiProcessingCount, manualReviewingCount, manualPendingCount, publishedCount, records] = await Promise.all([
     db.mockExamRecord.count({ where }),
-    db.mockExamRecord.count({ where: { ...baseWhere, reviewWorkflowStatus: "ai_pending" } }),
-    db.mockExamRecord.count({ where: { ...baseWhere, reviewWorkflowStatus: "ai_processing" } }),
+    db.mockExamRecord.count({ where: { ...baseWhere, ...aiPendingWhere } }),
+    db.mockExamRecord.count({ where: { ...baseWhere, ...aiProcessingWhere } }),
     db.mockExamRecord.count({ where: { ...baseWhere, ...manualReviewingWhere } }),
-    db.mockExamRecord.count({ where: { ...baseWhere, reviewWorkflowStatus: "manual_pending" } }),
-    db.mockExamRecord.count({ where: { ...baseWhere, reviewWorkflowStatus: "published" } }),
+    db.mockExamRecord.count({ where: { ...baseWhere, ...manualPendingWhere } }),
+    db.mockExamRecord.count({ where: { ...baseWhere, ...publishedWhere } }),
     db.mockExamRecord.findMany({
       where,
       orderBy:
@@ -3081,29 +3172,39 @@ export const listMockExamReviewPaperSummaries = async ({ db, keyword = "", curre
         paperId: paper.id,
         status: "submitted",
       };
+      const aiPendingWhere = buildAdminMockExamReviewStatusWhere({
+        reviewStatus: "ai_pending",
+        currentAdminId,
+        currentTime,
+      });
+      const aiProcessingWhere = buildAdminMockExamReviewStatusWhere({
+        reviewStatus: "ai_processing",
+        currentAdminId,
+        currentTime,
+      });
+      const manualReviewingWhere = buildAdminMockExamReviewStatusWhere({
+        reviewStatus: "manual_reviewing",
+        currentAdminId,
+        currentTime,
+      });
+      const manualPendingWhere = buildAdminMockExamReviewStatusWhere({
+        reviewStatus: "manual_pending",
+        currentAdminId,
+        currentTime,
+      });
+      const publishedWhere = buildAdminMockExamReviewStatusWhere({
+        reviewStatus: "published",
+        currentAdminId,
+        currentTime,
+      });
 
       const [total, aiPending, aiProcessing, manualReviewing, manualPending, published] = await Promise.all([
         db.mockExamRecord.count({ where: baseWhere }),
-        db.mockExamRecord.count({ where: { ...baseWhere, reviewWorkflowStatus: "ai_pending" } }),
-        db.mockExamRecord.count({ where: { ...baseWhere, reviewWorkflowStatus: "ai_processing" } }),
-        db.mockExamRecord.count({
-          where: currentAdminId
-            ? {
-                ...baseWhere,
-                manualReviewerId: currentAdminId,
-                NOT: {
-                  reviewWorkflowStatus: {
-                    in: ["manual_pending", "published"],
-                  },
-                },
-              }
-            : {
-                ...baseWhere,
-                id: "__never__",
-              },
-        }),
-        db.mockExamRecord.count({ where: { ...baseWhere, reviewWorkflowStatus: "manual_pending" } }),
-        db.mockExamRecord.count({ where: { ...baseWhere, reviewWorkflowStatus: "published" } }),
+        db.mockExamRecord.count({ where: { ...baseWhere, ...aiPendingWhere } }),
+        db.mockExamRecord.count({ where: { ...baseWhere, ...aiProcessingWhere } }),
+        db.mockExamRecord.count({ where: { ...baseWhere, ...manualReviewingWhere } }),
+        db.mockExamRecord.count({ where: { ...baseWhere, ...manualPendingWhere } }),
+        db.mockExamRecord.count({ where: { ...baseWhere, ...publishedWhere } }),
       ]);
 
       return {
