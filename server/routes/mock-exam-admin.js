@@ -21,7 +21,7 @@ import {
   serializeMockExamReviewDetail,
   updateAdminMockExamPaper,
 } from "../lib/mock-exam.js";
-import { aiReviewMockExamRecord } from "../lib/mock-exam-ai-review.js";
+import { enqueueMockExamAiReview } from "../lib/mock-exam-ai-review-queue.js";
 import { getMockExamLaunchConfig, updateMockExamLaunchConfig } from "../lib/mock-exam-launch-config.js";
 import {
   DEFAULT_AI_REVIEW_SYSTEM_PROMPT,
@@ -1044,13 +1044,16 @@ mockExamAdminRouter.post("/reviews/:recordId/publish", async (req, res) => {
 
 mockExamAdminRouter.post("/reviews/:recordId/ai-score", async (req, res) => {
   try {
-    const aiReviewConfig = await getMockExamAiReviewConfig(prisma);
-    const record = await aiReviewMockExamRecord({
+    const recordId = `${req.params.recordId ?? ""}`.trim();
+    await getMockExamAiReviewConfig(prisma);
+    await enqueueMockExamAiReview({
       db: prisma,
-      recordId: `${req.params.recordId ?? ""}`.trim(),
+      recordId,
       adminId: `${req.auth?.adminId ?? ""}`.trim(),
-      runtimeConfig: aiReviewConfig,
-      allowRuleFallback: false,
+    });
+    const record = await getMockExamReviewRecord({
+      db: prisma,
+      recordId,
     });
 
     return ok(
@@ -1058,7 +1061,7 @@ mockExamAdminRouter.post("/reviews/:recordId/ai-score", async (req, res) => {
       serializeMockExamReviewDetail(record, new Date(), {
         currentAdminId: req.auth?.adminId,
       }),
-      "批改结果已生成",
+      "已加入自动批改队列",
     );
   } catch (error) {
     return fail(res, error.message || "批改失败", error.statusCode || 400);

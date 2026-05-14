@@ -12,6 +12,11 @@ import {
   startMockExamRecord,
 } from "../lib/mock-exam.js";
 import { aiReviewMockExamRecord } from "../lib/mock-exam-ai-review.js";
+import {
+  __resetMockExamAiReviewQueueForTests,
+  enqueueMockExamAiReview,
+  pumpMockExamAiReviewQueue,
+} from "../lib/mock-exam-ai-review-queue.js";
 import { config } from "../lib/config.js";
 
 const createQuestion = (overrides = {}) => ({
@@ -3268,4 +3273,244 @@ test("listMockExamReviewRecords recovers stale ai_processing records before quer
   assert.equal(result.summary.aiPending, 1);
   assert.equal(result.summary.aiProcessing, 0);
   assert.equal(result.list.length, 1);
+});
+
+test("enqueueMockExamAiReview resets record into ai queue state", async () => {
+  __resetMockExamAiReviewQueueForTests();
+
+  const currentTime = new Date("2026-05-14T10:00:00.000Z");
+  let record = {
+    id: "record_queue_enqueue_1",
+    status: "submitted",
+    reviewWorkflowStatus: "ai_pending",
+    aiReviewRetryCount: 2,
+    aiReviewNextRetryAt: new Date("2026-05-14T09:00:00.000Z"),
+    aiReviewStartedAt: new Date("2026-05-14T09:00:00.000Z"),
+    aiReviewFinishedAt: new Date("2026-05-14T09:05:00.000Z"),
+    lastAiReviewError: "old error",
+    publishedAt: new Date("2026-05-14T09:05:00.000Z"),
+    manualReviewerId: null,
+    manualReviewLockToken: null,
+  };
+
+  const fakeDb = {
+    mockExamRecord: {
+      findUnique: async () => record,
+      update: async ({ data }) => {
+        record = {
+          ...record,
+          ...data,
+        };
+        return record;
+      },
+      findMany: async () => [],
+    },
+  };
+
+  await enqueueMockExamAiReview({
+    db: fakeDb,
+    recordId: record.id,
+    currentTime,
+  });
+
+  assert.equal(record.reviewWorkflowStatus, "ai_pending");
+  assert.equal(record.aiReviewRetryCount, 0);
+  assert.equal(record.aiReviewStartedAt, null);
+  assert.equal(record.aiReviewFinishedAt, null);
+  assert.equal(record.lastAiReviewError, null);
+  assert.equal(record.publishedAt, null);
+  assert.equal(record.aiReviewNextRetryAt?.toISOString(), currentTime.toISOString());
+});
+
+test("pumpMockExamAiReviewQueue retries failures up to max retry count then returns to ai_pending", async () => {
+  __resetMockExamAiReviewQueueForTests();
+
+  const originalConfig = {
+    ...config.mockExamAiReview,
+  };
+  config.mockExamAiReview.maxConcurrency = 3;
+  config.mockExamAiReview.maxRetryCount = 3;
+  config.mockExamAiReview.retryDelayMs = 15000;
+
+  let record = {
+    id: "record_queue_retry_1",
+    status: "submitted",
+    reviewWorkflowStatus: "ai_pending",
+    aiReviewRetryCount: 0,
+    aiReviewNextRetryAt: null,
+    aiReviewStartedAt: null,
+    aiReviewFinishedAt: null,
+    lastAiReviewError: null,
+    manualReviewerId: null,
+    manualReviewLockToken: null,
+    submittedAt: new Date("2026-05-14T10:00:00.000Z"),
+    createdAt: new Date("2026-05-14T10:00:00.000Z"),
+    user: { id: "user_retry_1", phone: "13800000022" },
+    paper: {
+      id: "paper_retry_1",
+      code: "paper_retry_1",
+      title: "Retry Paper",
+      phase: "主观题",
+      totalScore: 1,
+      passScore: 1,
+      questions: [
+        createQuestion({
+          id: "subjective_retry_1",
+          type: "subjective_case",
+          score: 1,
+          correctAnswerJson: "[]",
+          options: [],
+          questionMetaJson: JSON.stringify({
+            subQuestions: [
+              {
+                id: "sq_retry_1",
+                title: "问题(1)",
+                maxScore: 1,
+                referenceAnswer: "参考答案",
+                rubricGuidance: "评分说明",
+                rubricPoints: [{ id: "point_retry_1", title: "要点", score: 1, keywords: ["答"] }],
+              },
+            ],
+          }),
+        }),
+      ],
+    },
+    answers: [
+      {
+        id: "answer_retry_1",
+        questionId: "subjective_retry_1",
+        answerJson: JSON.stringify({ sq_retry_1: "答" }),
+        reviewJson: null,
+        score: 0,
+      },
+    ],
+  };
+
+  const fakeDb = {
+    systemConfig: {
+      findUnique: async () => ({
+        mockExamAiReviewConfigJson: JSON.stringify({
+          provider: "openai-compatible",
+          baseUrl: "https://example.com/v1",
+          apiKey: "test-key",
+          model: "test-model",
+          timeoutMs: 1000,
+        }),
+      }),
+    },
+    mockExamRecord: {
+      updateMany: async () => ({ count: 0 }),
+      findMany: async ({ where }) => {
+        const dueAt = where?.OR?.[1]?.aiReviewNextRetryAt?.lte ?? new Date();
+        const due = !record.aiReviewNextRetryAt || record.aiReviewNextRetryAt <= dueAt;
+        return due && record.reviewWorkflowStatus === "ai_pending" ? [record] : [];
+      },
+      findUnique: async () => record,
+      update: async ({ data }) => {
+        record = {
+          ...record,
+          ...data,
+        };
+        return record;
+      },
+    },
+    mockExamAnswer: {
+      update: async ({ data }) => ({
+        id: "answer_retry_1",
+        ...data,
+      }),
+    },
+    $transaction: async (callback) => callback(fakeDb),
+  };
+
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: false,
+    status: 502,
+    json: async () => ({
+      error: {
+        message: "upstream failed",
+      },
+    }),
+  });
+
+  try {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const now = new Date(`2026-05-14T10:0${attempt}:00.000Z`);
+      record.aiReviewNextRetryAt = null;
+      await pumpMockExamAiReviewQueue({
+        db: fakeDb,
+        currentTime: now,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+
+    assert.equal(record.reviewWorkflowStatus, "ai_pending");
+    assert.equal(record.aiReviewRetryCount, 3);
+    assert.equal(record.aiReviewStartedAt, null);
+    assert.equal(record.aiReviewFinishedAt, null);
+    assert.equal(record.aiReviewNextRetryAt, null);
+    assert.match(record.lastAiReviewError ?? "", /3/);
+  } finally {
+    global.fetch = originalFetch;
+    config.mockExamAiReview.maxConcurrency = originalConfig.maxConcurrency;
+    config.mockExamAiReview.maxRetryCount = originalConfig.maxRetryCount;
+    config.mockExamAiReview.retryDelayMs = originalConfig.retryDelayMs;
+    config.mockExamAiReview.queuePollIntervalMs = originalConfig.queuePollIntervalMs;
+    __resetMockExamAiReviewQueueForTests();
+  }
+});
+
+test("pumpMockExamAiReviewQueue skips manually claimed records", async () => {
+  __resetMockExamAiReviewQueueForTests();
+
+  const currentTime = new Date("2026-05-14T11:00:00.000Z");
+  const lockedRecord = {
+    id: "record_queue_locked_1",
+    status: "submitted",
+    reviewWorkflowStatus: "ai_pending",
+    aiReviewRetryCount: 0,
+    aiReviewNextRetryAt: null,
+    manualReviewerId: "admin_other",
+    manualReviewLockToken: "lock_other",
+    submittedAt: currentTime,
+    createdAt: currentTime,
+  };
+
+  let startedCount = 0;
+  const fakeDb = {
+    systemConfig: {
+      findUnique: async () => ({
+        mockExamAiReviewConfigJson: JSON.stringify({
+          provider: "rules",
+        }),
+      }),
+    },
+    mockExamRecord: {
+      updateMany: async () => ({ count: 0 }),
+      findMany: async () => [lockedRecord],
+      findUnique: async () => lockedRecord,
+      update: async ({ data }) => {
+        if (data.reviewWorkflowStatus === "ai_processing") {
+          startedCount += 1;
+        }
+        return {
+          ...lockedRecord,
+          ...data,
+        };
+      },
+    },
+    mockExamAnswer: {
+      update: async ({ data }) => data,
+    },
+    $transaction: async (callback) => callback(fakeDb),
+  };
+
+  await pumpMockExamAiReviewQueue({
+    db: fakeDb,
+    currentTime,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 30));
+
+  assert.equal(startedCount, 0);
 });

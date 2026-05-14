@@ -2359,6 +2359,8 @@ export const aiReviewMockExamRecord = async ({
         data: {
           reviewWorkflowStatus: "ai_processing",
           aiReviewStartedAt: currentTime,
+          aiReviewFinishedAt: null,
+          aiReviewNextRetryAt: null,
           lastAiReviewError: null,
         },
       });
@@ -2435,6 +2437,8 @@ export const aiReviewMockExamRecord = async ({
           reviewedAt: currentTime,
           reviewWorkflowStatus: "manual_pending",
           aiReviewFinishedAt: currentTime,
+          aiReviewNextRetryAt: null,
+          aiReviewRetryCount: 0,
           lastAiReviewError: null,
           publishedAt: null,
           manualReviewVersion: {
@@ -2451,6 +2455,7 @@ export const aiReviewMockExamRecord = async ({
         where: { id: record.id },
         data: {
           reviewWorkflowStatus: initialWorkflowStatus,
+          aiReviewStartedAt: null,
           aiReviewFinishedAt: null,
           lastAiReviewError: error instanceof Error ? error.message : "AI批改失败",
         },

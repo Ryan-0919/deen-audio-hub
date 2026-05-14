@@ -588,6 +588,8 @@ model MockExamRecord {
   reviewedAt     DateTime?
   aiReviewStartedAt DateTime?
   aiReviewFinishedAt DateTime?
+  aiReviewRetryCount Int             @default(0)
+  aiReviewNextRetryAt DateTime?
   publishedAt    DateTime?
   lastAiReviewError String?           @db.LongText
   createdAt      DateTime             @default(now())
@@ -603,6 +605,7 @@ model MockExamRecord {
   @@index([userId, reviewWorkflowStatus, updatedAt])
   @@index([paperId, manualReviewLockExpiresAt])
   @@index([manualReviewerId, manualReviewLockExpiresAt])
+  @@index([reviewWorkflowStatus, aiReviewNextRetryAt, submittedAt])
 }
 
 model MockExamAnswer {

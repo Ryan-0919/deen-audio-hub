@@ -6,6 +6,7 @@ import { config } from "./lib/config.js";
 import { ok, fail } from "./lib/response.js";
 import { prisma } from "./lib/prisma.js";
 import { bootstrap } from "./lib/bootstrap.js";
+import { startMockExamAiReviewQueue } from "./lib/mock-exam-ai-review-queue.js";
 import { startScheduledCourseSync } from "./lib/scheduler.js";
 import { authRouter } from "./routes/auth.js";
 import { userRouter } from "./routes/user.js";
@@ -121,6 +122,7 @@ const start = async () => {
     await prisma.$connect();
     await bootstrap();
     await resumePendingAudioProcessingJobs();
+    startMockExamAiReviewQueue({ db: prisma });
     startScheduledCourseSync(config.schedulerIntervalMs);
     app.listen(config.port, () => {
       console.log(`API server listening on http://localhost:${config.port}`);

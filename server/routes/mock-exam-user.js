@@ -13,8 +13,8 @@ import {
   startMockExamRecord,
   syncExpiredMockExamRecords,
 } from "../lib/mock-exam.js";
-import { aiReviewMockExamRecord } from "../lib/mock-exam-ai-review.js";
 import { getMockExamAiReviewConfig } from "../lib/mock-exam-ai-review-config.js";
+import { enqueueMockExamAiReview } from "../lib/mock-exam-ai-review-queue.js";
 import { fail, ok } from "../lib/response.js";
 import { requireUserAuth } from "../middleware/auth.js";
 
@@ -228,12 +228,10 @@ mockExamUserRouter.post("/records/:recordId/submit", async (req, res) => {
 
     if (`${record.reviewWorkflowStatus ?? ""}`.trim() === "ai_pending") {
       void getMockExamAiReviewConfig(prisma)
-        .then((runtimeConfig) =>
-          aiReviewMockExamRecord({
+        .then(() =>
+          enqueueMockExamAiReview({
             db: prisma,
             recordId: record.id,
-            runtimeConfig,
-            allowRuleFallback: false,
           }),
         )
         .catch((error) => {
