@@ -2633,9 +2633,6 @@ export const getUserMockExamLeaderboardDetail = async ({ db, userId, paperId }) 
     where: {
       paperId: normalizedPaperId,
       status: "submitted",
-      publishedAt: {
-        not: null,
-      },
     },
     orderBy: [{ submittedAt: "desc" }, { createdAt: "desc" }],
     include: {
@@ -2676,7 +2673,11 @@ export const getUserMockExamLeaderboardDetail = async ({ db, userId, paperId }) 
     },
   });
 
-  const leaderboard = buildMockExamLeaderboardRows(records, leaderboardEntries, normalizedUserId);
+  const leaderboard = buildMockExamLeaderboardRows(
+    records.filter((record) => isMockExamRecordPublishedToUser(record)),
+    leaderboardEntries,
+    normalizedUserId,
+  );
   const currentUserEntry =
     leaderboard.find((item) => item.userId === normalizedUserId) ??
     (() => {
@@ -2704,7 +2705,7 @@ export const getUserMockExamLeaderboardDetail = async ({ db, userId, paperId }) 
   return {
     paper: createLeaderboardPaperPayload(paper),
     currentUserBestScore: currentUserEntry ? Number(currentUserEntry.score ?? 0) : null,
-    currentUserBestRank: currentUserEntry && Number.isFinite(Number(currentUserEntry.rank)) ? Number(currentUserEntry.rank ?? 0) : null,
+    currentUserBestRank: Number.isInteger(currentUserEntry?.rank) && Number(currentUserEntry.rank) > 0 ? Number(currentUserEntry.rank) : null,
     totalParticipants: leaderboard.length,
     leaderboard: leaderboard.map((item) => ({
       rank: item.rank,
