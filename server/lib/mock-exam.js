@@ -2605,6 +2605,30 @@ export const getUserMockExamLeaderboardDetail = async ({ db, userId, paperId }) 
     throw createHttpError("试卷不存在", 404);
   }
 
+  const currentUserRecords = await db.mockExamRecord.findMany({
+    where: {
+      paperId: normalizedPaperId,
+      userId: normalizedUserId,
+      status: "submitted",
+    },
+    orderBy: [{ submittedAt: "desc" }, { createdAt: "desc" }],
+    include: {
+      paper: {
+        include: {
+          questions: {
+            where: {
+              isActive: true,
+            },
+            select: {
+              type: true,
+              score: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
   const records = await db.mockExamRecord.findMany({
     where: {
       paperId: normalizedPaperId,
@@ -2637,9 +2661,9 @@ export const getUserMockExamLeaderboardDetail = async ({ db, userId, paperId }) 
     },
   });
 
-  const visibleUserRecordExists = records.some((record) => `${record?.userId ?? ""}`.trim() === normalizedUserId);
-  if (!visibleUserRecordExists) {
-    throw createHttpError("你还没有该试卷的可查看成绩，暂时无法进入排行榜", 403);
+  const hasParticipated = currentUserRecords.length > 0;
+  if (!hasParticipated) {
+    throw createHttpError("你还没有参加过该试卷，暂时无法进入排行榜", 403);
   }
 
   const leaderboardEntries = await db.mockExamLeaderboardEntry.findMany({
@@ -2653,12 +2677,34 @@ export const getUserMockExamLeaderboardDetail = async ({ db, userId, paperId }) 
   });
 
   const leaderboard = buildMockExamLeaderboardRows(records, leaderboardEntries, normalizedUserId);
-  const currentUserEntry = leaderboard.find((item) => item.userId === normalizedUserId) ?? null;
+  const currentUserEntry =
+    leaderboard.find((item) => item.userId === normalizedUserId) ??
+    (() => {
+      const bestCurrentUserRecord = currentUserRecords.reduce((best, record) => {
+        if (!best) return record;
+        const bestScore = Number(best?.totalScore ?? 0);
+        const nextScore = Number(record?.totalScore ?? 0);
+        if (nextScore > bestScore) return record;
+        if (nextScore < bestScore) return best;
+        const bestSubmittedAt = best?.submittedAt ? new Date(best.submittedAt).getTime() : Number.MAX_SAFE_INTEGER;
+        const nextSubmittedAt = record?.submittedAt ? new Date(record.submittedAt).getTime() : Number.MAX_SAFE_INTEGER;
+        return nextSubmittedAt < bestSubmittedAt ? record : best;
+      }, null);
+
+      if (!bestCurrentUserRecord) {
+        return null;
+      }
+
+      return {
+        rank: null,
+        score: Number(bestCurrentUserRecord.totalScore ?? 0),
+      };
+    })();
 
   return {
     paper: createLeaderboardPaperPayload(paper),
     currentUserBestScore: currentUserEntry ? Number(currentUserEntry.score ?? 0) : null,
-    currentUserBestRank: currentUserEntry ? Number(currentUserEntry.rank ?? 0) : null,
+    currentUserBestRank: currentUserEntry && Number.isFinite(Number(currentUserEntry.rank)) ? Number(currentUserEntry.rank ?? 0) : null,
     totalParticipants: leaderboard.length,
     leaderboard: leaderboard.map((item) => ({
       rank: item.rank,

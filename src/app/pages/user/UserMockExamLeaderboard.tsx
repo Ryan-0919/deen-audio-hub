@@ -1,21 +1,11 @@
-import { ChevronDown, Trophy } from "lucide-react";
+import { Trophy } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { AppLogo } from "../../components/branding/AppLogo";
 import { Button } from "../../components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../../components/ui/select";
-import {
-  type MockExamLeaderboardDetail,
-  type MockExamLeaderboardPaperOption,
-  mockApi,
-} from "../../lib/mockData";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { type MockExamLeaderboardDetail, type MockExamLeaderboardPaperOption, mockApi } from "../../lib/mockData";
 
 const EMPTY_PAPERS: MockExamLeaderboardPaperOption[] = [];
 
@@ -68,14 +58,11 @@ export function UserMockExamLeaderboard() {
         const list = await mockApi.getUserMockExamLeaderboardPapers();
         if (disposed) return;
         setPapers(list);
-        if (list.length > 0) {
-          setSelectedPaperId(list[0].id);
-        } else {
-          setDetail(EMPTY_DETAIL);
-        }
+        setSelectedPaperId(list[0]?.id ?? "");
       } catch (error) {
-        if (disposed) return;
-        setErrorMessage(error instanceof Error ? error.message : "加载考试排行榜失败");
+        if (!disposed) {
+          setErrorMessage(error instanceof Error ? error.message : "加载考试排行榜失败");
+        }
       } finally {
         if (!disposed) {
           setLoading(false);
@@ -91,7 +78,11 @@ export function UserMockExamLeaderboard() {
   }, []);
 
   useEffect(() => {
-    if (!selectedPaperId) return;
+    if (!selectedPaperId) {
+      setDetail(EMPTY_DETAIL);
+      return;
+    }
+
     let disposed = false;
 
     const loadDetail = async () => {
@@ -125,6 +116,8 @@ export function UserMockExamLeaderboard() {
     () => papers.find((item) => item.id === selectedPaperId) ?? null,
     [papers, selectedPaperId],
   );
+
+  const topTenLeaderboard = useMemo(() => detail.leaderboard.slice(0, 10), [detail.leaderboard]);
 
   if (loading) {
     return (
@@ -165,7 +158,7 @@ export function UserMockExamLeaderboard() {
                   <Trophy className="size-6" />
                 </div>
                 <p className="mt-4 text-lg font-medium text-white">暂时还没有可查看的排行榜</p>
-                <p className="mt-2 text-sm leading-7 text-white/56">只有你已经考过并且成绩已对你开放的试卷，才会显示在这里。</p>
+                <p className="mt-2 text-sm leading-7 text-white/56">只有你已经参加过的试卷，才会显示在这里。</p>
                 <Button
                   type="button"
                   onClick={() => navigate("/user/mock-exams")}
@@ -198,32 +191,16 @@ export function UserMockExamLeaderboard() {
                       </div>
 
                       {selectedPaper ? (
-                        <div className="text-sm text-white/58">
-                          {selectedPaper.paperType === "subjective" ? "主观题" : "客观题"}
-                        </div>
+                        <div className="text-sm text-white/58">{selectedPaper.paperType === "subjective" ? "主观题" : "客观题"}</div>
                       ) : null}
                     </div>
 
                     {errorMessage ? <div className="mt-4 text-sm text-rose-300">{errorMessage}</div> : null}
 
-                    <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                      <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
-                        <div className="text-xs uppercase tracking-[0.24em] text-white/36">我的最好成绩</div>
-                        <div className="mt-3 text-[28px] font-semibold tracking-[-0.05em] text-white">
-                          {detail.currentUserBestScore ?? "--"}
-                        </div>
-                      </div>
+                    <div className="mt-5">
                       <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
                         <div className="text-xs uppercase tracking-[0.24em] text-white/36">我的当前排名</div>
-                        <div className="mt-3 text-[28px] font-semibold tracking-[-0.05em] text-white">
-                          {detail.currentUserBestRank ?? "--"}
-                        </div>
-                      </div>
-                      <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
-                        <div className="text-xs uppercase tracking-[0.24em] text-white/36">参与人数</div>
-                        <div className="mt-3 text-[28px] font-semibold tracking-[-0.05em] text-white">
-                          {detail.totalParticipants}
-                        </div>
+                        <div className="mt-3 text-[28px] font-semibold tracking-[-0.05em] text-white">{detail.currentUserBestRank ?? "--"}</div>
                       </div>
                     </div>
                   </section>
@@ -243,17 +220,17 @@ export function UserMockExamLeaderboard() {
 
                 <section className="rounded-[28px] border border-white/10 bg-black/18 p-5 backdrop-blur-xl">
                   <div className="mb-4 flex items-center justify-between">
-                    <div className="text-[18px] font-semibold text-white">排行榜</div>
+                    <div className="text-[18px] font-semibold text-white">排行榜前 10</div>
                     {detailLoading ? <div className="text-sm text-white/42">加载中...</div> : null}
                   </div>
 
-                  {detail.leaderboard.length === 0 ? (
+                  {topTenLeaderboard.length === 0 ? (
                     <div className="rounded-[18px] border border-dashed border-white/12 px-4 py-8 text-center text-sm text-white/42">
                       还没有可展示的排行榜数据。
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {detail.leaderboard.map((entry) => (
+                      {topTenLeaderboard.map((entry) => (
                         <div
                           key={entry.userId}
                           className={[
