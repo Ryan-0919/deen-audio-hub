@@ -47,6 +47,7 @@ export function UserLayout() {
     location.pathname.startsWith("/user/player/") ||
     location.pathname.startsWith("/user/video-player/") ||
     location.pathname === "/user/mock-exams" ||
+    location.pathname === "/user/objective-mock-exams" ||
     location.pathname.startsWith("/user/my-exams") ||
     location.pathname.startsWith("/user/me") ||
     location.pathname.startsWith("/user/typing-practice");

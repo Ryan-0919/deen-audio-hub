@@ -23,6 +23,8 @@ const LEGACY_MEMBER_HOME_MOCK_EXAM_TITLE = "进入真机模考";
 const LEGACY_MEMBER_HOME_MOCK_EXAM_DESCRIPTION = "直接进入机考系统，继续客观题刷题或主观题实战演练。";
 const CURRENT_MEMBER_HOME_MOCK_EXAM_TITLE = "进入主观批改";
 const CURRENT_MEMBER_HOME_MOCK_EXAM_DESCRIPTION = "直接进入主观题试卷列表，查看已购的试卷。";
+const CURRENT_MEMBER_HOME_OBJECTIVE_MOCK_EXAM_TITLE = "客观题模考";
+const CURRENT_MEMBER_HOME_OBJECTIVE_MOCK_EXAM_DESCRIPTION = "单独进入客观题试卷列表，后续和主观题批改彻底分开。";
 
 export const DEFAULT_PORTAL_CONFIG = {
   seo: {
@@ -101,6 +103,12 @@ export const DEFAULT_PORTAL_CONFIG = {
           title: CURRENT_MEMBER_HOME_MOCK_EXAM_TITLE,
           description: CURRENT_MEMBER_HOME_MOCK_EXAM_DESCRIPTION,
           path: "/user/mock-exams",
+        },
+        {
+          eyebrow: "机考训练",
+          title: CURRENT_MEMBER_HOME_OBJECTIVE_MOCK_EXAM_TITLE,
+          description: CURRENT_MEMBER_HOME_OBJECTIVE_MOCK_EXAM_DESCRIPTION,
+          path: "/user/objective-mock-exams",
         },
         {
           eyebrow: "专项提升",

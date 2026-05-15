@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { ArrowRight, FilePenLine, Keyboard, Library, LogOut, Scale, Sparkles, type LucideIcon } from "lucide-react";
+import { ArrowRight, BookOpenText, FilePenLine, Keyboard, Library, LogOut, Scale, Sparkles, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { AppLogo } from "../../components/branding/AppLogo";
@@ -93,6 +93,16 @@ const DEFAULT_ACTIONS: Array<Omit<HomeActionCard, "meta">> = [
     accentClassName: "text-[#8ff3df]",
   },
   {
+    path: "/user/objective-mock-exams",
+    eyebrow: "机考训练",
+    title: "客观题模考",
+    description: "单独进入客观题试卷列表，后续和主观题批改彻底分开。",
+    icon: BookOpenText,
+    iconClassName: "text-[#8fd6ff]",
+    glowClassName: "from-[#38a6ff]/30 via-[#1f6fff]/16 to-transparent",
+    accentClassName: "text-[#8fd6ff]",
+  },
+  {
     path: "/user/laws",
     eyebrow: "法条联动",
     title: "主观法条检索",
@@ -131,6 +141,7 @@ const normalizeActionPath = (value: string, fallback: string) => {
   if (
     path === "/user/my-courses" ||
     path === "/user/mock-exams" ||
+    path === "/user/objective-mock-exams" ||
     path === "/user/laws" ||
     path === "/user/typing-practice"
   ) {
@@ -213,6 +224,7 @@ export function MyCourses() {
     () => ({
       "/user/my-courses": courses.length > 0 ? `已开通 ${courses.length} 门课程` : "查看全部课程",
       "/user/mock-exams": papers.length > 0 ? "进入主观题试卷列表" : "查看可用主观题试卷",
+      "/user/objective-mock-exams": papers.length > 0 ? "进入客观题试卷列表" : "查看可用客观题试卷",
       "/user/laws": "考试中可直接调出",
       "/user/typing-practice": "跟打、冲刺",
     }),

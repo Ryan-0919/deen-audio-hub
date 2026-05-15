@@ -5,7 +5,7 @@ import { getUserPhone } from "../../lib/user-session";
 import { getMockExamCardNo, getMockExamTicketNo, saveMockExamCandidateInfo } from "./mockExamCandidateSession";
 import { MockExamDesktopNotice, useMockExamDesktopGuard } from "./mockExamDesktopGuard";
 import { buildIdCardNo, buildTicketNo, formatCountdown } from "./mockExamRoomHelpers";
-import { MockExamShadowRoot } from "./mockExamLaunchShared";
+import { getMockExamHomePath, MockExamShadowRoot } from "./mockExamLaunchShared";
 import { createDefaultMockExamLaunchConfig } from "../../../shared/mock-exam-launch-config.js";
 
 type LaunchStep = "login" | "notice";
@@ -137,7 +137,7 @@ export function MockExamLaunch() {
     setBeginPromptOpen(false);
     setAgreePromptOpen(false);
     setStep("login");
-    navigate("/user/mock-exams");
+    navigate(selectedPaper ? getMockExamHomePath(selectedPaper) : "/user/mock-exams");
   };
 
   if (isMobileBlocked) {

@@ -13,6 +13,7 @@ import type {
   MockExamSubjectiveSubQuestion,
 } from "../../lib/mockData";
 import { mockApi } from "../../lib/mockData";
+import { getMockExamHomePath } from "./mockExamLaunchShared";
 
 const pageFontStyle = {
   fontFamily: '"Microsoft YaHei","PingFang SC","Hiragino Sans GB","Noto Sans SC",sans-serif',
@@ -864,7 +865,7 @@ export function MockExamResult() {
               type="button"
               variant="outline"
               className="rounded-full border-[#e5e7eb] bg-white/90 text-[#18181b] shadow-[0_10px_24px_rgba(15,23,42,0.04)] backdrop-blur"
-              onClick={() => navigate(`/user/mock-exams/papers/${record.paper.id}`)}
+              onClick={() => navigate(getMockExamHomePath(record.paper))}
             >
               返回机考试卷
             </Button>

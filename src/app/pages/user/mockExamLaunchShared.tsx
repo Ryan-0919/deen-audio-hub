@@ -71,6 +71,8 @@ export function MockExamShadowRoot({ children }: { children: ReactNode }) {
 }
 
 export const isSubjectivePaper = (paper: MockExamPaper) => paper.sections.some((section) => section.type === "subjective_case");
+export const getMockExamHomePath = (paper: Pick<MockExamPaper, "sections">) =>
+  isSubjectivePaper(paper as MockExamPaper) ? "/user/mock-exams" : "/user/objective-mock-exams";
 
 export const renderLegacyBlock = (block: MockExamLegacyBlock, key: string) => {
   if (block.kind === "spacer") {

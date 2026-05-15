@@ -91,6 +91,7 @@ export const router = createBrowserRouter([
       { path: "my-courses", element: withSuspense(<UserCourseLibrary />) },
       { path: "laws", element: withSuspense(<LawSearch />) },
       { path: "mock-exams", element: withSuspense(<MockExamHome />) },
+      { path: "objective-mock-exams", element: withSuspense(<MockExamHome />) },
       { path: "my-exams", element: withSuspense(<UserMockExamHistory />) },
       { path: "mock-exams/papers/:paperId", element: withSuspense(<MockExamLaunch />) },
       { path: "mock-exams/papers/:paperId/launch", element: <LegacyMockExamLaunchRedirect /> },

@@ -2,6 +2,7 @@ import { Clock3, FileCheck2, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { mockApi } from "../../lib/mockData";
+import { getMockExamHomePath } from "./mockExamLaunchShared";
 
 const REDIRECT_SECONDS = 5;
 
@@ -11,6 +12,7 @@ export function MockExamReviewPending() {
   const [loading, setLoading] = useState(true);
   const [paperTitle, setPaperTitle] = useState("当前试卷");
   const [countdown, setCountdown] = useState(REDIRECT_SECONDS);
+  const [backPath, setBackPath] = useState("/user/mock-exams");
 
   useEffect(() => {
     let alive = true;
@@ -20,6 +22,7 @@ export function MockExamReviewPending() {
         const detail = await mockApi.getMockExamRecord(recordId);
         if (!alive) return;
         setPaperTitle(detail.paper.title || "当前试卷");
+        setBackPath(getMockExamHomePath(detail.paper));
 
         if (!detail.reviewEnabled || detail.reviewWorkflowStatus === "published") {
           navigate(`/user/mock-exams/records/${detail.id}/result`, { replace: true });
@@ -40,13 +43,13 @@ export function MockExamReviewPending() {
   useEffect(() => {
     if (loading) return;
     if (countdown <= 0) {
-      navigate("/user/mock-exams", { replace: true });
+      navigate(backPath, { replace: true });
       return;
     }
 
     const timer = window.setTimeout(() => setCountdown((current) => current - 1), 1000);
     return () => window.clearTimeout(timer);
-  }, [countdown, loading, navigate]);
+  }, [backPath, countdown, loading, navigate]);
 
   const countdownText = useMemo(() => `${countdown}s 后返回机考试卷`, [countdown]);
 
@@ -106,7 +109,7 @@ export function MockExamReviewPending() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => navigate("/user/mock-exams")}
+                  onClick={() => navigate(backPath)}
                   className="rounded-full border border-white/10 bg-white/[0.05] px-6 py-3 text-sm font-semibold text-white/74 transition hover:bg-white/[0.10] hover:text-white"
                 >
                   返回机考试卷

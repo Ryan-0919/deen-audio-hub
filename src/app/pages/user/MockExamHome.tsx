@@ -1,13 +1,12 @@
 import { BookOpenText, PenSquare, Play, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { Badge } from "../../components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { cn } from "../../components/ui/utils";
 import { MockExamPaper, type UserHomeConfig, mockApi } from "../../lib/mockData";
 import { MockExamDesktopNotice, useMockExamDesktopGuard } from "./mockExamDesktopGuard";
-import { isSubjectivePaper } from "./mockExamLaunchShared";
+import { getMockExamHomePath, isSubjectivePaper } from "./mockExamLaunchShared";
 
 type PaperCategory = "objective" | "subjective";
 
@@ -48,6 +47,7 @@ const paperTypeMeta: Record<
 
 const getPaperCategory = (paper: MockExamPaper): PaperCategory => (isSubjectivePaper(paper) ? "subjective" : "objective");
 const getExamEntryPath = (paperId: string) => `/user/mock-exams/papers/${paperId}`;
+const getCategoryPath = (category: PaperCategory) => (category === "objective" ? "/user/objective-mock-exams" : "/user/mock-exams");
 const UNGROUPED_SERIES_KEY = "__ungrouped__";
 const UNGROUPED_SERIES_LABEL = "未分组试卷";
 
@@ -201,11 +201,12 @@ function PaperCard({
 
 export function MockExamHome() {
   const navigate = useNavigate();
+  const location = useLocation();
   const isMobileBlocked = useMockExamDesktopGuard();
   const [loading, setLoading] = useState(true);
   const [papers, setPapers] = useState<MockExamPaper[]>([]);
   const [homeConfig, setHomeConfig] = useState<UserHomeConfig>(EMPTY_HOME_CONFIG);
-  const [activeTab, setActiveTab] = useState<PaperCategory>("subjective");
+  const pageCategory: PaperCategory = location.pathname === "/user/objective-mock-exams" ? "objective" : "subjective";
 
   useEffect(() => {
     if (isMobileBlocked) return;
@@ -230,21 +231,23 @@ export function MockExamHome() {
 
   const objectivePapers = useMemo(() => papers.filter((paper) => getPaperCategory(paper) === "objective"), [papers]);
   const subjectivePapers = useMemo(() => papers.filter((paper) => getPaperCategory(paper) === "subjective"), [papers]);
-
-  useEffect(() => {
-    if (activeTab === "objective" && objectivePapers.length === 0 && subjectivePapers.length > 0) {
-      setActiveTab("subjective");
-      return;
-    }
-
-    if (activeTab === "subjective" && subjectivePapers.length === 0 && objectivePapers.length > 0) {
-      setActiveTab("objective");
-    }
-  }, [activeTab, objectivePapers.length, subjectivePapers.length]);
-
-  const visiblePapers = activeTab === "objective" ? objectivePapers : subjectivePapers;
+  const visiblePapers = pageCategory === "objective" ? objectivePapers : subjectivePapers;
   const groupedVisiblePapers = useMemo(() => groupPapersBySeries(visiblePapers), [visiblePapers]);
   const examHome = homeConfig.examHome;
+  const pageMeta =
+    pageCategory === "objective"
+      ? {
+          title: "客观题模考",
+          modeLabel: examHome.objectiveModeLabel || "客观题专场",
+          emptyText: examHome.objectiveEmptyText || paperTypeMeta.objective.emptyText,
+          emptyIcon: BookOpenText,
+        }
+      : {
+          title: "主观批改",
+          modeLabel: examHome.subjectiveModeLabel || "主观题专场",
+          emptyText: examHome.subjectiveEmptyText || paperTypeMeta.subjective.emptyText,
+          emptyIcon: PenSquare,
+        };
 
   const openPaper = (paper: MockExamPaper) => {
     navigate(getExamEntryPath(paper.id));
@@ -283,61 +286,48 @@ export function MockExamHome() {
                 <Sparkles className="size-3.5 text-[#8fd6ff]" />
                 {examHome.eyebrow || "Mock Exam"}
               </div>
-              <h1 className="mt-2 text-[26px] font-semibold tracking-[-0.06em] text-white md:text-[34px]">{examHome.title || "我的试卷"}</h1>
+              <h1 className="mt-2 text-[26px] font-semibold tracking-[-0.06em] text-white md:text-[34px]">{pageMeta.title}</h1>
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <div className="rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-xs text-white/62">当前展示 {visiblePapers.length} 套</div>
-                <div className="rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-xs text-white/62">
-                  {activeTab === "objective" ? examHome.objectiveModeLabel || "客观题专场" : examHome.subjectiveModeLabel || "主观题专场"}
-                </div>
+                <div className="rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-xs text-white/62">{pageMeta.modeLabel}</div>
               </div>
             </div>
 
             <div className="shrink-0">
-              <div>
-                <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as PaperCategory)} className="gap-0">
-                  <TabsList className="h-auto gap-1.5 rounded-[22px] border border-white/10 bg-white/[0.05] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                    <TabsTrigger
-                      value="objective"
-                      className="min-w-[148px] rounded-2xl px-4 py-3 text-white/62 data-[state=active]:bg-white data-[state=active]:text-slate-950 data-[state=active]:shadow-[0_14px_34px_rgba(255,255,255,0.14)]"
-                    >
-                      <span className="flex items-center gap-2">
-                        <span className="flex size-7 items-center justify-center rounded-full bg-[#122845] text-[#8fd6ff]">
-                          <BookOpenText className="size-3.5" />
-                        </span>
-                        <span className="text-sm font-semibold">客观题</span>
-                        <span
-                          className={cn(
-                            "rounded-full px-2 py-0.5 text-xs font-semibold",
-                            activeTab === "objective" ? "bg-[#e8f7ff] text-[#1d4ed8]" : "bg-white/8 text-white/60",
-                          )}
-                        >
-                          {objectivePapers.length}
-                        </span>
-                      </span>
-                    </TabsTrigger>
-
-                    <TabsTrigger
-                      value="subjective"
-                      className="min-w-[148px] rounded-2xl px-4 py-3 text-white/62 data-[state=active]:bg-white data-[state=active]:text-slate-950 data-[state=active]:shadow-[0_14px_34px_rgba(255,255,255,0.14)]"
-                    >
-                      <span className="flex items-center gap-2">
-                        <span className="flex size-7 items-center justify-center rounded-full bg-[#3a2410] text-[#ffd39a]">
-                          <PenSquare className="size-3.5" />
-                        </span>
-                        <span className="text-sm font-semibold">主观题</span>
-                        <span
-                          className={cn(
-                            "rounded-full px-2 py-0.5 text-xs font-semibold",
-                            activeTab === "subjective" ? "bg-[#fff1df] text-[#b45309]" : "bg-white/8 text-white/60",
-                          )}
-                        >
-                          {subjectivePapers.length}
-                        </span>
-                      </span>
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate(getCategoryPath("subjective"))}
+                  className={cn(
+                    "inline-flex min-w-[148px] items-center justify-center gap-2 rounded-[22px] border px-4 py-3 text-sm font-semibold transition",
+                    pageCategory === "subjective"
+                      ? "border-white bg-white text-slate-950 shadow-[0_14px_34px_rgba(255,255,255,0.14)]"
+                      : "border-white/10 bg-white/[0.05] text-white/62 hover:bg-white/[0.08] hover:text-white",
+                  )}
+                >
+                  <PenSquare className="size-4" />
+                  <span>主观批改</span>
+                  <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", pageCategory === "subjective" ? "bg-[#fff1df] text-[#b45309]" : "bg-white/8 text-white/60")}>
+                    {subjectivePapers.length}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate(getCategoryPath("objective"))}
+                  className={cn(
+                    "inline-flex min-w-[148px] items-center justify-center gap-2 rounded-[22px] border px-4 py-3 text-sm font-semibold transition",
+                    pageCategory === "objective"
+                      ? "border-white bg-white text-slate-950 shadow-[0_14px_34px_rgba(255,255,255,0.14)]"
+                      : "border-white/10 bg-white/[0.05] text-white/62 hover:bg-white/[0.08] hover:text-white",
+                  )}
+                >
+                  <BookOpenText className="size-4" />
+                  <span>客观题模考</span>
+                  <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", pageCategory === "objective" ? "bg-[#e8f7ff] text-[#1d4ed8]" : "bg-white/8 text-white/60")}>
+                    {objectivePapers.length}
+                  </span>
+                </button>
               </div>
             </div>
           </div>
@@ -345,14 +335,10 @@ export function MockExamHome() {
           {visiblePapers.length === 0 ? (
             <div className="rounded-[28px] border border-dashed border-white/12 bg-white/[0.04] px-6 py-16 text-center backdrop-blur-xl">
               <div className="mx-auto flex size-14 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white/34">
-                <PenSquare className="size-6" />
+                <pageMeta.emptyIcon className="size-6" />
               </div>
-              <p className="mt-4 text-lg font-medium text-white">暂无{paperTypeMeta[activeTab].label}试卷</p>
-              <p className="mt-2 text-sm leading-7 text-white/52">
-                {activeTab === "objective"
-                  ? examHome.objectiveEmptyText || paperTypeMeta[activeTab].emptyText
-                  : examHome.subjectiveEmptyText || paperTypeMeta[activeTab].emptyText}
-              </p>
+              <p className="mt-4 text-lg font-medium text-white">暂无{paperTypeMeta[pageCategory].label}试卷</p>
+              <p className="mt-2 text-sm leading-7 text-white/52">{pageMeta.emptyText}</p>
             </div>
           ) : (
             <div className="space-y-8">
@@ -367,7 +353,7 @@ export function MockExamHome() {
 
                   <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                     {group.papers.map((paper) => (
-                      <PaperCard key={paper.id} paper={paper} category={activeTab} onOpen={openPaper} />
+                      <PaperCard key={paper.id} paper={paper} category={pageCategory} onOpen={openPaper} />
                     ))}
                   </div>
                 </section>

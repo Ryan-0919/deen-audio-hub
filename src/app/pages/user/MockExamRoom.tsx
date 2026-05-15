@@ -32,6 +32,7 @@ import {
 } from "./mockExamRoomHelpers";
 import { getMockExamCardNo, getMockExamTicketNo } from "./mockExamCandidateSession";
 import { MockExamDesktopNotice, useMockExamDesktopGuard } from "./mockExamDesktopGuard";
+import { getMockExamHomePath } from "./mockExamLaunchShared";
 
 const SAVE_DELAY = 600;
 const VIEW_KEY = "mock-exam-official-view";
@@ -500,7 +501,7 @@ export function MockExamRoom() {
         } catch { setMarkedQuestionIds([]); }
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "加载考试失败");
-        navigate("/user/mock-exams", { replace: true });
+        navigateBackToPaperHome();
       } finally { setLoading(false); }
     };
     void load();
@@ -552,6 +553,15 @@ export function MockExamRoom() {
   const persistMarks = (next: string[]) => {
     if (!recordRef.current) return;
     try { window.localStorage.setItem(`${MARK_KEY_PREFIX}${recordRef.current.id}`, JSON.stringify(next)); } catch {}
+  };
+
+  const navigateBackToPaperHome = () => {
+    const active = recordRef.current;
+    if (!active) {
+      navigate("/user/mock-exams", { replace: true });
+      return;
+    }
+    navigate(getMockExamHomePath(active.paper), { replace: true });
   };
 
   const navigateAfterSubmit = (nextRecordId: string, reviewWorkflowStatus?: string, reviewEnabled?: boolean) => {
