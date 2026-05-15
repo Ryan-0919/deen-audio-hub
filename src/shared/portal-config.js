@@ -138,6 +138,12 @@ export const DEFAULT_PORTAL_CONFIG = {
         path: "/user/my-exams",
         accentText: "进入批改记录",
       },
+      {
+        title: "考试排行榜",
+        description: "按试卷查看自己的成绩排名，只显示你已经考过的试卷排行榜。",
+        path: "/user/exam-leaderboard",
+        accentText: "进入排行榜",
+      },
     ],
   },
   journey: {

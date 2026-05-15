@@ -19,7 +19,8 @@ const navigation = [
     label: "我的",
     to: "/user/me",
     icon: UserRound,
-    isActive: (pathname: string) => pathname.startsWith("/user/me") || pathname.startsWith("/user/my-exams"),
+    isActive: (pathname: string) =>
+      pathname.startsWith("/user/me") || pathname.startsWith("/user/my-exams") || pathname.startsWith("/user/exam-leaderboard"),
   },
 ];
 
@@ -49,6 +50,7 @@ export function UserLayout() {
     location.pathname === "/user/mock-exams" ||
     location.pathname === "/user/objective-mock-exams" ||
     location.pathname.startsWith("/user/my-exams") ||
+    location.pathname.startsWith("/user/exam-leaderboard") ||
     location.pathname.startsWith("/user/me") ||
     location.pathname.startsWith("/user/typing-practice");
   const displayName = getUserDisplayName() || "已登录用户";

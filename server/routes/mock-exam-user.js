@@ -3,7 +3,9 @@ import { prisma } from "../lib/prisma.js";
 import { getMockExamLaunchConfig } from "../lib/mock-exam-launch-config.js";
 import {
   finalizeMockExamRecord,
+  getUserMockExamLeaderboardDetail,
   getMockExamRecordForUser,
+  listUserVisibleMockExamLeaderboardPapers,
   listUserVisibleMockExamRecords,
   pauseMockExamRecord,
   saveMockExamAnswer,
@@ -149,6 +151,41 @@ mockExamUserRouter.get("/history", async (req, res) => {
     return ok(res, list);
   } catch (error) {
     return fail(res, error.message || "加载考试记录失败", error.statusCode || 500);
+  }
+});
+
+mockExamUserRouter.get("/leaderboard/papers", async (req, res) => {
+  try {
+    const userId = req.auth.userId;
+    await syncExpiredMockExamRecords({ db: prisma, userId });
+
+    return ok(
+      res,
+      await listUserVisibleMockExamLeaderboardPapers({
+        db: prisma,
+        userId,
+      }),
+    );
+  } catch (error) {
+    return fail(res, error.message || "加载考试排行榜试卷失败", error.statusCode || 400);
+  }
+});
+
+mockExamUserRouter.get("/leaderboard/:paperId", async (req, res) => {
+  try {
+    const userId = req.auth.userId;
+    await syncExpiredMockExamRecords({ db: prisma, userId });
+
+    return ok(
+      res,
+      await getUserMockExamLeaderboardDetail({
+        db: prisma,
+        userId,
+        paperId: `${req.params.paperId ?? ""}`.trim(),
+      }),
+    );
+  } catch (error) {
+    return fail(res, error.message || "加载考试排行榜失败", error.statusCode || 400);
   }
 });
 

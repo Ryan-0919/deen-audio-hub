@@ -8,6 +8,7 @@ import {
   claimMockExamReviewRecord,
   createAdminMockExamPaper,
   deleteAdminMockExamPaper,
+  getAdminMockExamPaperScoreDetail,
   getAdminMockExamPaperDetail,
   getMockExamReviewRecord,
   listMockExamReviewPaperSummaries,
@@ -19,6 +20,7 @@ import {
   renewMockExamReviewLock,
   reviewMockExamRecord,
   serializeMockExamReviewDetail,
+  updateAdminMockExamLeaderboardRanks,
   updateAdminMockExamPaper,
 } from "../lib/mock-exam.js";
 import { enqueueMockExamAiReview } from "../lib/mock-exam-ai-review-queue.js";
@@ -163,6 +165,44 @@ mockExamAdminRouter.get("/papers", async (_req, res) => {
     return ok(res, result);
   } catch (error) {
     return fail(res, error.message || "加载模考试卷列表失败", error.statusCode || 400);
+  }
+});
+
+mockExamAdminRouter.get("/papers/:paperId/scores", async (req, res) => {
+  try {
+    return ok(
+      res,
+      await getAdminMockExamPaperScoreDetail({
+        db: prisma,
+        paperId: `${req.params.paperId ?? ""}`.trim(),
+      }),
+    );
+  } catch (error) {
+    return fail(res, error.message || "加载试卷成绩失败", error.statusCode || 400);
+  }
+});
+
+mockExamAdminRouter.patch("/papers/:paperId/leaderboard-ranks", async (req, res) => {
+  try {
+    const result = await updateAdminMockExamLeaderboardRanks({
+      db: prisma,
+      paperId: `${req.params.paperId ?? ""}`.trim(),
+      items: req.body?.items,
+    });
+
+    recordAdminAction(req, {
+      action: "mock_exam_leaderboard_rank_update",
+      entityType: "mock_exam_paper",
+      entityId: result.paper.id,
+      entityName: result.paper.title,
+      detail: {
+        updatedCount: Array.isArray(req.body?.items) ? req.body.items.length : 0,
+      },
+    });
+
+    return ok(res, result, "排行榜名次已更新");
+  } catch (error) {
+    return fail(res, error.message || "更新排行榜名次失败", error.statusCode || 400);
   }
 });
 

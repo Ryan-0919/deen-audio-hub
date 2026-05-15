@@ -1,9 +1,4 @@
-import {
-  ClipboardCheck,
-  LogOut,
-  Sparkles,
-  UserRound,
-} from "lucide-react";
+import { ClipboardCheck, LogOut, Sparkles, Trophy, UserRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
@@ -56,7 +51,7 @@ const EMPTY_HOME_CONFIG: UserHomeConfig = {
   },
   accountCenter: {
     eyebrow: "Account Center",
-    description: "这里统一放课程学习外的个人操作入口。你可以查看主观题批改记录，也可以随时安全退出当前设备。",
+    description: "这里统一放课程学习外的个人操作入口。你可以查看主观题批改记录、考试排行榜，也可以随时安全退出当前设备。",
     shortcutTitle: "DE EN FA KAO",
     shortcuts: [
       {
@@ -64,6 +59,12 @@ const EMPTY_HOME_CONFIG: UserHomeConfig = {
         description: "查看已批改完成的主观题考试记录与结果。",
         path: "/user/my-exams",
         accentText: "进入批改记录",
+      },
+      {
+        title: "考试排行榜",
+        description: "按试卷查看你已考过的考试排行榜。",
+        path: "/user/exam-leaderboard",
+        accentText: "进入排行榜",
       },
     ],
   },
@@ -78,6 +79,15 @@ const fallbackShortcutItems: ShortcutItem[] = [
     iconClassName: "text-[#8fd6ff]",
     glowClassName: "from-[#38a6ff]/28 via-[#1f6fff]/16 to-transparent",
     accentText: "进入批改记录",
+  },
+  {
+    title: "考试排行榜",
+    description: "按试卷查看你已考过的考试排行榜。",
+    path: "/user/exam-leaderboard",
+    icon: Trophy,
+    iconClassName: "text-[#ffd39a]",
+    glowClassName: "from-[#ffca57]/28 via-[#d68616]/16 to-transparent",
+    accentText: "进入排行榜",
   },
 ];
 
@@ -96,19 +106,23 @@ export function UserMe() {
       .catch(() => setHomeConfig(EMPTY_HOME_CONFIG));
   }, []);
 
-  const shortcutItems = useMemo(
-    () =>
-      (homeConfig.accountCenter.shortcuts.length ? homeConfig.accountCenter.shortcuts : EMPTY_HOME_CONFIG.accountCenter.shortcuts).map((item, index) => ({
-        title: item.title,
-        description: item.description,
-        path: item.path,
-        accentText: item.accentText,
-        icon: fallbackShortcutItems[index]?.icon ?? ClipboardCheck,
-        iconClassName: fallbackShortcutItems[index]?.iconClassName ?? "text-[#8fd6ff]",
-        glowClassName: fallbackShortcutItems[index]?.glowClassName ?? "from-[#38a6ff]/28 via-[#1f6fff]/16 to-transparent",
-      })),
-    [homeConfig.accountCenter.shortcuts],
-  );
+  const shortcutItems = useMemo(() => {
+    const sourceItems =
+      homeConfig.accountCenter.shortcuts.length > 0 ? homeConfig.accountCenter.shortcuts : EMPTY_HOME_CONFIG.accountCenter.shortcuts;
+    const ensuredItems = sourceItems.some((item) => item.path === "/user/exam-leaderboard")
+      ? sourceItems
+      : [...sourceItems, EMPTY_HOME_CONFIG.accountCenter.shortcuts[1]];
+
+    return ensuredItems.map((item, index) => ({
+      title: item.title,
+      description: item.description,
+      path: item.path,
+      accentText: item.accentText,
+      icon: fallbackShortcutItems[index]?.icon ?? ClipboardCheck,
+      iconClassName: fallbackShortcutItems[index]?.iconClassName ?? "text-[#8fd6ff]",
+      glowClassName: fallbackShortcutItems[index]?.glowClassName ?? "from-[#38a6ff]/28 via-[#1f6fff]/16 to-transparent",
+    }));
+  }, [homeConfig.accountCenter.shortcuts]);
 
   const handleLogout = async () => {
     if (loggingOut) return;
@@ -174,7 +188,7 @@ export function UserMe() {
                     </div>
 
                     <p className="mt-3 max-w-3xl text-sm leading-7 text-white/58 md:text-[15px]">
-                      {homeConfig.accountCenter.description || "这里统一放课程学习外的个人操作入口。你可以查看主观题批改记录，也可以随时安全退出当前设备。"}
+                      {homeConfig.accountCenter.description || "这里统一放课程学习外的个人操作入口。你可以查看主观题批改记录、考试排行榜，也可以随时安全退出当前设备。"}
                     </p>
                   </div>
                 </div>
@@ -212,6 +226,7 @@ export function UserMe() {
                   })}
                 </div>
               </div>
+
               <Button
                 variant="ghost"
                 onClick={() => void handleLogout()}

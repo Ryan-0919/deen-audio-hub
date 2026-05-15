@@ -1127,6 +1127,97 @@ export const serializeMockExamPaperSummary = ({ paper, activeRecord = null, late
   latestRecord: serializeRecordSummary(latestRecord, currentTime),
 });
 
+const createLeaderboardPaperPayload = (paper) => ({
+  id: paper?.id ?? "",
+  code: paper?.code ?? "",
+  title: paper?.title ?? "",
+  phase: paper?.phase ?? "",
+  year: Number(paper?.year ?? 0),
+  coverUrl: getMockExamPaperCoverUrl(paper, paper?.paperType),
+  totalScore: Number(paper?.totalScore ?? 0),
+  passScore: Number(paper?.passScore ?? 0),
+  questionCount: Number(paper?.questionCount ?? 0),
+  paperType:
+    paper?.paperType ??
+    (getSubjectiveQuestionCount(paper?.questions ?? []) > 0 ? "subjective" : "objective"),
+});
+
+const normalizeManualRankValue = (value) => {
+  const parsed = Number.parseInt(`${value ?? ""}`.trim(), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
+const buildMockExamLeaderboardRows = (records = [], leaderboardEntries = [], currentUserId = "") => {
+  const normalizedCurrentUserId = `${currentUserId ?? ""}`.trim();
+  const bestByUser = new Map();
+
+  records.forEach((record) => {
+    const userId = `${record?.userId ?? record?.user?.id ?? ""}`.trim();
+    if (!userId) {
+      return;
+    }
+
+    const existing = bestByUser.get(userId);
+    const nextScore = Number(record?.totalScore ?? 0);
+    const nextSubmittedAt = record?.submittedAt ? new Date(record.submittedAt).getTime() : 0;
+    const existingScore = existing ? Number(existing.totalScore ?? 0) : Number.NEGATIVE_INFINITY;
+    const existingSubmittedAt = existing?.submittedAt ? new Date(existing.submittedAt).getTime() : Number.POSITIVE_INFINITY;
+
+    if (
+      !existing ||
+      nextScore > existingScore ||
+      (nextScore === existingScore && nextSubmittedAt < existingSubmittedAt)
+    ) {
+      bestByUser.set(userId, record);
+    }
+  });
+
+  const manualRankMap = new Map(
+    (Array.isArray(leaderboardEntries) ? leaderboardEntries : []).map((item) => [
+      `${item?.userId ?? ""}`.trim(),
+      normalizeManualRankValue(item?.manualRank),
+    ]),
+  );
+
+  const rows = Array.from(bestByUser.values())
+    .map((record) => {
+      const userId = `${record?.userId ?? record?.user?.id ?? ""}`.trim();
+      return {
+        userId,
+        userPhone: `${record?.user?.phone ?? ""}`.trim(),
+        recordId: `${record?.id ?? ""}`.trim(),
+        score: Number(record?.totalScore ?? 0),
+        submittedAt: record?.submittedAt ? formatDateTime(record.submittedAt) : "",
+        submittedAtMs: record?.submittedAt ? new Date(record.submittedAt).getTime() : Number.MAX_SAFE_INTEGER,
+        publishedAt: record?.publishedAt ? formatDateTime(record.publishedAt) : "",
+        attemptNo: Number(record?.attemptNo ?? 0),
+        reviewStatus: isMockExamRecordPublishedToUser(record) ? "published" : getMockExamRecordReviewWorkflowStatus(record),
+        manualRank: manualRankMap.get(userId) ?? null,
+        isCurrentUser: Boolean(normalizedCurrentUserId) && userId === normalizedCurrentUserId,
+      };
+    })
+    .sort((left, right) => {
+      const leftManualRank = left.manualRank ?? Number.MAX_SAFE_INTEGER;
+      const rightManualRank = right.manualRank ?? Number.MAX_SAFE_INTEGER;
+      if (leftManualRank !== rightManualRank) {
+        return leftManualRank - rightManualRank;
+      }
+      if (left.score !== right.score) {
+        return right.score - left.score;
+      }
+      if (left.submittedAtMs !== right.submittedAtMs) {
+        return left.submittedAtMs - right.submittedAtMs;
+      }
+      return left.userId.localeCompare(right.userId);
+    })
+    .map((item, index) => ({
+      ...item,
+      rank: index + 1,
+    }));
+
+  return rows;
+};
+
 export const serializeAdminMockExamPaperSummary = (paper) => {
   const sections = buildMockExamSections(paper.questions ?? []);
   const questionCount = Number(paper.questionCount ?? 0) || (paper.questions ?? []).length;
@@ -2429,6 +2520,339 @@ export const listUserVisibleMockExamRecords = async ({ db, userId }) => {
         isMockExamRecordPublishedToUser(record),
     )
     .map((record) => serializeUserMockExamHistoryItem(record));
+};
+
+export const listUserVisibleMockExamLeaderboardPapers = async ({ db, userId }) => {
+  const normalizedUserId = `${userId ?? ""}`.trim();
+  if (!normalizedUserId) {
+    return [];
+  }
+
+  const records = await db.mockExamRecord.findMany({
+    where: {
+      userId: normalizedUserId,
+      status: "submitted",
+    },
+    orderBy: [{ submittedAt: "desc" }, { createdAt: "desc" }],
+    include: {
+      paper: {
+        include: {
+          questions: {
+            where: {
+              isActive: true,
+            },
+            select: {
+              type: true,
+              score: true,
+            },
+            orderBy: {
+              sortOrder: "asc",
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const paperMap = new Map();
+  records.forEach((record) => {
+    if (!isMockExamRecordPublishedToUser(record)) {
+      return;
+    }
+    const paper = getRecordPaper(record);
+    if (!paper?.id || paperMap.has(paper.id)) {
+      return;
+    }
+    paperMap.set(paper.id, createLeaderboardPaperPayload(paper));
+  });
+
+  return Array.from(paperMap.values()).sort((left, right) => {
+    if ((left.year ?? 0) !== (right.year ?? 0)) {
+      return Number(right.year ?? 0) - Number(left.year ?? 0);
+    }
+    return `${left.title ?? ""}`.localeCompare(`${right.title ?? ""}`, "zh-CN");
+  });
+};
+
+export const getUserMockExamLeaderboardDetail = async ({ db, userId, paperId }) => {
+  const normalizedUserId = `${userId ?? ""}`.trim();
+  const normalizedPaperId = `${paperId ?? ""}`.trim();
+  if (!normalizedUserId || !normalizedPaperId) {
+    throw createHttpError("缺少排行榜参数", 400);
+  }
+
+  const paper = await db.mockExamPaper.findUnique({
+    where: {
+      id: normalizedPaperId,
+    },
+    include: {
+      questions: {
+        where: {
+          isActive: true,
+        },
+        select: {
+          type: true,
+          score: true,
+        },
+        orderBy: {
+          sortOrder: "asc",
+        },
+      },
+    },
+  });
+
+  if (!paper) {
+    throw createHttpError("试卷不存在", 404);
+  }
+
+  const records = await db.mockExamRecord.findMany({
+    where: {
+      paperId: normalizedPaperId,
+      status: "submitted",
+      publishedAt: {
+        not: null,
+      },
+    },
+    orderBy: [{ submittedAt: "desc" }, { createdAt: "desc" }],
+    include: {
+      user: {
+        select: {
+          id: true,
+          phone: true,
+        },
+      },
+      paper: {
+        include: {
+          questions: {
+            where: {
+              isActive: true,
+            },
+            select: {
+              type: true,
+              score: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const visibleUserRecordExists = records.some((record) => `${record?.userId ?? ""}`.trim() === normalizedUserId);
+  if (!visibleUserRecordExists) {
+    throw createHttpError("你还没有该试卷的可查看成绩，暂时无法进入排行榜", 403);
+  }
+
+  const leaderboardEntries = await db.mockExamLeaderboardEntry.findMany({
+    where: {
+      paperId: normalizedPaperId,
+    },
+    select: {
+      userId: true,
+      manualRank: true,
+    },
+  });
+
+  const leaderboard = buildMockExamLeaderboardRows(records, leaderboardEntries, normalizedUserId);
+  const currentUserEntry = leaderboard.find((item) => item.userId === normalizedUserId) ?? null;
+
+  return {
+    paper: createLeaderboardPaperPayload(paper),
+    currentUserBestScore: currentUserEntry ? Number(currentUserEntry.score ?? 0) : null,
+    currentUserBestRank: currentUserEntry ? Number(currentUserEntry.rank ?? 0) : null,
+    totalParticipants: leaderboard.length,
+    leaderboard: leaderboard.map((item) => ({
+      rank: item.rank,
+      manualRank: item.manualRank,
+      userId: item.userId,
+      userPhone: item.userPhone,
+      score: item.score,
+      submittedAt: item.submittedAt,
+      attemptNo: item.attemptNo,
+      isCurrentUser: item.isCurrentUser,
+    })),
+  };
+};
+
+export const getAdminMockExamPaperScoreDetail = async ({ db, paperId }) => {
+  const normalizedPaperId = `${paperId ?? ""}`.trim();
+  if (!normalizedPaperId) {
+    throw createHttpError("缺少试卷参数", 400);
+  }
+
+  const paper = await db.mockExamPaper.findUnique({
+    where: {
+      id: normalizedPaperId,
+    },
+    include: {
+      questions: {
+        where: {
+          isActive: true,
+        },
+        select: {
+          type: true,
+          score: true,
+        },
+        orderBy: {
+          sortOrder: "asc",
+        },
+      },
+    },
+  });
+
+  if (!paper) {
+    throw createHttpError("试卷不存在", 404);
+  }
+
+  const [records, leaderboardEntries] = await Promise.all([
+    db.mockExamRecord.findMany({
+      where: {
+        paperId: normalizedPaperId,
+        status: "submitted",
+      },
+      orderBy: [{ submittedAt: "desc" }, { createdAt: "desc" }],
+      include: {
+        user: {
+          select: {
+            id: true,
+            phone: true,
+          },
+        },
+        paper: {
+          include: {
+            questions: {
+              where: {
+                isActive: true,
+              },
+              select: {
+                type: true,
+                score: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+    db.mockExamLeaderboardEntry.findMany({
+      where: {
+        paperId: normalizedPaperId,
+      },
+      select: {
+        userId: true,
+        manualRank: true,
+      },
+    }),
+  ]);
+
+  const leaderboard = buildMockExamLeaderboardRows(
+    records.filter((record) => isMockExamRecordPublishedToUser(record)),
+    leaderboardEntries,
+  );
+  const leaderboardRankMap = new Map(leaderboard.map((item) => [item.userId, item.rank]));
+  const manualRankMap = new Map(leaderboardEntries.map((item) => [`${item.userId ?? ""}`.trim(), normalizeManualRankValue(item.manualRank)]));
+  const sortedItems = records
+    .map((record) => ({
+      userId: `${record?.userId ?? record?.user?.id ?? ""}`.trim(),
+      userPhone: `${record?.user?.phone ?? ""}`.trim(),
+      recordId: `${record?.id ?? ""}`.trim(),
+      totalScore: Number(record?.totalScore ?? 0),
+      submittedAt: record?.submittedAt ? formatDateTime(record.submittedAt) : "",
+      publishedAt: record?.publishedAt ? formatDateTime(record.publishedAt) : "",
+      attemptNo: Number(record?.attemptNo ?? 0),
+      reviewStatus: isMockExamRecordPublishedToUser(record) ? "published" : getMockExamRecordReviewWorkflowStatus(record),
+      manualRank: manualRankMap.get(`${record?.userId ?? ""}`.trim()) ?? null,
+      displayRank: leaderboardRankMap.get(`${record?.userId ?? ""}`.trim()) ?? 0,
+      submittedAtMs: record?.submittedAt ? new Date(record.submittedAt).getTime() : Number.MAX_SAFE_INTEGER,
+    }))
+    .sort((left, right) => {
+      const leftRank = left.displayRank || Number.MAX_SAFE_INTEGER;
+      const rightRank = right.displayRank || Number.MAX_SAFE_INTEGER;
+      if (leftRank !== rightRank) {
+        return leftRank - rightRank;
+      }
+      if (left.totalScore !== right.totalScore) {
+        return right.totalScore - left.totalScore;
+      }
+      return left.submittedAtMs - right.submittedAtMs;
+    })
+    .map(({ submittedAtMs, ...item }) => item);
+
+  const scoreList = records.map((record) => Number(record?.totalScore ?? 0));
+  const participantCount = records.length;
+  const publishedCount = records.filter((record) => isMockExamRecordPublishedToUser(record)).length;
+  const averageScore =
+    participantCount > 0 ? Number((scoreList.reduce((sum, score) => sum + score, 0) / participantCount).toFixed(1)) : 0;
+
+  return {
+    paper: createLeaderboardPaperPayload(paper),
+    stats: {
+      participantCount,
+      publishedCount,
+      highestScore: participantCount > 0 ? Math.max(...scoreList) : 0,
+      lowestScore: participantCount > 0 ? Math.min(...scoreList) : 0,
+      averageScore,
+    },
+    items: sortedItems,
+  };
+};
+
+export const updateAdminMockExamLeaderboardRanks = async ({ db, paperId, items = [] }) => {
+  const normalizedPaperId = `${paperId ?? ""}`.trim();
+  if (!normalizedPaperId) {
+    throw createHttpError("缺少试卷参数", 400);
+  }
+
+  const normalizedItems = (Array.isArray(items) ? items : [])
+    .map((item) => ({
+      userId: `${item?.userId ?? ""}`.trim(),
+      manualRank: item?.manualRank === null || `${item?.manualRank ?? ""}`.trim?.() === "" ? null : normalizeManualRankValue(item?.manualRank),
+    }))
+    .filter((item) => item.userId);
+
+  const duplicateRankSet = new Set();
+  normalizedItems.forEach((item) => {
+    if (item.manualRank !== null) {
+      if (duplicateRankSet.has(item.manualRank)) {
+        throw createHttpError("手动排名不能重复", 400);
+      }
+      duplicateRankSet.add(item.manualRank);
+    }
+  });
+
+  await db.$transaction(async (tx) => {
+    for (const item of normalizedItems) {
+      if (item.manualRank === null) {
+        await tx.mockExamLeaderboardEntry.deleteMany({
+          where: {
+            paperId: normalizedPaperId,
+            userId: item.userId,
+          },
+        });
+        continue;
+      }
+
+      await tx.mockExamLeaderboardEntry.upsert({
+        where: {
+          paperId_userId: {
+            paperId: normalizedPaperId,
+            userId: item.userId,
+          },
+        },
+        update: {
+          manualRank: item.manualRank,
+        },
+        create: {
+          paperId: normalizedPaperId,
+          userId: item.userId,
+          manualRank: item.manualRank,
+        },
+      });
+    }
+  });
+
+  return getAdminMockExamPaperScoreDetail({
+    db,
+    paperId: normalizedPaperId,
+  });
 };
 
 export const serializeMockExamReviewDetail = (record, currentTime = new Date(), options = {}) => {

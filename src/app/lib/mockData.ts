@@ -909,6 +909,84 @@ export interface UserMockExamHistoryItem {
   };
 }
 
+export interface MockExamLeaderboardPaperOption {
+  id: string;
+  code: string;
+  title: string;
+  phase: string;
+  year: number;
+  coverUrl: string;
+  paperType: AdminMockExamPaperType;
+}
+
+export interface MockExamLeaderboardEntry {
+  rank: number;
+  manualRank: number | null;
+  userId: string;
+  userPhone: string;
+  score: number;
+  submittedAt: string;
+  attemptNo: number;
+  isCurrentUser: boolean;
+}
+
+export interface MockExamLeaderboardDetail {
+  paper: {
+    id: string;
+    code: string;
+    title: string;
+    phase: string;
+    year: number;
+    coverUrl: string;
+    totalScore: number;
+    passScore: number;
+    questionCount: number;
+    paperType: AdminMockExamPaperType;
+  };
+  currentUserBestScore: number | null;
+  currentUserBestRank: number | null;
+  totalParticipants: number;
+  leaderboard: MockExamLeaderboardEntry[];
+}
+
+export interface AdminMockExamPaperScoreItem {
+  userId: string;
+  userPhone: string;
+  recordId: string;
+  totalScore: number;
+  submittedAt: string;
+  publishedAt: string;
+  attemptNo: number;
+  reviewStatus: AdminMockExamReviewStatus | "submitted";
+  manualRank: number | null;
+  displayRank: number;
+}
+
+export interface AdminMockExamPaperScoreStats {
+  participantCount: number;
+  publishedCount: number;
+  highestScore: number;
+  lowestScore: number;
+  averageScore: number;
+}
+
+export interface AdminMockExamPaperScoreDetail {
+  paper: {
+    id: string;
+    code: string;
+    title: string;
+    phase: string;
+    year: number;
+    coverUrl: string;
+    totalScore: number;
+    passScore: number;
+    questionCount: number;
+    paperType: AdminMockExamPaperType;
+  };
+  stats: AdminMockExamPaperScoreStats;
+  items: AdminMockExamPaperScoreItem[];
+}
+
 export type AdminMockExamPaperType = "objective" | "subjective";
 export type AdminMockExamPaperStatus = "draft" | "published";
 export type AdminMockExamReviewStatus = "ai_pending" | "ai_processing" | "manual_reviewing" | "manual_pending" | "published";
@@ -1111,6 +1189,11 @@ export interface AdminMockExamReviewDetail extends MockExamRecordDetail {
   };
   reviewSource?: "ai" | "rule" | "manual" | "system";
   reviewProvider?: MockExamAiReviewProvider;
+}
+
+export interface AdminMockExamLeaderboardRankPayload {
+  userId: string;
+  manualRank: number | null;
 }
 
 export interface AdminMockExamReviewSubQuestionScoreInput {
@@ -2151,6 +2234,9 @@ export const mockApi = {
   getMockExamPapers: () => request<MockExamPaper[]>("/api/user/mock-exams/papers", { auth: "user" }),
   getMockExamLaunchConfig: () => request<MockExamLaunchConfig>("/api/user/mock-exams/launch-config", { auth: "user" }),
   getUserMockExamHistory: () => request<UserMockExamHistoryItem[]>("/api/user/mock-exams/history", { auth: "user" }),
+  getUserMockExamLeaderboardPapers: () => request<MockExamLeaderboardPaperOption[]>("/api/user/mock-exams/leaderboard/papers", { auth: "user" }),
+  getUserMockExamLeaderboard: (paperId: string) =>
+    request<MockExamLeaderboardDetail>(`/api/user/mock-exams/leaderboard/${paperId}`, { auth: "user" }),
   startMockExam: (paperId: string) => postJson<MockExamRecordDetail>(`/api/user/mock-exams/papers/${paperId}/start`, {}, "user"),
   getMockExamRecord: (recordId: string) => request<MockExamRecordDetail>(`/api/user/mock-exams/records/${recordId}`, { auth: "user" }),
   pauseMockExam: (recordId: string, options?: { keepalive?: boolean }) =>
@@ -2264,6 +2350,10 @@ export const mockApi = {
     ),
   getAdminMockExamReviewDetail: (recordId: string) =>
     request<AdminMockExamReviewDetail>(`/api/admin/mock-exams/reviews/${recordId}`, { auth: "admin" }),
+  getAdminMockExamPaperScores: (paperId: string) =>
+    request<AdminMockExamPaperScoreDetail>(`/api/admin/mock-exams/papers/${paperId}/scores`, { auth: "admin" }),
+  updateAdminMockExamLeaderboardRanks: (paperId: string, payload: { items: AdminMockExamLeaderboardRankPayload[] }) =>
+    patchJson<AdminMockExamPaperScoreDetail>(`/api/admin/mock-exams/papers/${paperId}/leaderboard-ranks`, payload, "admin"),
   claimAdminMockExamReview: (recordId: string) =>
     postJson<AdminMockExamReviewDetail>(`/api/admin/mock-exams/reviews/${recordId}/claim`, {}, "admin"),
   renewAdminMockExamReviewLock: (recordId: string, lockToken: string) =>
