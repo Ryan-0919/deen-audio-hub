@@ -935,7 +935,7 @@ export function UserList() {
       </Dialog>
 
       <Dialog open={showMockExamResetDialog} onOpenChange={setShowMockExamResetDialog}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-h-[85vh] w-[calc(100vw-1.5rem)] max-w-4xl overflow-y-auto sm:w-full">
           <DialogHeader>
             <DialogTitle>重置机考试卷状态</DialogTitle>
             <DialogDescription>{selectedUser?.phone ?? ""}</DialogDescription>
@@ -951,7 +951,7 @@ export function UserList() {
                 const resettingTime = resettingPaperId === `time:${paperId}`;
                 return (
                   <div key={paperId} className="rounded-2xl border border-slate-200 p-4">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-slate-900">{paper?.title ?? paperId}</p>
                         <p className="mt-1 text-xs text-slate-500">
@@ -963,10 +963,11 @@ export function UserList() {
                           {config?.currentRecordStartedAt ? ` · 当前开考时间：${config.currentRecordStartedAt}` : " · 当前没有进行中的考试"}
                         </p>
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
                         <Button
                           variant="outline"
                           size="sm"
+                          className="w-full justify-center sm:w-auto"
                           disabled={resettingAttempts || !!resettingPaperId}
                           onClick={() => void handleResetMockExamAttempts(paperId)}
                         >
@@ -976,6 +977,7 @@ export function UserList() {
                         <Button
                           variant="outline"
                           size="sm"
+                          className="w-full justify-center sm:w-auto"
                           disabled={resettingTime || !!resettingPaperId}
                           onClick={() => void handleResetMockExamTime(paperId)}
                         >

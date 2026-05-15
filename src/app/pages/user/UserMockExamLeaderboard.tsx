@@ -6,6 +6,7 @@ import { AppLogo } from "../../components/branding/AppLogo";
 import { Button } from "../../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { type MockExamLeaderboardDetail, type MockExamLeaderboardPaperOption, mockApi } from "../../lib/mockData";
+import { getUserDisplayName } from "../../lib/user-session";
 
 const EMPTY_PAPERS: MockExamLeaderboardPaperOption[] = [];
 
@@ -41,6 +42,7 @@ const maskPhone = (value: string) => {
 
 export function UserMockExamLeaderboard() {
   const navigate = useNavigate();
+  const currentUserDisplayName = useMemo(() => getUserDisplayName() || "我", []);
   const [papers, setPapers] = useState<MockExamLeaderboardPaperOption[]>(EMPTY_PAPERS);
   const [selectedPaperId, setSelectedPaperId] = useState("");
   const [detail, setDetail] = useState<MockExamLeaderboardDetail>(EMPTY_DETAIL);
@@ -247,7 +249,9 @@ export function UserMockExamLeaderboard() {
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                              <div className="text-base font-medium text-white">{maskPhone(entry.userPhone)}</div>
+                              <div className="text-base font-medium text-white">
+                                {entry.isCurrentUser ? currentUserDisplayName : maskPhone(entry.userPhone)}
+                              </div>
                               {entry.isCurrentUser ? (
                                 <span className="rounded-full border border-[#ffd39a]/40 bg-[#ffd39a]/12 px-2 py-0.5 text-xs text-[#ffd39a]">
                                   我
