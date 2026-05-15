@@ -78,3 +78,21 @@ test("getNormalizedDeviceInfo falls back to user-agent when input is empty", () 
     ip: "192.0.2.88",
   });
 });
+
+test("getNormalizedDeviceInfo recognizes UOS desktop browser", () => {
+  const req = createRequest({
+    headers: {
+      "user-agent":
+        "Mozilla/5.0 (X11; UOS; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    },
+    socket: { remoteAddress: "::ffff:198.51.100.25" },
+  });
+
+  const info = getNormalizedDeviceInfo(req, {});
+
+  assert.deepEqual(info, {
+    type: "Linux",
+    model: "Linux Browser",
+    ip: "198.51.100.25",
+  });
+});

@@ -228,6 +228,9 @@ const getDeviceInfo = () => {
   } else if (/Macintosh/i.test(userAgent)) {
     type = "Mac";
     model = "Mac Browser";
+  } else if (/UOS|UnionTech|Deepin|X11|Linux/i.test(userAgent)) {
+    type = "Linux";
+    model = "Linux Browser";
   }
 
   return {

@@ -36,6 +36,10 @@ const getDeviceFallbackFromUserAgent = (userAgent = "") => {
     return { type: "Mac", model: "Mac Browser" };
   }
 
+  if (ua.includes("uos") || ua.includes("uniontech") || ua.includes("deepin") || ua.includes("x11") || ua.includes("linux")) {
+    return { type: "Linux", model: "Linux Browser" };
+  }
+
   return { type: "Web", model: "Web App" };
 };
 
