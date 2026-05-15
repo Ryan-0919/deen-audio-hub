@@ -1,7 +1,8 @@
-import { BarChart3, RefreshCw, Save } from "lucide-react";
+import { BarChart3, Download, RefreshCw, Save } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -54,16 +55,46 @@ const EMPTY_DETAIL: AdminMockExamPaperScoreDetail = {
   items: [],
 };
 
-const maskPhone = (value: string) => {
-  const normalized = `${value ?? ""}`.trim();
-  if (normalized.length !== 11) {
-    return normalized || "--";
-  }
-  return `${normalized.slice(0, 3)}****${normalized.slice(-4)}`;
+const downloadBlob = (blob: Blob, fileName: string) => {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
 };
 
 const buildPaperLabel = (paper: AdminMockExamPaperListPayload["list"][number]) =>
   [paper.title, paper.phase, paper.year ? `${paper.year}` : ""].filter(Boolean).join(" · ");
+
+const getReviewStatusLabel = (value: AdminMockExamPaperScoreDetail["items"][number]["reviewStatus"]) => {
+  switch (value) {
+    case "published":
+      return "已发布";
+    case "manual_pending":
+      return "待发送";
+    case "manual_reviewing":
+      return "人工批改中";
+    case "ai_processing":
+      return "AI批改中";
+    case "ai_pending":
+      return "待批改";
+    case "submitted":
+      return "已交卷";
+    default:
+      return value || "--";
+  }
+};
+
+const buildExportFileName = (paper: AdminMockExamPaperScoreDetail["paper"]) => {
+  const baseName = [paper.title, paper.phase, paper.year ? `${paper.year}` : "", "学员考试记录"]
+    .filter(Boolean)
+    .join("-");
+  return `${baseName || "学员考试记录"}.xlsx`;
+};
 
 export function MockExamPaperScores() {
   const navigate = useNavigate();
@@ -75,6 +106,7 @@ export function MockExamPaperScores() {
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     let disposed = false;
@@ -189,6 +221,48 @@ export function MockExamPaperScores() {
     }
   };
 
+  const handleExportExcel = async () => {
+    if (!selectedPaperId || detail.items.length === 0) {
+      toast.error("当前试卷还没有可导出的考试记录");
+      return;
+    }
+
+    try {
+      setExporting(true);
+      const rows = detail.items.map((item, index) => ({
+        序号: index + 1,
+        试卷名称: detail.paper.title || "--",
+        试卷阶段: detail.paper.phase || "--",
+        试卷年份: detail.paper.year || "--",
+        用户手机号: item.userPhone || "--",
+        考试次数: item.attemptNo || 0,
+        考试成绩: item.totalScore,
+        显示排名: item.displayRank || "--",
+        手动排名: item.manualRank ?? "",
+        批改状态: getReviewStatusLabel(item.reviewStatus),
+        交卷时间: item.submittedAt || "--",
+        发布时间: item.publishedAt || "--",
+        记录ID: item.recordId,
+      }));
+
+      const workbook = XLSX.utils.book_new();
+      const sheet = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(workbook, sheet, "考试记录");
+      const buffer = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+      downloadBlob(
+        new Blob([buffer], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
+        buildExportFileName(detail.paper),
+      );
+      toast.success("考试记录已导出");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "导出考试记录失败");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (loading) {
     return <div className="p-8 text-slate-500">学员考试记录加载中...</div>;
   }
@@ -209,6 +283,10 @@ export function MockExamPaperScores() {
           <div className="flex gap-3">
             <Button variant="outline" onClick={() => selectedPaperId && navigate(`/admin/mock-exams/papers/${selectedPaperId}/edit`)}>
               编辑试卷
+            </Button>
+            <Button variant="outline" onClick={() => void handleExportExcel()} disabled={!selectedPaperId || detailLoading || exporting || detail.items.length === 0}>
+              <Download className="mr-2 size-4" />
+              {exporting ? "导出中..." : "导出Excel"}
             </Button>
             <Button
               variant="outline"
@@ -315,9 +393,9 @@ export function MockExamPaperScores() {
                         placeholder="自动"
                       />
                     </TableCell>
-                    <TableCell>{maskPhone(item.userPhone)}</TableCell>
+                    <TableCell>{item.userPhone || "--"}</TableCell>
                     <TableCell>{item.totalScore}</TableCell>
-                    <TableCell>{item.reviewStatus}</TableCell>
+                    <TableCell>{getReviewStatusLabel(item.reviewStatus)}</TableCell>
                     <TableCell>{item.submittedAt || "--"}</TableCell>
                     <TableCell>{item.publishedAt || "--"}</TableCell>
                     <TableCell>

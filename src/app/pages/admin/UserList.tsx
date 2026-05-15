@@ -434,15 +434,30 @@ export function UserList() {
       const result = await mockApi.resetUserMockExamAttempts(selectedUser.id, paperId);
       patchUsers([selectedUser.id], (user) => ({
         ...user,
-        mockExamPermissionConfigs: (user.mockExamPermissionConfigs ?? []).map((item) =>
-          item.paperId === paperId
-            ? {
-                ...item,
-                manualAttemptLimit: result.manualAttemptLimit,
-                manualAttemptUsed: result.manualAttemptUsed,
-              }
-            : item,
-        ),
+        mockExamPermissionConfigs: (() => {
+          const current = user.mockExamPermissionConfigs ?? [];
+          const existed = current.some((item) => item.paperId === paperId);
+          if (existed) {
+            return current.map((item) =>
+              item.paperId === paperId
+                ? {
+                    ...item,
+                    manualAttemptLimit: result.manualAttemptLimit,
+                    manualAttemptUsed: result.manualAttemptUsed,
+                  }
+                : item,
+            );
+          }
+          return [
+            ...current,
+            {
+              paperId,
+              manualAttemptLimit: result.manualAttemptLimit,
+              manualAttemptUsed: result.manualAttemptUsed,
+              currentRecordStartedAt: "",
+            },
+          ];
+        })(),
       }));
       toast.success("考试次数已重置");
     } catch (error) {
@@ -462,14 +477,29 @@ export function UserList() {
       const result = await mockApi.resetUserMockExamTime(selectedUser.id, paperId);
       patchUsers([selectedUser.id], (user) => ({
         ...user,
-        mockExamPermissionConfigs: (user.mockExamPermissionConfigs ?? []).map((item) =>
-          item.paperId === paperId
-            ? {
-                ...item,
-                currentRecordStartedAt: result.currentRecordStartedAt,
-              }
-            : item,
-        ),
+        mockExamPermissionConfigs: (() => {
+          const current = user.mockExamPermissionConfigs ?? [];
+          const existed = current.some((item) => item.paperId === paperId);
+          if (existed) {
+            return current.map((item) =>
+              item.paperId === paperId
+                ? {
+                    ...item,
+                    currentRecordStartedAt: result.currentRecordStartedAt,
+                  }
+                : item,
+            );
+          }
+          return [
+            ...current,
+            {
+              paperId,
+              manualAttemptLimit: null,
+              manualAttemptUsed: 0,
+              currentRecordStartedAt: result.currentRecordStartedAt,
+            },
+          ];
+        })(),
       }));
       toast.success("考试时间已重置");
     } catch (error) {

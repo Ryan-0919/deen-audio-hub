@@ -1236,10 +1236,43 @@ adminRouter.get("/users", async (req, res) => {
     prisma.user.count({ where }),
   ]);
 
+  const participatedRows =
+    users.length > 0
+      ? await prisma.mockExamRecord.findMany({
+          where: {
+            userId: {
+              in: users.map((user) => user.id),
+            },
+          },
+          select: {
+            userId: true,
+            paperId: true,
+          },
+          distinct: ["userId", "paperId"],
+        })
+      : [];
+
+  const participatedPaperIdsByUserId = new Map();
+  participatedRows.forEach((row) => {
+    const userId = `${row.userId ?? ""}`.trim();
+    const paperId = `${row.paperId ?? ""}`.trim();
+    if (!userId || !paperId) {
+      return;
+    }
+    const current = participatedPaperIdsByUserId.get(userId) ?? [];
+    current.push(paperId);
+    participatedPaperIdsByUserId.set(userId, current);
+  });
+
   const totalPages = Math.max(Math.ceil(total / pageSize), 1);
 
   return ok(res, {
-    items: users.map(serializeUser),
+    items: users.map((user) =>
+      serializeUser({
+        ...user,
+        mockExamParticipatedPaperIds: participatedPaperIdsByUserId.get(user.id) ?? [],
+      }),
+    ),
     total,
     page,
     pageSize,
@@ -1537,8 +1570,62 @@ adminRouter.post("/users/:userId/mock-exam-permissions/:paperId/reset-attempts",
     },
   });
 
+  const paper =
+    permission?.paper ??
+    (await prisma.mockExamPaper.findUnique({
+      where: { id: paperId },
+      select: {
+        id: true,
+        title: true,
+        maxAttempts: true,
+      },
+    }));
+
+  if (!paper) {
+    return fail(res, "试卷不存在", 404);
+  }
+
   if (!permission) {
-    return fail(res, "该用户未开通此试卷权限", 404);
+    const participated = await prisma.mockExamRecord.findFirst({
+      where: {
+        userId,
+        paperId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!participated) {
+      return fail(res, "该用户还没有这张试卷的考试记录", 404);
+    }
+
+    const manualAttemptLimit = Number(paper.maxAttempts ?? 0) > 0 ? Number(paper.maxAttempts) : null;
+    const manualAttemptUsed = 0;
+
+    recordAdminAction(req, {
+      action: "user.mock_exam.reset_attempts",
+      entityType: "user",
+      entityId: targetUser.id,
+      entityName: targetUser.phone,
+      detail: {
+        paperId,
+        paperTitle: paper.title ?? "",
+        originalPaperMaxAttempts: Number(paper.maxAttempts ?? 0),
+        nextManualAttemptLimit: manualAttemptLimit,
+        nextManualAttemptUsed: manualAttemptUsed,
+      },
+    });
+
+    return ok(
+      res,
+      {
+        paperId,
+        manualAttemptLimit,
+        manualAttemptUsed,
+      },
+      "考试次数已重置",
+    );
   }
 
   const updated = await prisma.userMockExamPermission.update({
@@ -1608,8 +1695,18 @@ adminRouter.post("/users/:userId/mock-exam-permissions/:paperId/reset-time", asy
     },
   });
 
-  if (!permission) {
-    return fail(res, "该用户未开通此试卷权限", 404);
+  const paper =
+    permission?.paper ??
+    (await prisma.mockExamPaper.findUnique({
+      where: { id: paperId },
+      select: {
+        id: true,
+        title: true,
+      },
+    }));
+
+  if (!paper) {
+    return fail(res, "试卷不存在", 404);
   }
 
   const activeRecord = await prisma.mockExamRecord.findFirst({
@@ -1641,17 +1738,19 @@ adminRouter.post("/users/:userId/mock-exam-permissions/:paperId/reset-time", asy
     },
   });
 
-  await prisma.userMockExamPermission.update({
-    where: {
-      userId_paperId: {
-        userId,
-        paperId,
+  if (permission) {
+    await prisma.userMockExamPermission.update({
+      where: {
+        userId_paperId: {
+          userId,
+          paperId,
+        },
       },
-    },
-    data: {
-      currentRecordStartedAt: currentTime,
-    },
-  });
+      data: {
+        currentRecordStartedAt: currentTime,
+      },
+    });
+  }
 
   recordAdminAction(req, {
     action: "user.mock_exam.reset_time",
@@ -1660,7 +1759,7 @@ adminRouter.post("/users/:userId/mock-exam-permissions/:paperId/reset-time", asy
     entityName: targetUser.phone,
     detail: {
       paperId,
-      paperTitle: permission.paper?.title ?? "",
+      paperTitle: paper.title ?? "",
       recordId: activeRecord.id,
       resetAt: currentTime.toISOString(),
     },

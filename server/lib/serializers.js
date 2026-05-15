@@ -123,13 +123,31 @@ export const serializeUser = (user) => ({
   deviceCount: user._count?.devices ?? user.devices?.length ?? 0,
   coursePermissions: (user.permissions ?? []).map((item) => item.courseId),
   mockExamPermissions: (user.mockExamSeriesPermissions ?? []).map((item) => item.seriesId),
-  mockExamAccessiblePaperIds: (user.mockExamPermissions ?? []).map((item) => item.paperId),
-  mockExamPermissionConfigs: (user.mockExamPermissions ?? []).map((item) => ({
-    paperId: item.paperId,
-    manualAttemptLimit: item.manualAttemptLimit ?? null,
-    manualAttemptUsed: Number(item.manualAttemptUsed ?? 0),
-    currentRecordStartedAt: item.currentRecordStartedAt ? formatDateTime(item.currentRecordStartedAt) : "",
-  })),
+  mockExamAccessiblePaperIds: Array.from(new Set([...(user.mockExamPermissions ?? []).map((item) => item.paperId), ...(user.mockExamParticipatedPaperIds ?? [])])),
+  mockExamPermissionConfigs: [
+    ...new Map(
+      [
+        ...(user.mockExamPermissions ?? []).map((item) => [
+          item.paperId,
+          {
+            paperId: item.paperId,
+            manualAttemptLimit: item.manualAttemptLimit ?? null,
+            manualAttemptUsed: Number(item.manualAttemptUsed ?? 0),
+            currentRecordStartedAt: item.currentRecordStartedAt ? formatDateTime(item.currentRecordStartedAt) : "",
+          },
+        ]),
+        ...(user.mockExamParticipatedPaperIds ?? []).map((paperId) => [
+          paperId,
+          {
+            paperId,
+            manualAttemptLimit: null,
+            manualAttemptUsed: 0,
+            currentRecordStartedAt: "",
+          },
+        ]),
+      ],
+    ).values(),
+  ],
 });
 
 export const serializeDevice = (device) => ({
