@@ -398,6 +398,7 @@ function SubjectiveAnswerReviewBlock({
   pending: boolean;
 }) {
   const skippedReview = Boolean(subQuestion.skippedReview);
+  const showReviewFeedback = !pending && !skippedReview;
   const missedRubricPoints = (subQuestion.missedPoints ?? [])
     .map((point, index) => ({
       id: point.id || `missed_${index + 1}`,
@@ -406,16 +407,12 @@ function SubjectiveAnswerReviewBlock({
       score: Number(point.score ?? 0) || 0,
     }))
     .filter((point) => point.title && point.description && !isPlaceholderMissedPointTitle(point.title));
-  const paragraphs = (
-    pending
-      ? "当前仍在批改中，完成后将显示详细点评。"
-      : skippedReview
-        ? subQuestion.skippedReviewReason || "本问本次未进入批改流程，已直接提供参考答案与解析。"
-        : subQuestion.reviewComment || "暂无批改评语"
-  )
+  const paragraphs = (showReviewFeedback ? subQuestion.reviewComment || "暂无批改评语" : "")
     .split(/\n+/)
     .filter(Boolean);
-  const answerTitle = skippedReview ? (
+  const answerTitle = pending ? (
+    "我的答案"
+  ) : skippedReview ? (
     "我的答案（本问已直接展示参考答案）"
   ) : (
     <span className="inline-flex flex-wrap items-center gap-2">
@@ -434,32 +431,34 @@ function SubjectiveAnswerReviewBlock({
           <div className="rounded-[18px] border border-[#eef0f3] bg-white px-2 py-2">
             <AnnotatedAnswerText
               answer={subQuestion.answer?.trim() || "未作答"}
-              marks={skippedReview ? [] : subQuestion.answerMarks}
+              marks={showReviewFeedback ? subQuestion.answerMarks : []}
               paragraphClassName="whitespace-pre-wrap text-[20px] leading-[2.2] text-[#18181b]"
             />
           </div>
 
-          <div className="relative mt-6 px-5 py-3">
-            <img
-              src="/lsyz.png"
-              alt="已批注"
-              className="pointer-events-none absolute right-5 top-[-4px] h-[65px] w-auto select-none opacity-90"
-              style={{ transform: "rotate(-7deg)" }}
-            />
-            <div className="mb-3 pr-28">
-              <div className="text-[18px] font-semibold text-[#18181b]">老师评语：</div>
+          {showReviewFeedback ? (
+            <div className="relative mt-6 px-5 py-3">
+              <img
+                src="/lsyz.png"
+                alt="已批注"
+                className="pointer-events-none absolute right-5 top-[-4px] h-[65px] w-auto select-none opacity-90"
+                style={{ transform: "rotate(-7deg)" }}
+              />
+              <div className="mb-3 pr-28">
+                <div className="text-[18px] font-semibold text-[#18181b]">老师评语：</div>
+              </div>
+              <div className="space-y-4 pr-2 text-[17px] leading-[32px] text-[#e2485a]" style={handwritingStyle}>
+                {(paragraphs.length > 0 ? paragraphs : ["暂无批改评语"]).map((paragraph, index) => (
+                  <p key={index} className="whitespace-pre-wrap">
+                    {paragraph}
+                  </p>
+                ))}
+              </div>
             </div>
-            <div className="space-y-4 pr-2 text-[17px] leading-[32px] text-[#e2485a]" style={handwritingStyle}>
-              {(paragraphs.length > 0 ? paragraphs : ["暂无批改评语"]).map((paragraph, index) => (
-                <p key={index} className="whitespace-pre-wrap">
-                  {paragraph}
-                </p>
-              ))}
-            </div>
-          </div>
+          ) : null}
         </div>
 
-        {!pending && !skippedReview ? (
+        {showReviewFeedback ? (
           <aside className="relative px-1 pt-3 xl:sticky xl:top-6 xl:self-start">
             <div className="relative overflow-hidden rounded-[20px] border border-[#ececf1] bg-white px-5 pb-5 pt-5 shadow-[0_12px_28px_rgba(15,23,42,0.05)]">
               <div className="relative">
