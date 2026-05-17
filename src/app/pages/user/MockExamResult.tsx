@@ -393,16 +393,18 @@ function SubjectiveQuestionBlock({
 function SubjectiveAnswerReviewBlock({
   subQuestion,
   pending,
+  reviewDisabled,
 }: {
   subQuestion: MockExamSubjectiveSubQuestion;
   pending: boolean;
+  reviewDisabled: boolean;
 }) {
   const skippedReview = Boolean(subQuestion.skippedReview);
   const hasAnswerMarks = Array.isArray(subQuestion.answerMarks) && subQuestion.answerMarks.length > 0;
   const hasReviewComment = `${subQuestion.reviewComment ?? ""}`.trim().length > 0;
   const hasMissedPoints = Array.isArray(subQuestion.missedPoints) && subQuestion.missedPoints.length > 0;
   const hasActualReviewContent = Boolean(subQuestion.isReviewed) && (hasAnswerMarks || hasReviewComment || hasMissedPoints);
-  const showReviewFeedback = !pending && !skippedReview && hasActualReviewContent;
+  const showReviewFeedback = !reviewDisabled && !pending && !skippedReview && hasActualReviewContent;
   const missedRubricPoints = (subQuestion.missedPoints ?? [])
     .map((point, index) => ({
       id: point.id || `missed_${index + 1}`,
@@ -414,7 +416,7 @@ function SubjectiveAnswerReviewBlock({
   const paragraphs = (showReviewFeedback ? subQuestion.reviewComment || "暂无批改评语" : "")
     .split(/\n+/)
     .filter(Boolean);
-  const answerTitle = pending ? (
+  const answerTitle = pending || reviewDisabled ? (
     "我的答案"
   ) : skippedReview ? (
     "我的答案（本问已直接展示参考答案）"
@@ -660,6 +662,7 @@ function SubjectiveReviewSheet({
   onOpenChange: (open: boolean) => void;
 }) {
   const [activeSubQuestionIndex, setActiveSubQuestionIndex] = useState(0);
+  const reviewDisabled = record.reviewWorkflowStatus === "not_required";
 
   useEffect(() => {
     setActiveSubQuestionIndex(0);
@@ -715,7 +718,11 @@ function SubjectiveReviewSheet({
                 activeSubQuestionIndex={activeSubQuestionIndex}
               />
 
-              <SubjectiveAnswerReviewBlock subQuestion={currentSubQuestion} pending={record.summary.finalScorePending} />
+              <SubjectiveAnswerReviewBlock
+                subQuestion={currentSubQuestion}
+                pending={record.summary.finalScorePending}
+                reviewDisabled={reviewDisabled}
+              />
 
               <FoldBlock title="参考答案" defaultExpanded>
                 <div className="whitespace-pre-wrap text-[18px] leading-9 text-[#433b35]">
