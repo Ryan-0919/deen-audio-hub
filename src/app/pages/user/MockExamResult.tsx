@@ -398,7 +398,11 @@ function SubjectiveAnswerReviewBlock({
   pending: boolean;
 }) {
   const skippedReview = Boolean(subQuestion.skippedReview);
-  const showReviewFeedback = !pending && !skippedReview;
+  const hasAnswerMarks = Array.isArray(subQuestion.answerMarks) && subQuestion.answerMarks.length > 0;
+  const hasReviewComment = `${subQuestion.reviewComment ?? ""}`.trim().length > 0;
+  const hasMissedPoints = Array.isArray(subQuestion.missedPoints) && subQuestion.missedPoints.length > 0;
+  const hasActualReviewContent = Boolean(subQuestion.isReviewed) && (hasAnswerMarks || hasReviewComment || hasMissedPoints);
+  const showReviewFeedback = !pending && !skippedReview && hasActualReviewContent;
   const missedRubricPoints = (subQuestion.missedPoints ?? [])
     .map((point, index) => ({
       id: point.id || `missed_${index + 1}`,
