@@ -2545,11 +2545,7 @@ export const listUserVisibleMockExamRecords = async ({ db, userId }) => {
   });
 
   return records
-    .filter(
-      (record) =>
-        getSubjectiveQuestionCount(getRecordPaper(record)?.questions ?? []) > 0 &&
-        isMockExamRecordPublishedToUser(record),
-    )
+    .filter((record) => isMockExamRecordPublishedToUser(record))
     .map((record) => serializeUserMockExamHistoryItem(record));
 };
 

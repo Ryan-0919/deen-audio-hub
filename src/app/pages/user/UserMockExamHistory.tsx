@@ -125,7 +125,7 @@ export function UserMockExamHistory() {
                     <FileText className="size-6" />
                   </div>
                   <p className="mt-4 text-lg font-medium text-white">暂时还没有可查看的考试记录</p>
-                  <p className="mt-2 text-sm leading-7 text-white/56">等主观题批改完成后，这里会自动显示对应的考试结果与详情入口。</p>
+                  <p className="mt-2 text-sm leading-7 text-white/56">考试交卷并生成可查看结果后，这里会自动显示对应的考试记录与详情入口。</p>
                   <Button
                     type="button"
                     onClick={() => navigate("/user/mock-exams")}

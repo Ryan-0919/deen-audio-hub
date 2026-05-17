@@ -56,14 +56,14 @@ const EMPTY_HOME_CONFIG: UserHomeConfig = {
   },
   accountCenter: {
     eyebrow: "Account Center",
-    description: "这里统一放课程学习外的个人操作入口。你可以查看主观题批改记录，也可以随时安全退出当前设备。",
+    description: "这里统一放课程学习外的个人操作入口。你可以查看考试记录，也可以随时安全退出当前设备。",
     shortcutTitle: "DE EN FA KAO",
     shortcuts: [
       {
         title: "我的考试",
-        description: "查看已批改完成的主观题考试记录与结果。",
+        description: "查看你参加过的考试记录与结果。",
         path: "/user/my-exams",
-        accentText: "进入批改记录",
+        accentText: "进入考试记录",
       },
     ],
   },

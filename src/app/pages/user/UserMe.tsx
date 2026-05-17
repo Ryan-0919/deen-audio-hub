@@ -51,14 +51,14 @@ const EMPTY_HOME_CONFIG: UserHomeConfig = {
   },
   accountCenter: {
     eyebrow: "Account Center",
-    description: "这里统一放课程学习外的个人操作入口。你可以查看主观题批改记录、考试排行榜，也可以随时安全退出当前设备。",
+    description: "这里统一放课程学习外的个人操作入口。你可以查看考试记录、考试排行榜，也可以随时安全退出当前设备。",
     shortcutTitle: "DE EN FA KAO",
     shortcuts: [
       {
         title: "我的考试",
-        description: "查看已批改完成的主观题考试记录与结果。",
+        description: "查看你参加过的考试记录与结果。",
         path: "/user/my-exams",
-        accentText: "进入批改记录",
+        accentText: "进入考试记录",
       },
       {
         title: "考试排行榜",
@@ -73,12 +73,12 @@ const EMPTY_HOME_CONFIG: UserHomeConfig = {
 const fallbackShortcutItems: ShortcutItem[] = [
   {
     title: "我的考试",
-    description: "查看已批改完成的主观题考试记录与结果。",
+    description: "查看你参加过的考试记录与结果。",
     path: "/user/my-exams",
     icon: ClipboardCheck,
     iconClassName: "text-[#8fd6ff]",
     glowClassName: "from-[#38a6ff]/28 via-[#1f6fff]/16 to-transparent",
-    accentText: "进入批改记录",
+    accentText: "进入考试记录",
   },
   {
     title: "考试排行榜",
@@ -188,7 +188,7 @@ export function UserMe() {
                     </div>
 
                     <p className="mt-3 max-w-3xl text-sm leading-7 text-white/58 md:text-[15px]">
-                      {homeConfig.accountCenter.description || "这里统一放课程学习外的个人操作入口。你可以查看主观题批改记录、考试排行榜，也可以随时安全退出当前设备。"}
+                      {homeConfig.accountCenter.description || "这里统一放课程学习外的个人操作入口。你可以查看考试记录、考试排行榜，也可以随时安全退出当前设备。"}
                     </p>
                   </div>
                 </div>
