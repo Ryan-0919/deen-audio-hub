@@ -257,7 +257,13 @@ export function MockExamPaperList() {
                 <TableCell>{paper.durationMinutes} 分钟</TableCell>
                 <TableCell>{paper.maxAttempts > 0 ? `${paper.maxAttempts} 次` : "不限"}</TableCell>
                 <TableCell>{paper.permissionRequired ? "需开通" : "默认开放"}</TableCell>
-                <TableCell>{paper.reviewEnabled ? "人工批改" : "直接解析"}</TableCell>
+                <TableCell>
+                  {paper.reviewEnabled
+                    ? paper.reviewAttemptLimit > 0
+                      ? `前 ${paper.reviewAttemptLimit} 次批改`
+                      : "每次都批改"
+                    : "直接解析"}
+                </TableCell>
                 <TableCell>{paper.passScore} 分</TableCell>
                 <TableCell className="max-w-[280px] text-sm text-slate-600">{buildSectionSummary(paper) || "-"}</TableCell>
                 <TableCell>{paper.updatedAt}</TableCell>

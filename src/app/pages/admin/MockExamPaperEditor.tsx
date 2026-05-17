@@ -69,6 +69,7 @@ type PaperFormState = {
   durationMinutes: string;
   maxAttempts: string;
   reviewEnabled: boolean;
+  reviewAttemptLimit: string;
   permissionRequired: boolean;
   passScore: string;
   description: string;
@@ -90,6 +91,7 @@ const createEmptyPaperForm = (paperType: AdminMockExamPaperType = "objective"): 
   durationMinutes: `${paperTypeMeta[paperType].defaultDuration}`,
   maxAttempts: "0",
   reviewEnabled: paperType === "subjective",
+  reviewAttemptLimit: "0",
   permissionRequired: false,
   passScore: "0",
   description: "",
@@ -119,6 +121,7 @@ const mapPaperDetailToForm = (paper: AdminMockExamPaperDetail): PaperFormState =
   durationMinutes: `${paper.durationMinutes}`,
   maxAttempts: `${paper.maxAttempts ?? 0}`,
   reviewEnabled: paper.reviewEnabled,
+  reviewAttemptLimit: `${paper.reviewAttemptLimit ?? 0}`,
   permissionRequired: paper.permissionRequired,
   passScore: `${paper.passScore}`,
   description: paper.description,
@@ -140,6 +143,7 @@ const buildPaperPayload = (form: PaperFormState): AdminMockExamPaperPayload => (
   durationMinutes: form.durationMinutes.trim() || undefined,
   maxAttempts: form.maxAttempts.trim() || undefined,
   reviewEnabled: form.reviewEnabled,
+  reviewAttemptLimit: form.reviewAttemptLimit.trim() || undefined,
   permissionRequired: form.permissionRequired,
   passScore: form.passScore.trim() || undefined,
   description: form.description.trim() || undefined,
@@ -664,7 +668,7 @@ export function MockExamPaperEditor() {
                 <p className="text-xs text-slate-400">留空表示保存后立即可开放；设置后，只有到达该时间点学生才能进入考试。</p>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-2">
                   <Label>考试时长（分钟）</Label>
                   <Input value={form.durationMinutes} onChange={(event) => updateForm("durationMinutes", event.target.value)} placeholder="90" />
@@ -672,6 +676,10 @@ export function MockExamPaperEditor() {
                 <div className="space-y-2">
                   <Label>考试次数限制</Label>
                   <Input value={form.maxAttempts} onChange={(event) => updateForm("maxAttempts", event.target.value)} placeholder="0 表示不限" />
+                </div>
+                <div className="space-y-2">
+                  <Label>批改次数限制</Label>
+                  <Input value={form.reviewAttemptLimit} onChange={(event) => updateForm("reviewAttemptLimit", event.target.value)} placeholder="0 表示每次都批改，1 表示仅首次数批改" />
                 </div>
               </div>
 

@@ -85,6 +85,7 @@ type PaperFormState = {
   durationMinutes: string;
   maxAttempts: string;
   reviewEnabled: boolean;
+  reviewAttemptLimit: string;
   permissionRequired: boolean;
   passScore: string;
   description: string;
@@ -207,6 +208,7 @@ const buildPaperForm = (paperType: QuestionBankPaperType, totalScore: number): P
   durationMinutes: `${paperTypeMeta[paperType].defaultDuration}`,
   maxAttempts: "0",
   reviewEnabled: paperType === "subjective",
+  reviewAttemptLimit: "0",
   permissionRequired: false,
   passScore: `${Math.max(1, Math.round(totalScore * 0.6))}`,
   description: "",
@@ -1334,6 +1336,7 @@ export function QuestionBank() {
           durationMinutes: paperForm.durationMinutes ? Number(paperForm.durationMinutes) : undefined,
           maxAttempts: paperForm.maxAttempts ? Number(paperForm.maxAttempts) : undefined,
           reviewEnabled: paperForm.reviewEnabled,
+          reviewAttemptLimit: paperForm.reviewAttemptLimit ? Number(paperForm.reviewAttemptLimit) : undefined,
           permissionRequired: paperForm.permissionRequired,
           passScore: paperForm.passScore ? Number(paperForm.passScore) : undefined,
           description: paperForm.description.trim() || undefined,
@@ -2054,7 +2057,7 @@ export function QuestionBank() {
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-5">
             <div className="space-y-2">
               <Label>年份</Label>
               <Input type="number" value={paperForm.year} onChange={(event) => setPaperForm((current) => ({ ...current, year: event.target.value }))} />
@@ -2070,6 +2073,10 @@ export function QuestionBank() {
             <div className="space-y-2">
               <Label>考试次数限制</Label>
               <Input type="number" min={0} value={paperForm.maxAttempts} onChange={(event) => setPaperForm((current) => ({ ...current, maxAttempts: event.target.value }))} placeholder="0 表示不限" />
+            </div>
+            <div className="space-y-2">
+              <Label>批改次数限制</Label>
+              <Input type="number" min={0} value={paperForm.reviewAttemptLimit} onChange={(event) => setPaperForm((current) => ({ ...current, reviewAttemptLimit: event.target.value }))} placeholder="0 表示每次都批改，1 表示仅首次数批改" />
             </div>
           </div>
 

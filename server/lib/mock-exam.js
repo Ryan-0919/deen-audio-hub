@@ -886,6 +886,11 @@ export const buildMockExamSections = (questions = []) =>
 
 const getSubjectiveQuestionCount = (questions = []) => questions.filter((question) => isSubjectiveQuestionType(question.type)).length;
 
+const getReviewAttemptLimitForPaper = (paper) => {
+  const normalized = Number(paper?.reviewAttemptLimit ?? 0);
+  return Number.isFinite(normalized) && normalized >= 0 ? Math.floor(normalized) : 0;
+};
+
 const isReviewEnabledForPaper = (paper) => {
   if (typeof paper?.reviewEnabled === "boolean") {
     return paper.reviewEnabled;
@@ -926,6 +931,32 @@ const getMockExamRecordReviewWorkflowStatus = (record) => {
   }
 
   return "ai_pending";
+};
+
+const isRecordEligibleForReview = (record) => {
+  if (!record || record.status !== "submitted") {
+    return false;
+  }
+
+  const paper = getRecordPaper(record);
+  if (!paper) {
+    return false;
+  }
+
+  if (getSubjectiveQuestionCount(paper.questions ?? []) <= 0) {
+    return false;
+  }
+
+  if (!isReviewEnabledForPaper(paper)) {
+    return false;
+  }
+
+  const reviewAttemptLimit = getReviewAttemptLimitForPaper(paper);
+  if (reviewAttemptLimit <= 0) {
+    return true;
+  }
+
+  return Number(record?.attemptNo ?? 0) <= reviewAttemptLimit;
 };
 
 const isManualReviewLockActive = (record, currentTime = new Date()) => {
@@ -971,14 +1002,12 @@ const isMockExamRecordPublishedToUser = (record) => {
     return true;
   }
 
-  const paper = getRecordPaper(record);
-  return record?.status === "submitted" && !isReviewEnabledForPaper(paper);
+  return record?.status === "submitted" && !isRecordEligibleForReview(record);
 };
 
 const isMockExamRecordReviewPending = (record) =>
   record?.status === "submitted" &&
-  getSubjectiveQuestionCount(getRecordPaper(record)?.questions ?? []) > 0 &&
-  isReviewEnabledForPaper(getRecordPaper(record)) &&
+  isRecordEligibleForReview(record) &&
   !isMockExamRecordPublishedToUser(record);
 
 const getAdminMockExamReviewStatus = (record, adminId = "", currentTime = new Date()) => {
@@ -1117,6 +1146,7 @@ export const serializeMockExamPaperSummary = ({ paper, activeRecord = null, late
   durationMinutes: paper.durationMinutes,
   maxAttempts: Number(paper.maxAttempts ?? 0),
   reviewEnabled: isReviewEnabledForPaper(paper),
+  reviewAttemptLimit: getReviewAttemptLimitForPaper(paper),
   permissionRequired: Boolean(paper.permissionRequired),
   openTime: paper.openTime ? formatDateTime(paper.openTime) : "",
   isOpen: !paper.openTime || new Date(paper.openTime).getTime() <= currentTime.getTime(),
@@ -1242,6 +1272,7 @@ export const serializeAdminMockExamPaperSummary = (paper) => {
     durationMinutes: Number(paper.durationMinutes ?? 0),
     maxAttempts: Number(paper.maxAttempts ?? 0),
     reviewEnabled: isReviewEnabledForPaper(paper),
+    reviewAttemptLimit: getReviewAttemptLimitForPaper(paper),
     permissionRequired: Boolean(paper.permissionRequired),
     openTime: paper.openTime ? formatDateTime(paper.openTime) : "",
     totalScore,
@@ -1479,6 +1510,7 @@ const buildAdminPaperCreateData = ({ payload, maxSortOrder = 0 }) => {
     durationMinutes: parsePositiveIntOrNull(payload?.durationMinutes) ?? adminPaperDefaultDurationMap[paperType],
     maxAttempts: parseNonNegativeIntOrNull(payload?.maxAttempts) ?? 0,
     reviewEnabled: payload?.reviewEnabled === undefined ? paperType === "subjective" : `${payload?.reviewEnabled}` !== "false",
+    reviewAttemptLimit: parseNonNegativeIntOrNull(payload?.reviewAttemptLimit) ?? 0,
     permissionRequired: `${payload?.permissionRequired ?? ""}` === "true",
     totalScore: 0,
     questionCount: 0,
@@ -1539,6 +1571,10 @@ const buildAdminPaperUpdateData = ({ payload, paper }) => {
       payload?.reviewEnabled === undefined
         ? Boolean(paper.reviewEnabled ?? isReviewEnabledForPaper({ ...paper, questions }))
         : `${payload?.reviewEnabled}` !== "false",
+    reviewAttemptLimit:
+      payload?.reviewAttemptLimit === undefined
+        ? getReviewAttemptLimitForPaper(paper)
+        : parseNonNegativeIntOrNull(payload?.reviewAttemptLimit) ?? 0,
     permissionRequired:
       payload?.permissionRequired === undefined ? Boolean(paper.permissionRequired) : `${payload?.permissionRequired}` === "true",
     totalScore,
@@ -1794,6 +1830,7 @@ const cloneAdminMockExamPaperForEditing = async ({ tx, paperId }) => {
       durationMinutes: Number(sourcePaper.durationMinutes ?? 0),
       maxAttempts: Number(sourcePaper.maxAttempts ?? 0),
       reviewEnabled: Boolean(sourcePaper.reviewEnabled ?? isReviewEnabledForPaper(sourcePaper)),
+      reviewAttemptLimit: getReviewAttemptLimitForPaper(sourcePaper),
       permissionRequired: Boolean(sourcePaper.permissionRequired),
       totalScore: Number(sourcePaper.totalScore ?? 0),
       questionCount: Number(sourcePaper.questionCount ?? 0),
@@ -2246,8 +2283,7 @@ export const serializeMockExamRecordDetail = (record, currentTime = new Date()) 
   ).length;
   const finalScorePending =
     record.status === "submitted" &&
-    getSubjectiveQuestionCount(getRecordPaper(record)?.questions ?? []) > 0 &&
-    isReviewEnabledForPaper(getRecordPaper(record)) &&
+    isRecordEligibleForReview(record) &&
     !isPublishedToUser;
 
   return {
@@ -2276,6 +2312,7 @@ export const serializeMockExamRecordDetail = (record, currentTime = new Date()) 
       durationMinutes: paper.durationMinutes,
       maxAttempts: Number(paper.maxAttempts ?? 0),
       reviewEnabled: isReviewEnabledForPaper(paper),
+      reviewAttemptLimit: getReviewAttemptLimitForPaper(paper),
       totalScore: paper.totalScore,
       questionCount: paper.questionCount,
       passScore: paper.passScore,
@@ -2291,7 +2328,7 @@ export const serializeMockExamRecordDetail = (record, currentTime = new Date()) 
       isPassed: finalScorePending ? null : record.totalScore >= paper.passScore,
     },
     questions: serializedQuestions,
-    reviewEnabled: isReviewEnabledForPaper(paper),
+    reviewEnabled: isRecordEligibleForReview(record),
   };
 };
 
@@ -2441,6 +2478,24 @@ const getInitialReviewWorkflowStatusForPaper = (paper) => {
   return "ai_pending";
 };
 
+const getInitialReviewWorkflowStatusForRecord = (record, paper) => {
+  const subjectiveQuestionCount = getSubjectiveQuestionCount(paper?.questions ?? []);
+  if (subjectiveQuestionCount <= 0) {
+    return "not_required";
+  }
+
+  if (!isReviewEnabledForPaper(paper)) {
+    return "published";
+  }
+
+  const reviewAttemptLimit = getReviewAttemptLimitForPaper(paper);
+  if (reviewAttemptLimit > 0 && Number(record?.attemptNo ?? 0) > reviewAttemptLimit) {
+    return "published";
+  }
+
+  return "ai_pending";
+};
+
 const getBoundedConsumedSeconds = (record, currentTime = new Date()) =>
   Math.min(Math.max(0, getElapsedSeconds(record, currentTime)), Math.max(0, Math.floor(record.allottedSeconds ?? 0)));
 
@@ -2502,7 +2557,7 @@ export const serializeUserMockExamHistoryItem = (record) => ({
   questionCount: Number(record.questionCount ?? 0),
   subjectiveQuestionCount: getSubjectiveQuestionCount(getRecordPaper(record)?.questions ?? []),
   reviewStatus: isMockExamRecordPublishedToUser(record) ? "published" : getMockExamRecordReviewWorkflowStatus(record),
-  reviewEnabled: isReviewEnabledForPaper(getRecordPaper(record)),
+  reviewEnabled: isRecordEligibleForReview(record),
   submittedAt: record.submittedAt ? formatDateTime(record.submittedAt) : "",
   reviewedAt: record.reviewedAt ? formatDateTime(record.reviewedAt) : "",
   publishedAt: record.publishedAt ? formatDateTime(record.publishedAt) : "",
@@ -3018,19 +3073,21 @@ export const finalizeMockExamRecord = async ({ db, recordId, userId, currentTime
       }
     }
 
+    const nextReviewWorkflowStatus = getInitialReviewWorkflowStatusForRecord(record, paper);
+
     await tx.mockExamRecord.update({
       where: { id: record.id },
       data: {
         activeKey: null,
         status: "submitted",
-        reviewWorkflowStatus: getInitialReviewWorkflowStatusForPaper(paper),
+        reviewWorkflowStatus: nextReviewWorkflowStatus,
         isPaused: false,
         answeredCount,
         correctCount,
         totalScore,
         consumedSeconds: getBoundedConsumedSeconds(record, currentTime),
         submittedAt: currentTime,
-        publishedAt: getInitialReviewWorkflowStatusForPaper(paper) === "published" ? currentTime : null,
+        publishedAt: nextReviewWorkflowStatus === "published" ? currentTime : null,
       },
     });
 
@@ -3755,7 +3812,7 @@ export const getMockExamReviewRecord = async ({ db, recordId, currentTime = new 
     throw createHttpError("该考试记录不需要主观题批改", 400);
   }
 
-  if (!isReviewEnabledForPaper(getRecordPaper(record))) {
+  if (!isRecordEligibleForReview(record)) {
     throw createHttpError("该试卷未开启人工批改", 400);
   }
 
@@ -3771,7 +3828,7 @@ const assertReviewRecordCanBeManuallyHandled = (record) => {
     throw createHttpError("该考试记录不需要主观题批改", 400);
   }
 
-  if (!isReviewEnabledForPaper(getRecordPaper(record))) {
+  if (!isRecordEligibleForReview(record)) {
     throw createHttpError("该试卷未开启人工批改", 400);
   }
 };

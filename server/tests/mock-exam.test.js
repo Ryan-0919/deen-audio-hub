@@ -829,6 +829,74 @@ test("serializeMockExamRecordDetail keeps old subjective snapshots reviewable wh
   assert.equal(detail.summary.isPassed, null);
 });
 
+test("serializeMockExamRecordDetail does not wait for review after review-attempt limit is exceeded", () => {
+  const subjectiveQuestion = createQuestion({
+    id: "subjective_review_limit_1",
+    type: "subjective_case",
+    stem: "Subjective review limited case",
+    material: "Limited case material",
+    analysis: "Limited reference points",
+    score: 20,
+    correctAnswerJson: "[]",
+    options: [],
+    questionMetaJson: JSON.stringify({
+      sectionLabel: "一、案例分析题",
+      sectionDescription: "请在对应区域作答。",
+      subQuestions: [{ id: "sq_limit_1", title: "问题(1)" }],
+    }),
+  });
+
+  const detail = serializeMockExamRecordDetail({
+    id: "record_subjective_review_limit_2",
+    status: "submitted",
+    attemptNo: 2,
+    questionCount: 1,
+    answeredCount: 1,
+    correctCount: 0,
+    totalScore: 14,
+    allottedSeconds: 7200,
+    consumedSeconds: 2100,
+    startedAt: new Date("2026-04-25T10:00:00.000Z"),
+    submittedAt: new Date("2026-04-25T10:35:00.000Z"),
+    publishedAt: new Date("2026-04-25T10:35:00.000Z"),
+    reviewWorkflowStatus: "published",
+    paper: {
+      id: "paper_subjective_review_limit",
+      code: "subjective_review_limit_demo",
+      title: "Subjective review limit demo paper",
+      subtitle: "",
+      year: 2026,
+      phase: "主观题",
+      durationMinutes: 120,
+      maxAttempts: 5,
+      reviewEnabled: true,
+      reviewAttemptLimit: 1,
+      totalScore: 20,
+      questionCount: 1,
+      passScore: 12,
+      description: "",
+      questions: [subjectiveQuestion],
+    },
+    answers: [
+      {
+        id: "answer_subjective_review_limit_1",
+        questionId: "subjective_review_limit_1",
+        answerJson: JSON.stringify({
+          sq_limit_1: "Follow-up answer",
+        }),
+        isCorrect: null,
+        score: 14,
+      },
+    ],
+  });
+
+  assert.equal(detail.reviewEnabled, false);
+  assert.equal(detail.paper.reviewAttemptLimit, 1);
+  assert.equal(detail.summary.finalScorePending, false);
+  assert.equal(detail.summary.pendingReviewCount, 0);
+  assert.equal(detail.summary.isPassed, true);
+});
+
 test("getMockExamReviewRecord rejects subjective records when review is disabled", async () => {
   const record = {
     id: "record_review_disabled",

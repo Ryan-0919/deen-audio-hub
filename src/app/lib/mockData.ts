@@ -776,6 +776,7 @@ export interface MockExamPaper {
   durationMinutes: number;
   maxAttempts: number;
   reviewEnabled: boolean;
+  reviewAttemptLimit: number;
   permissionRequired: boolean;
   openTime: string;
   isOpen: boolean;
@@ -1020,6 +1021,7 @@ export interface AdminMockExamPaperSummary {
   durationMinutes: number;
   maxAttempts: number;
   reviewEnabled: boolean;
+  reviewAttemptLimit: number;
   permissionRequired: boolean;
   openTime: string;
   totalScore: number;
@@ -1100,6 +1102,7 @@ export interface AdminMockExamPaperPayload {
   durationMinutes?: number | string;
   maxAttempts?: number | string;
   reviewEnabled?: boolean;
+  reviewAttemptLimit?: number | string;
   permissionRequired?: boolean;
   passScore?: number | string;
   description?: string;
@@ -2322,6 +2325,7 @@ export const mockApi = {
       durationMinutes?: number;
       maxAttempts?: number;
       reviewEnabled?: boolean;
+      reviewAttemptLimit?: number;
       passScore?: number;
       description?: string;
       status?: AdminMockExamPaperStatus;

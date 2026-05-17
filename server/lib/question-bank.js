@@ -849,6 +849,10 @@ const generatePaperCode = () => `qb_${Date.now().toString(36)}_${Math.random().t
 
 const toPaperStatus = (value) => (`${value ?? ""}`.trim() === "published" ? "published" : "draft");
 const toReviewEnabled = (value, fallback = true) => (value === undefined ? fallback : `${value}` !== "false");
+const toNonNegativeInt = (value, fallback = 0) => {
+  const parsed = Number.parseInt(`${value ?? ""}`.trim(), 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+};
 
 export const createMockExamPaperFromQuestionBank = async ({ db, itemIds, paper }) => {
   const normalizedItemIds = Array.from(new Set((Array.isArray(itemIds) ? itemIds : []).map((item) => `${item ?? ""}`.trim()).filter(Boolean)));
@@ -918,8 +922,9 @@ export const createMockExamPaperFromQuestionBank = async ({ db, itemIds, paper }
         year: Number.isFinite(year) && year > 0 ? year : null,
         phase: toNullableString(paper?.phase),
         durationMinutes: Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : paperTypes.has("subjective") ? 240 : 90,
-        maxAttempts: Number.parseInt(`${paper?.maxAttempts ?? ""}`.trim(), 10) >= 0 ? Number.parseInt(`${paper?.maxAttempts ?? ""}`.trim(), 10) : 0,
+        maxAttempts: toNonNegativeInt(paper?.maxAttempts, 0),
         reviewEnabled: toReviewEnabled(paper?.reviewEnabled, paperTypes.has("subjective")),
+        reviewAttemptLimit: toNonNegativeInt(paper?.reviewAttemptLimit, 0),
         totalScore,
         questionCount: orderedItems.length,
         passScore: Number.isFinite(passScore) && passScore >= 0 ? passScore : Math.max(1, Math.round(totalScore * 0.6)),
