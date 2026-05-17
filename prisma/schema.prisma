@@ -501,6 +501,7 @@ model MockExamPaper {
   passScore       Int                   @default(0)
   description     String?               @db.LongText
   status          MockExamPaperStatus   @default(published)
+  openTime        DateTime?
   sortOrder       Int                   @default(0)
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
@@ -514,6 +515,7 @@ model MockExamPaper {
   @@index([seriesId, sortOrder])
   @@index([status, sortOrder])
   @@index([year, sortOrder])
+  @@index([status, openTime, sortOrder])
 }
 
 model MockExamLeaderboardEntry {

@@ -1118,6 +1118,8 @@ export const serializeMockExamPaperSummary = ({ paper, activeRecord = null, late
   maxAttempts: Number(paper.maxAttempts ?? 0),
   reviewEnabled: isReviewEnabledForPaper(paper),
   permissionRequired: Boolean(paper.permissionRequired),
+  openTime: paper.openTime ? formatDateTime(paper.openTime) : "",
+  isOpen: !paper.openTime || new Date(paper.openTime).getTime() <= currentTime.getTime(),
   totalScore: paper.totalScore,
   questionCount: paper.questionCount,
   passScore: paper.passScore,
@@ -1241,6 +1243,7 @@ export const serializeAdminMockExamPaperSummary = (paper) => {
     maxAttempts: Number(paper.maxAttempts ?? 0),
     reviewEnabled: isReviewEnabledForPaper(paper),
     permissionRequired: Boolean(paper.permissionRequired),
+    openTime: paper.openTime ? formatDateTime(paper.openTime) : "",
     totalScore,
     questionCount,
     passScore: Number(paper.passScore ?? 0),
@@ -1317,6 +1320,20 @@ const parsePositiveIntOrNull = (value) => {
 const parseNonNegativeIntOrNull = (value) => {
   const parsed = Number.parseInt(`${value ?? ""}`.trim(), 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+};
+
+const parseDateTimeOrNull = (value) => {
+  const normalized = `${value ?? ""}`.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const timestamp = Date.parse(normalized);
+  if (!Number.isFinite(timestamp)) {
+    throw createHttpError("开放时间格式不正确", 400);
+  }
+
+  return new Date(timestamp);
 };
 
 const getPaperTotalScore = (questions = []) => questions.reduce((sum, question) => sum + Number(question.score ?? 0), 0);
@@ -1468,6 +1485,7 @@ const buildAdminPaperCreateData = ({ payload, maxSortOrder = 0 }) => {
     passScore: 0,
     description: toNullableAdminText(payload?.description),
     status,
+    openTime: parseDateTimeOrNull(payload?.openTime),
     sortOrder: parsePositiveIntOrNull(payload?.sortOrder) ?? maxSortOrder + 1,
   };
 };
@@ -1528,6 +1546,7 @@ const buildAdminPaperUpdateData = ({ payload, paper }) => {
     passScore,
     description: payload?.description === undefined ? paper.description ?? null : toNullableAdminText(payload?.description),
     status,
+    openTime: payload?.openTime === undefined ? paper.openTime ?? null : parseDateTimeOrNull(payload?.openTime),
     sortOrder: payload?.sortOrder === undefined ? Number(paper.sortOrder ?? 0) : parsePositiveIntOrNull(payload?.sortOrder) ?? Number(paper.sortOrder ?? 0),
   };
 };
@@ -1781,6 +1800,7 @@ const cloneAdminMockExamPaperForEditing = async ({ tx, paperId }) => {
       passScore: Number(sourcePaper.passScore ?? 0),
       description: sourcePaper.description ?? null,
       status: "draft",
+      openTime: sourcePaper.openTime ?? null,
       sortOrder: Number(maxSortPaper?.sortOrder ?? 0) + 1,
     },
     select: {
@@ -2359,6 +2379,17 @@ const assertMockExamPaperPermission = async ({ db, userId, paperId }) => {
   }
 
   return permission;
+};
+
+const assertMockExamPaperOpened = (paper, currentTime = new Date()) => {
+  if (!paper?.openTime) {
+    return;
+  }
+
+  const openTime = new Date(paper.openTime);
+  if (openTime.getTime() > currentTime.getTime()) {
+    throw createHttpError(`该试卷开放时间为 ${formatDateTime(openTime)}，暂未到开放时间`, 403);
+  }
 };
 
 const getReviewRecordWithPaper = (db, recordId) =>
@@ -3140,6 +3171,8 @@ export const startMockExamRecord = async ({ db, paperId, userId, currentTime = n
   if (!paper) {
     throw createHttpError("试卷不存在", 404);
   }
+
+  assertMockExamPaperOpened(paper, currentTime);
 
   const activeKey = buildMockExamActiveKey(paperId, userId);
   let existingRecord = await db.mockExamRecord.findFirst({

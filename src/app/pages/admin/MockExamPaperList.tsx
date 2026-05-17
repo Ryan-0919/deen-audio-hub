@@ -210,6 +210,7 @@ export function MockExamPaperList() {
           <TableRow>
             <TableHead>试卷</TableHead>
             <TableHead>状态</TableHead>
+            <TableHead>开放时间</TableHead>
             <TableHead>题量 / 总分</TableHead>
             <TableHead>考试时长</TableHead>
             <TableHead>次数限制</TableHead>
@@ -224,7 +225,7 @@ export function MockExamPaperList() {
         <TableBody>
           {papers.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={11} className="py-10 text-center text-sm text-slate-500">
+              <TableCell colSpan={12} className="py-10 text-center text-sm text-slate-500">
                 当前筛选条件下没有{paperTypeMeta[currentType].label}试卷
               </TableCell>
             </TableRow>
@@ -249,6 +250,7 @@ export function MockExamPaperList() {
                 <TableCell>
                   <Badge className={paperStatusMeta[paper.status].className}>{paperStatusMeta[paper.status].label}</Badge>
                 </TableCell>
+                <TableCell>{paper.openTime || "立即开放"}</TableCell>
                 <TableCell>
                   {paper.questionCount} 题 / {paper.totalScore} 分
                 </TableCell>

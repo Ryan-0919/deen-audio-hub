@@ -102,6 +102,13 @@ const buildAttemptsText = (paper: MockExamPaper) =>
     .filter(Boolean)
     .join(" · ");
 
+const buildOpenTimeText = (paper: MockExamPaper) => {
+  if (paper.isOpen) {
+    return "";
+  }
+  return paper.openTime ? `开放时间 ${paper.openTime}` : "暂未开放";
+};
+
 const groupPapersBySeries = (papers: MockExamPaper[]) => {
   const groups = new Map<string, { key: string; label: string; papers: MockExamPaper[] }>();
 
@@ -130,6 +137,10 @@ const groupPapersBySeries = (papers: MockExamPaper[]) => {
 };
 
 const getActionLabel = (paper: MockExamPaper) => {
+  if (!paper.isOpen) {
+    return "未开放";
+  }
+
   if (paper.activeRecord?.canResume) {
     return "继续作答";
   }
@@ -152,15 +163,22 @@ function PaperCard({
 }) {
   const typeMeta = paperTypeMeta[category];
   const Icon = category === "objective" ? BookOpenText : PenSquare;
+  const disabled = !paper.isOpen;
 
   return (
     <motion.button
       type="button"
-      onClick={() => onOpen(paper)}
+      onClick={() => {
+        if (disabled) {
+          return;
+        }
+        onOpen(paper);
+      }}
+      disabled={disabled}
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
-      className="group flex flex-col text-left"
+      className={cn("group flex flex-col text-left", disabled ? "cursor-not-allowed opacity-75" : "")}
     >
       <div className="relative aspect-[4/3] w-full overflow-hidden rounded-[26px] border border-white/10 bg-black/18 shadow-[0_20px_70px_rgba(0,0,0,0.24)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-white/18 hover:shadow-[0_30px_110px_rgba(0,0,0,0.34)] md:rounded-[30px]">
         {paper.coverUrl ? (
@@ -194,6 +212,7 @@ function PaperCard({
         </div>
         <h4 className="line-clamp-1 text-[15px] font-bold tracking-tight text-white md:text-[17px]">{paper.title}</h4>
         <p className="mt-1 text-[11px] font-medium text-white/34">{buildAttemptsText(paper)}</p>
+        {!paper.isOpen ? <p className="mt-1 text-[11px] font-medium text-[#ffd39a]">{buildOpenTimeText(paper)}</p> : null}
       </div>
     </motion.button>
   );
@@ -250,6 +269,10 @@ export function MockExamHome() {
         };
 
   const openPaper = (paper: MockExamPaper) => {
+    if (!paper.isOpen) {
+      window.alert(buildOpenTimeText(paper) || "该试卷暂未开放");
+      return;
+    }
     navigate(getExamEntryPath(paper.id));
   };
 

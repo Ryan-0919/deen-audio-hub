@@ -73,6 +73,7 @@ type PaperFormState = {
   passScore: string;
   description: string;
   status: AdminMockExamPaperStatus;
+  openTime: string;
   sortOrder: string;
 };
 
@@ -93,8 +94,17 @@ const createEmptyPaperForm = (paperType: AdminMockExamPaperType = "objective"): 
   passScore: "0",
   description: "",
   status: "draft",
+  openTime: "",
   sortOrder: "",
 });
+
+const toDateTimeLocalValue = (value: string) => {
+  const normalized = `${value ?? ""}`.trim();
+  if (!normalized) {
+    return "";
+  }
+  return normalized.replace(" ", "T").slice(0, 16);
+};
 
 const mapPaperDetailToForm = (paper: AdminMockExamPaperDetail): PaperFormState => ({
   title: paper.title,
@@ -113,6 +123,7 @@ const mapPaperDetailToForm = (paper: AdminMockExamPaperDetail): PaperFormState =
   passScore: `${paper.passScore}`,
   description: paper.description,
   status: paper.status,
+  openTime: toDateTimeLocalValue(paper.openTime),
   sortOrder: paper.sortOrder > 0 ? `${paper.sortOrder}` : "",
 });
 
@@ -133,6 +144,7 @@ const buildPaperPayload = (form: PaperFormState): AdminMockExamPaperPayload => (
   passScore: form.passScore.trim() || undefined,
   description: form.description.trim() || undefined,
   status: form.status,
+  openTime: form.openTime.trim() || undefined,
   sortOrder: form.sortOrder.trim() || undefined,
 });
 
@@ -644,6 +656,12 @@ export function MockExamPaperEditor() {
                   <Label>排序值</Label>
                   <Input value={form.sortOrder} onChange={(event) => updateForm("sortOrder", event.target.value)} placeholder="数值越小越靠前" />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>开放时间</Label>
+                <Input type="datetime-local" value={form.openTime} onChange={(event) => updateForm("openTime", event.target.value)} />
+                <p className="text-xs text-slate-400">留空表示保存后立即可开放；设置后，只有到达该时间点学生才能进入考试。</p>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">

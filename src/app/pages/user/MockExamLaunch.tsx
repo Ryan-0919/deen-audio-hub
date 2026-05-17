@@ -177,6 +177,30 @@ export function MockExamLaunch() {
     );
   }
 
+  if (!selectedPaper.isOpen) {
+    return (
+      <MockExamShadowRoot>
+        <div className="webLoginExe" data-mock-screen="login">
+          <div className="webBox">
+            <div className="conBox">
+              <div className="loginBox" style={{ paddingTop: "135px", textAlign: "center", color: "#255dad", fontWeight: 700 }}>
+                该试卷暂未开放
+                <div style={{ marginTop: "16px", fontSize: "14px", fontWeight: 500, color: "#5476a4" }}>
+                  {selectedPaper.openTime ? `开放时间：${selectedPaper.openTime}` : "请稍后再试"}
+                </div>
+                <div className="btn" style={{ marginTop: "28px", marginLeft: "220px" }}>
+                  <button type="button" className="mock-login-image-btn" onClick={handleBackHome}>
+                    返回列表
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </MockExamShadowRoot>
+    );
+  }
+
   return (
     <MockExamShadowRoot>
       {step === "login" ? (

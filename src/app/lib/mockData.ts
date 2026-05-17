@@ -777,6 +777,8 @@ export interface MockExamPaper {
   maxAttempts: number;
   reviewEnabled: boolean;
   permissionRequired: boolean;
+  openTime: string;
+  isOpen: boolean;
   totalScore: number;
   questionCount: number;
   passScore: number;
@@ -1019,6 +1021,7 @@ export interface AdminMockExamPaperSummary {
   maxAttempts: number;
   reviewEnabled: boolean;
   permissionRequired: boolean;
+  openTime: string;
   totalScore: number;
   questionCount: number;
   passScore: number;
@@ -1101,6 +1104,7 @@ export interface AdminMockExamPaperPayload {
   passScore?: number | string;
   description?: string;
   status?: AdminMockExamPaperStatus;
+  openTime?: string;
   sortOrder?: number | string;
   code?: string;
 }
