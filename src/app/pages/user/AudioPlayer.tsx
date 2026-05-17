@@ -202,7 +202,7 @@ export function AudioPlayer() {
 
   const handleAudioEnd = async () => {
     setIsPlaying(false);
-    await markCompleted();
+    void markCompleted();
 
     if (loopMode === "single") {
       await replayCurrentAudio();
@@ -210,11 +210,13 @@ export function AudioPlayer() {
     }
 
     if (nextAudio && courseId) {
+      autoplayRequestedRef.current = true;
       navigate(`/user/player/${courseId}/${nextAudio.id}`, { state: { autoplay: true } });
       return;
     }
 
     if (firstAudio && courseId && firstAudio.id !== audioId) {
+      autoplayRequestedRef.current = true;
       navigate(`/user/player/${courseId}/${firstAudio.id}`, { state: { autoplay: true } });
       return;
     }
@@ -226,7 +228,7 @@ export function AudioPlayer() {
 
   useEffect(() => {
     const node = audioRef.current;
-    if (!node || !audio) return;
+    if (!node || !audio || audio.id !== audioId) return;
 
     const tryAutoplay = async () => {
       if (!autoplayRequestedRef.current) return;
