@@ -896,6 +896,7 @@ export interface UserMockExamHistoryItem {
   subjectiveQuestionCount: number;
   reviewStatus: "published" | "ai_pending" | "ai_processing" | "manual_pending";
   reviewEnabled: boolean;
+  reviewVisibleToUser: boolean;
   submittedAt: string;
   reviewedAt: string;
   publishedAt: string;

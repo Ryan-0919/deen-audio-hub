@@ -895,6 +895,236 @@ test("serializeMockExamRecordDetail does not wait for review after review-attemp
   assert.equal(detail.summary.finalScorePending, false);
   assert.equal(detail.summary.pendingReviewCount, 0);
   assert.equal(detail.summary.isPassed, true);
+  assert.equal(detail.reviewWorkflowStatus, "not_required");
+});
+
+test("listMockExamReviewRecords excludes records that no longer require review", async () => {
+  const submittedAt = new Date("2026-05-18T08:00:00.000Z");
+  const subjectiveQuestion = createQuestion({
+    id: "subjective_excluded_1",
+    type: "subjective_case",
+    stem: "Subjective excluded case",
+    score: 20,
+    correctAnswerJson: "[]",
+    options: [],
+    questionMetaJson: JSON.stringify({
+      subQuestions: [{ id: "sq_excluded_1", title: "问题(1)" }],
+    }),
+  });
+
+  const includedRecord = {
+    id: "record_included_1",
+    status: "submitted",
+    attemptNo: 1,
+    questionCount: 1,
+    answeredCount: 1,
+    correctCount: 0,
+    totalScore: 0,
+    allottedSeconds: 7200,
+    consumedSeconds: 1200,
+    startedAt: submittedAt,
+    submittedAt,
+    reviewedAt: null,
+    publishedAt: null,
+    reviewWorkflowStatus: "ai_pending",
+    paperSnapshotJson: JSON.stringify({
+      paper: {
+        id: "paper_included_1",
+        code: "paper_included_1",
+        title: "Included paper",
+        phase: "主观题",
+        durationMinutes: 120,
+        maxAttempts: 0,
+        reviewEnabled: true,
+        reviewAttemptLimit: 1,
+        totalScore: 20,
+        questionCount: 1,
+        passScore: 12,
+        description: "",
+      },
+      questions: [
+        {
+          id: "subjective_excluded_1",
+          sortOrder: 1,
+          type: "subjective_case",
+          score: 20,
+          material: "",
+          stem: "Subjective excluded case",
+          analysis: "",
+          correctAnswerJson: "[]",
+          questionMetaJson: JSON.stringify({
+            subQuestions: [{ id: "sq_excluded_1", title: "问题(1)" }],
+          }),
+          options: [],
+        },
+      ],
+    }),
+    user: {
+      id: "user_included_1",
+      phone: "13800001111",
+    },
+    paper: {
+      id: "paper_included_1",
+      code: "paper_included_1",
+      title: "Included paper",
+      phase: "主观题",
+      year: 2026,
+      totalScore: 20,
+      passScore: 12,
+      reviewEnabled: true,
+      reviewAttemptLimit: 1,
+      questions: [subjectiveQuestion],
+    },
+    answers: [],
+  };
+
+  const excludedRecord = {
+    ...includedRecord,
+    id: "record_excluded_2",
+    attemptNo: 2,
+    reviewWorkflowStatus: "not_required",
+    user: {
+      id: "user_excluded_2",
+      phone: "13800002222",
+    },
+  };
+
+  const records = [includedRecord, excludedRecord];
+  const fakeDb = {
+    mockExamRecord: {
+      count: async ({ where }) => records.filter((record) => matchesWhere(record, where)).length,
+      findMany: async ({ where }) => records.filter((record) => matchesWhere(record, where)),
+      updateMany: async () => ({ count: 0 }),
+    },
+    systemConfig: {
+      findUnique: async () => null,
+    },
+  };
+
+  const result = await listMockExamReviewRecords({
+    db: fakeDb,
+    reviewStatus: "ai_pending",
+    currentAdminId: "",
+    currentTime: submittedAt,
+  });
+
+  assert.equal(result.list.length, 1);
+  assert.equal(result.list[0].id, "record_included_1");
+});
+
+test("listMockExamReviewRecords excludes records that no longer require review from published tab too", async () => {
+  const submittedAt = new Date("2026-05-18T08:00:00.000Z");
+  const subjectiveQuestion = createQuestion({
+    id: "subjective_excluded_published_1",
+    type: "subjective_case",
+    stem: "Subjective excluded published case",
+    score: 20,
+    correctAnswerJson: "[]",
+    options: [],
+    questionMetaJson: JSON.stringify({
+      subQuestions: [{ id: "sq_excluded_published_1", title: "问题(1)" }],
+    }),
+  });
+
+  const publishedRecord = {
+    id: "record_published_1",
+    status: "submitted",
+    attemptNo: 1,
+    questionCount: 1,
+    answeredCount: 1,
+    correctCount: 0,
+    totalScore: 16,
+    allottedSeconds: 7200,
+    consumedSeconds: 1200,
+    startedAt: submittedAt,
+    submittedAt,
+    reviewedAt: submittedAt,
+    publishedAt: submittedAt,
+    reviewWorkflowStatus: "published",
+    paperSnapshotJson: JSON.stringify({
+      paper: {
+        id: "paper_published_1",
+        code: "paper_published_1",
+        title: "Published paper",
+        phase: "主观题",
+        durationMinutes: 120,
+        maxAttempts: 0,
+        reviewEnabled: true,
+        reviewAttemptLimit: 1,
+        totalScore: 20,
+        questionCount: 1,
+        passScore: 12,
+        description: "",
+      },
+      questions: [
+        {
+          id: "subjective_excluded_published_1",
+          sortOrder: 1,
+          type: "subjective_case",
+          score: 20,
+          material: "",
+          stem: "Subjective excluded published case",
+          analysis: "",
+          correctAnswerJson: "[]",
+          questionMetaJson: JSON.stringify({
+            subQuestions: [{ id: "sq_excluded_published_1", title: "问题(1)" }],
+          }),
+          options: [],
+        },
+      ],
+    }),
+    user: {
+      id: "user_published_1",
+      phone: "13800003333",
+    },
+    paper: {
+      id: "paper_published_1",
+      code: "paper_published_1",
+      title: "Published paper",
+      phase: "主观题",
+      year: 2026,
+      totalScore: 20,
+      passScore: 12,
+      reviewEnabled: true,
+      reviewAttemptLimit: 1,
+      questions: [subjectiveQuestion],
+    },
+    answers: [],
+  };
+
+  const excludedRecord = {
+    ...publishedRecord,
+    id: "record_excluded_published_2",
+    attemptNo: 2,
+    reviewWorkflowStatus: "not_required",
+    user: {
+      id: "user_excluded_published_2",
+      phone: "13800004444",
+    },
+  };
+
+  const records = [publishedRecord, excludedRecord];
+  const fakeDb = {
+    mockExamRecord: {
+      count: async ({ where }) => records.filter((record) => matchesWhere(record, where)).length,
+      findMany: async ({ where }) => records.filter((record) => matchesWhere(record, where)),
+      updateMany: async () => ({ count: 0 }),
+    },
+    systemConfig: {
+      findUnique: async () => null,
+    },
+  };
+
+  const result = await listMockExamReviewRecords({
+    db: fakeDb,
+    reviewStatus: "published",
+    currentAdminId: "",
+    currentTime: submittedAt,
+  });
+
+  assert.equal(result.list.length, 1);
+  assert.equal(result.list[0].id, "record_published_1");
+  assert.equal(result.summary.published, 1);
 });
 
 test("getMockExamReviewRecord rejects subjective records when review is disabled", async () => {

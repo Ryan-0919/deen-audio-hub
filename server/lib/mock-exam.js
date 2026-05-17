@@ -242,6 +242,7 @@ const buildRecordPaperSnapshot = (paper) =>
       durationMinutes: Number(paper.durationMinutes ?? 0),
       maxAttempts: Number(paper.maxAttempts ?? 0),
       reviewEnabled: isReviewEnabledForPaper(paper),
+      reviewAttemptLimit: getReviewAttemptLimitForPaper(paper),
       totalScore: Number(paper.totalScore ?? 0),
       questionCount: Number(paper.questionCount ?? 0),
       passScore: Number(paper.passScore ?? 0),
@@ -291,6 +292,10 @@ const parseRecordPaperSnapshot = (record) => {
     durationMinutes: Number(paper.durationMinutes ?? 0),
     maxAttempts: Number(paper.maxAttempts ?? 0),
     reviewEnabled: typeof paper.reviewEnabled === "boolean" ? paper.reviewEnabled : questions.some((question) => `${question?.type ?? ""}`.trim() === subjectiveQuestionType),
+    reviewAttemptLimit:
+      paper.reviewAttemptLimit === undefined || paper.reviewAttemptLimit === null || `${paper.reviewAttemptLimit ?? ""}`.trim() === ""
+        ? null
+        : Number(paper.reviewAttemptLimit ?? 0),
     totalScore: Number(paper.totalScore ?? 0),
     questionCount: Number(paper.questionCount ?? questions.length),
     passScore: Number(paper.passScore ?? 0),
@@ -391,8 +396,21 @@ const mergeSnapshotPaperWithLivePaper = (snapshotPaper, livePaper) => {
     livePaper.questions.map((question) => [`${question?.id ?? ""}`.trim(), question]),
   );
 
+  const snapshotReviewAttemptLimit = snapshotPaper.reviewAttemptLimit;
+  const fallbackReviewAttemptLimit =
+    snapshotReviewAttemptLimit === null || snapshotReviewAttemptLimit === undefined || !Number.isFinite(Number(snapshotReviewAttemptLimit))
+      ? Number(livePaper.reviewAttemptLimit ?? 0)
+      : Number(snapshotReviewAttemptLimit ?? 0);
+
   return {
     ...snapshotPaper,
+    reviewEnabled:
+      typeof snapshotPaper.reviewEnabled === "boolean"
+        ? snapshotPaper.reviewEnabled
+        : typeof livePaper.reviewEnabled === "boolean"
+          ? livePaper.reviewEnabled
+          : snapshotPaper.reviewEnabled,
+    reviewAttemptLimit: fallbackReviewAttemptLimit,
     questions: snapshotPaper.questions.map((question) =>
       mergeSnapshotQuestionLessonAudio(question, liveQuestionMap.get(question.id)),
     ),
@@ -915,7 +933,7 @@ const getMockExamRecordReviewWorkflowStatus = (record) => {
   }
 
   if (!requiresReview) {
-    return explicitStatus || "published";
+    return explicitStatus || "not_required";
   }
 
   if (record?.publishedAt) {
@@ -998,7 +1016,7 @@ const clearManualReviewLockData = () => ({
 
 const isMockExamRecordPublishedToUser = (record) => {
   const workflowStatus = getMockExamRecordReviewWorkflowStatus(record);
-  if (workflowStatus === "published") {
+  if (workflowStatus === "published" || workflowStatus === "not_required") {
     return true;
   }
 
@@ -1012,6 +1030,7 @@ const isMockExamRecordReviewPending = (record) =>
 
 const getAdminMockExamReviewStatus = (record, adminId = "", currentTime = new Date()) => {
   const workflowStatus = getMockExamRecordReviewWorkflowStatus(record);
+  if (workflowStatus === "not_required") return "not_required";
   if (workflowStatus === "published") return "published";
   if (workflowStatus === "manual_pending") return "manual_pending";
   if (isManualReviewLockedByAdmin(record, adminId, currentTime)) return "manual_reviewing";
@@ -1087,7 +1106,7 @@ const buildAdminMockExamReviewStatusWhere = ({
     const excludedFilters = [
       {
         reviewWorkflowStatus: {
-          in: ["ai_processing", "manual_pending", "published"],
+          in: ["ai_processing", "manual_pending", "published", "not_required"],
         },
       },
     ];
@@ -1101,8 +1120,48 @@ const buildAdminMockExamReviewStatusWhere = ({
     };
   }
 
-  return {};
+  return {
+    NOT: {
+      reviewWorkflowStatus: "not_required",
+    },
+  };
 };
+
+const buildReviewEligibleRecordWhere = () => ({
+  OR: [
+    {
+      paperSnapshotJson: {
+        contains: '"reviewEnabled":true',
+      },
+      NOT: {
+        paperSnapshotJson: {
+          contains: '"reviewWorkflowStatus":"published"',
+        },
+      },
+    },
+    {
+      AND: [
+        {
+          paper: {
+            is: {
+              reviewEnabled: true,
+            },
+          },
+        },
+        {
+          OR: [
+            {
+              paperSnapshotJson: null,
+            },
+            {
+              paperSnapshotJson: "",
+            },
+          ],
+        },
+      ],
+    },
+  ],
+});
 
 const serializeRecordSummary = (record, currentTime = new Date()) => {
   if (!record) return null;
@@ -2472,7 +2531,7 @@ const getInitialReviewWorkflowStatusForPaper = (paper) => {
   }
 
   if (!isReviewEnabledForPaper(paper)) {
-    return "published";
+    return "not_required";
   }
 
   return "ai_pending";
@@ -2485,12 +2544,12 @@ const getInitialReviewWorkflowStatusForRecord = (record, paper) => {
   }
 
   if (!isReviewEnabledForPaper(paper)) {
-    return "published";
+    return "not_required";
   }
 
   const reviewAttemptLimit = getReviewAttemptLimitForPaper(paper);
   if (reviewAttemptLimit > 0 && Number(record?.attemptNo ?? 0) > reviewAttemptLimit) {
-    return "published";
+    return "not_required";
   }
 
   return "ai_pending";
@@ -2558,6 +2617,7 @@ export const serializeUserMockExamHistoryItem = (record) => ({
   subjectiveQuestionCount: getSubjectiveQuestionCount(getRecordPaper(record)?.questions ?? []),
   reviewStatus: isMockExamRecordPublishedToUser(record) ? "published" : getMockExamRecordReviewWorkflowStatus(record),
   reviewEnabled: isRecordEligibleForReview(record),
+  reviewVisibleToUser: isMockExamRecordReviewPending(record),
   submittedAt: record.submittedAt ? formatDateTime(record.submittedAt) : "",
   reviewedAt: record.reviewedAt ? formatDateTime(record.reviewedAt) : "",
   publishedAt: record.publishedAt ? formatDateTime(record.publishedAt) : "",
@@ -2600,7 +2660,7 @@ export const listUserVisibleMockExamRecords = async ({ db, userId }) => {
   });
 
   return records
-    .filter((record) => isMockExamRecordPublishedToUser(record))
+    .filter((record) => isMockExamRecordPublishedToUser(record) || isMockExamRecordReviewPending(record))
     .map((record) => serializeUserMockExamHistoryItem(record));
 };
 
@@ -3532,22 +3592,7 @@ export const listMockExamReviewRecords = async ({
             },
           ],
       },
-      {
-        OR: [
-          {
-            paperSnapshotJson: {
-              contains: '"reviewEnabled":true',
-            },
-          },
-          {
-            paper: {
-              is: {
-                reviewEnabled: true,
-              },
-            },
-          },
-        ],
-      },
+      buildReviewEligibleRecordWhere(),
       ...(normalizedKeyword
         ? [
             {

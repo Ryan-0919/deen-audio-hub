@@ -510,6 +510,11 @@ mockExamAdminRouter.patch("/papers/:paperId", async (req, res) => {
 
     return ok(res, paper, "试卷已更新");
   } catch (error) {
+    console.error("Mock exam paper update failed:", {
+      paperId: `${req.params.paperId ?? ""}`.trim(),
+      payload: req.body,
+      error,
+    });
     return fail(res, error.message || "更新试卷失败", error.statusCode || 400);
   }
 });

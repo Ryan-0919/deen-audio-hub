@@ -326,10 +326,10 @@ const reviewWorkflowStatusMeta: Record<
   }
 > = {
   not_required: {
-    label: "无需批改",
+    label: "可查看结果",
     className: "border-[#e4e4e7] bg-white text-[#52525b]",
     dotClassName: "bg-[#a1a1aa]",
-    description: "本次考试不涉及主观题人工批改。",
+    description: "本次作答已直接生成考试结果，可查看答案与解析。",
   },
   ai_pending: {
     label: "待批改",
@@ -410,13 +410,13 @@ function SubjectiveAnswerReviewBlock({
     pending
       ? "当前仍在批改中，完成后将显示详细点评。"
       : skippedReview
-        ? subQuestion.skippedReviewReason || "本问未作答或作答无效，本次不进行批改，已直接提供参考答案。"
+        ? subQuestion.skippedReviewReason || "本问本次未进入批改流程，已直接提供参考答案与解析。"
         : subQuestion.reviewComment || "暂无批改评语"
   )
     .split(/\n+/)
     .filter(Boolean);
   const answerTitle = skippedReview ? (
-    "我的答案（本问未进行批改，已直接提供参考答案）"
+    "我的答案（本问已直接展示参考答案）"
   ) : (
     <span className="inline-flex flex-wrap items-center gap-2">
       <span>{`我的答案（得分：${Number(subQuestion.score ?? 0)}）点击`}</span>
@@ -934,11 +934,17 @@ export function MockExamResult() {
                   <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
                     <div>
                       <div className="text-[13px] tracking-[0.14em] text-[#8f8f95]">主观题</div>
-                      <h2 className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-[#18181b]">批改结果</h2>
+                      <h2 className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-[#18181b]">
+                        {record.reviewWorkflowStatus === "not_required" ? "答案解析" : "批改结果"}
+                      </h2>
                     </div>
                     <div className="text-[14px] text-[#71717a]">
                       共 {subjectiveQuestions.length} 题
-                      {record.summary.finalScorePending ? `，待完成 ${subjectivePendingCount} 题` : "，可查看完整评语"}
+                      {record.summary.finalScorePending
+                        ? `，待完成 ${subjectivePendingCount} 题`
+                        : record.reviewWorkflowStatus === "not_required"
+                          ? "，可直接查看答案与解析"
+                          : "，可查看完整评语"}
                     </div>
                   </div>
 

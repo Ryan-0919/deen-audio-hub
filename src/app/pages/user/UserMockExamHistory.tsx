@@ -3,10 +3,21 @@ import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { AppLogo } from "../../components/branding/AppLogo";
+import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { type UserMockExamHistoryItem, mockApi } from "../../lib/mockData";
 
 function HistoryCard({ item, index, onOpen }: { item: UserMockExamHistoryItem; index: number; onOpen: (recordId: string) => void }) {
+  const statusMeta = item.reviewVisibleToUser
+    ? {
+        label: "结果处理中",
+        className: "border-amber-200 bg-amber-50 text-amber-700",
+      }
+    : {
+        label: "可查看结果",
+        className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      };
+
   return (
     <motion.button
       type="button"
@@ -32,6 +43,7 @@ function HistoryCard({ item, index, onOpen }: { item: UserMockExamHistoryItem; i
           />
           <div className="absolute inset-x-0 bottom-0 h-28 bg-[linear-gradient(180deg,rgba(4,8,22,0)_0%,rgba(4,8,22,0.62)_68%,rgba(4,8,22,0.9)_100%)]" />
           <div className="absolute inset-x-0 bottom-0 px-4 pb-4 pt-10 md:px-5 md:pb-5">
+            <Badge className={`mb-3 rounded-full border px-3 py-1 text-[12px] font-semibold ${statusMeta.className}`}>{statusMeta.label}</Badge>
             <h2 className="line-clamp-2 text-[20px] font-semibold leading-[1.15] tracking-[-0.04em] text-white md:text-[24px]">
               {item.paper.title}
             </h2>
@@ -141,7 +153,9 @@ export function UserMockExamHistory() {
                       key={item.id}
                       item={item}
                       index={index}
-                      onOpen={(recordId) => navigate(`/user/mock-exams/records/${recordId}/result`)}
+                      onOpen={(recordId) =>
+                        navigate(item.reviewVisibleToUser ? `/user/mock-exams/records/${recordId}/review-pending` : `/user/mock-exams/records/${recordId}/result`)
+                      }
                     />
                   ))}
                 </div>
