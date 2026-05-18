@@ -326,10 +326,10 @@ const reviewWorkflowStatusMeta: Record<
   }
 > = {
   not_required: {
-    label: "可查看结果",
+    label: "答题记录",
     className: "border-[#e4e4e7] bg-white text-[#52525b]",
     dotClassName: "bg-[#a1a1aa]",
-    description: "本次作答已直接生成考试结果，可查看答案与解析。",
+    description: "本次作答不参与批改，可直接查看题干、问题、微课、学生作答与参考答案。",
   },
   ai_pending: {
     label: "待批改",
@@ -361,10 +361,12 @@ function SubjectiveQuestionBlock({
   question,
   subQuestion,
   activeSubQuestionIndex,
+  reviewDisabled,
 }: {
   question: MockExamQuestion;
   subQuestion: MockExamSubjectiveSubQuestion;
   activeSubQuestionIndex: number;
+  reviewDisabled: boolean;
 }) {
   const prompt = getQuestionPrompt(question, subQuestion, activeSubQuestionIndex);
   const displayAudioUrl = question.lessonAudioUrl || question.reviewVoiceUrl || "";
@@ -375,8 +377,10 @@ function SubjectiveQuestionBlock({
 
   return (
     <section className="rounded-[24px] border border-[#ececf1] bg-white px-5 py-5 shadow-[0_14px_30px_rgba(15,23,42,0.05)]">
-      <PaperSectionTitle title={`当前小问（满分：${Number(subQuestion.maxScore ?? 0)}分）`} />
-      <div className="mb-4 text-[16px] text-[#71717a]">本题总分 {Number(question.score ?? 0)} 分，当前查看第 {activeSubQuestionIndex + 1} 问</div>
+      <PaperSectionTitle title={reviewDisabled ? "题干与问题" : `当前小问（满分：${Number(subQuestion.maxScore ?? 0)}分）`} />
+      {!reviewDisabled ? (
+        <div className="mb-4 text-[16px] text-[#71717a]">本题总分 {Number(question.score ?? 0)} 分，当前查看第 {activeSubQuestionIndex + 1} 问</div>
+      ) : null}
       {prompt.intro ? (
         <div className="rounded-[18px] border border-[#eef0f3] bg-[#fcfcfd] px-5 py-5 text-[18px] leading-9 text-[#52525b]">
           <div className="whitespace-pre-wrap">{prompt.intro}</div>
@@ -584,10 +588,12 @@ function ObjectiveQuestionCard({
 function SubjectiveSummaryCard({
   question,
   pending,
+  reviewDisabled,
   onOpen,
 }: {
   question: MockExamQuestion;
   pending: boolean;
+  reviewDisabled: boolean;
   onOpen: () => void;
 }) {
   return (
@@ -612,16 +618,20 @@ function SubjectiveSummaryCard({
             <div className="mt-3 text-[16px] leading-8 text-[#3f3f46]">{truncateText(getQuestionPreview(question), 116)}</div>
           </div>
         </div>
-        <div className="shrink-0 text-right">
-          <div className="text-[13px] text-[#8f8f95]">{pending ? "当前状态" : "本题得分"}</div>
-          <div className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-[#18181b]">
-            {pending ? "待出分" : `${question.earnedScore}/${question.score}`}
+        {!reviewDisabled ? (
+          <div className="shrink-0 text-right">
+            <div className="text-[13px] text-[#8f8f95]">{pending ? "当前状态" : "本题得分"}</div>
+            <div className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-[#18181b]">
+              {pending ? "待出分" : `${question.earnedScore}/${question.score}`}
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
 
       <div className="mt-5 flex items-center justify-between border-t border-[#f1f1f4] pt-4 text-[14px] text-[#71717a]">
-        <span>{pending ? "批改完成后可查看完整评语与遗漏点" : "点击进入本题完整批改详情"}</span>
+        <span>
+          {reviewDisabled ? "点击查看本题答题记录" : pending ? "批改完成后可查看完整评语与遗漏点" : "点击进入本题完整批改详情"}
+        </span>
         <span className="font-semibold text-[#e2485a] transition group-hover:translate-x-0.5">查看详情</span>
       </div>
     </button>
@@ -681,14 +691,18 @@ function SubjectiveReviewSheet({
         className="h-[92vh] rounded-t-[28px] border-0 bg-[#fafafa] p-0 [&>button]:right-5 [&>button]:top-5"
       >
         <SheetHeader className="border-b border-[#ececec] bg-white px-5 py-4 text-left">
-          <SheetTitle className="text-center text-[22px] font-semibold tracking-[-0.04em] text-[#18181b]">批改结果</SheetTitle>
-          <SheetDescription className="text-center text-[15px] text-[#71717a]">点击题号切换不同小问的批改详情</SheetDescription>
+          <SheetTitle className="text-center text-[22px] font-semibold tracking-[-0.04em] text-[#18181b]">
+            {reviewDisabled ? "答题记录" : "批改结果"}
+          </SheetTitle>
+          <SheetDescription className="text-center text-[15px] text-[#71717a]">
+            {reviewDisabled ? "点击题号切换不同小问" : "点击题号切换不同小问的批改详情"}
+          </SheetDescription>
         </SheetHeader>
 
         <div className="h-full overflow-y-auto px-4 pb-10 pt-5" style={pageFontStyle}>
           <div className="flex items-center justify-center gap-3 text-[#18181b]">
             <div className="h-[1px] w-[88px] bg-[linear-gradient(90deg,transparent_0%,#d1d5db_100%)]" />
-            <span className="text-[19px] font-semibold tracking-[0.02em]">题目解析</span>
+            <span className="text-[19px] font-semibold tracking-[0.02em]">{reviewDisabled ? "答题记录" : "题目解析"}</span>
             <div className="h-[1px] w-[88px] bg-[linear-gradient(90deg,#d1d5db_0%,transparent_100%)]" />
           </div>
 
@@ -716,6 +730,7 @@ function SubjectiveReviewSheet({
                 question={question}
                 subQuestion={currentSubQuestion}
                 activeSubQuestionIndex={activeSubQuestionIndex}
+                reviewDisabled={reviewDisabled}
               />
 
               <SubjectiveAnswerReviewBlock
@@ -726,7 +741,7 @@ function SubjectiveReviewSheet({
 
               <FoldBlock title="参考答案" defaultExpanded>
                 <div className="whitespace-pre-wrap text-[18px] leading-9 text-[#433b35]">
-                  {record.summary.finalScorePending ? "批改完成后显示参考答案。" : currentSubQuestion.referenceAnswer || "暂无参考答案"}
+                  {record.summary.finalScorePending && !reviewDisabled ? "批改完成后显示参考答案。" : currentSubQuestion.referenceAnswer || "暂无参考答案"}
                 </div>
               </FoldBlock>
             </div>
@@ -829,6 +844,7 @@ export function MockExamResult() {
 
   const latestSyncTime = formatDateText(record.publishedAt || record.reviewedAt || record.submittedAt);
   const workflowMeta = reviewWorkflowStatusMeta[record.reviewWorkflowStatus];
+  const reviewDisabled = record.reviewWorkflowStatus === "not_required";
   const subjectivePendingCount = subjectiveQuestions.filter((question) =>
     question.subjectiveSubQuestions.some((item) => !item.isReviewed),
   ).length;
@@ -945,15 +961,15 @@ export function MockExamResult() {
                     <div>
                       <div className="text-[13px] tracking-[0.14em] text-[#8f8f95]">主观题</div>
                       <h2 className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-[#18181b]">
-                        {record.reviewWorkflowStatus === "not_required" ? "答案解析" : "批改结果"}
+                        {reviewDisabled ? "答题记录" : "批改结果"}
                       </h2>
                     </div>
                     <div className="text-[14px] text-[#71717a]">
                       共 {subjectiveQuestions.length} 题
                       {record.summary.finalScorePending
                         ? `，待完成 ${subjectivePendingCount} 题`
-                        : record.reviewWorkflowStatus === "not_required"
-                          ? "，可直接查看答案与解析"
+                        : reviewDisabled
+                          ? "，可直接查看题干、问题、微课、学生作答与参考答案"
                           : "，可查看完整评语"}
                     </div>
                   </div>
@@ -964,6 +980,7 @@ export function MockExamResult() {
                         key={question.id}
                         question={question}
                         pending={record.summary.finalScorePending}
+                        reviewDisabled={reviewDisabled}
                         onOpen={() => {
                           setActiveSubjectiveQuestionId(question.id);
                           setSheetOpen(true);
