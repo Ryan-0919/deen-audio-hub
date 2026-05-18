@@ -477,6 +477,8 @@ function ObjectiveQuestionCard({
   highlighted?: boolean;
 }) {
   const promptText = [stripHtml(question.material), stripHtml(question.stem)].filter(Boolean).join("\n\n");
+  const userAnswerKeySet = new Set(question.userAnswerKeys);
+  const correctAnswerKeySet = new Set(question.correctAnswerKeys);
 
   return (
     <section
@@ -513,6 +515,59 @@ function ObjectiveQuestionCard({
       <div className="mt-5 rounded-[22px] border border-[#eef0f3] bg-[#fcfcfd] px-5 py-5 text-[18px] leading-9 text-[#27272a]">
         <div className="whitespace-pre-wrap">{promptText || `第${question.sortOrder}题`}</div>
       </div>
+
+      {question.options.length > 0 ? (
+        <div className="mt-5 space-y-3">
+          {question.options.map((option) => {
+            const selected = userAnswerKeySet.has(option.key);
+            const correct = correctAnswerKeySet.has(option.key);
+
+            return (
+              <div
+                key={option.id}
+                className={[
+                  "rounded-[18px] border px-4 py-4 transition",
+                  correct
+                    ? "border-emerald-200 bg-emerald-50/70"
+                    : selected
+                      ? "border-rose-200 bg-rose-50/70"
+                      : "border-[#eef0f3] bg-white",
+                ].join(" ")}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div
+                      className={[
+                        "flex size-8 shrink-0 items-center justify-center rounded-full text-[14px] font-semibold",
+                        correct
+                          ? "bg-emerald-600 text-white"
+                          : selected
+                            ? "bg-rose-500 text-white"
+                            : "bg-[#f4f4f5] text-[#52525b]",
+                      ].join(" ")}
+                    >
+                      {option.key}
+                    </div>
+                    <div className="min-w-0 whitespace-pre-wrap text-[17px] leading-8 text-[#27272a]">{option.content}</div>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                    {selected ? (
+                      <span className="rounded-full border border-rose-200 bg-white px-3 py-1 text-[12px] font-medium text-rose-600">
+                        你的选择
+                      </span>
+                    ) : null}
+                    {correct ? (
+                      <span className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-[12px] font-medium text-emerald-700">
+                        正确答案
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
 
       <div className="mt-5 grid gap-4 md:grid-cols-2">
         <div className="rounded-[20px] border border-[#eef0f3] bg-white px-5 py-4">
