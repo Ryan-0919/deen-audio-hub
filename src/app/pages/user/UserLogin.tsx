@@ -33,6 +33,7 @@ type PointerState = {
 };
 
 type ActiveField = "phone" | "password" | null;
+type AuthMode = "login" | "register";
 
 function usePointerScene() {
   const [pointer, setPointer] = useState<PointerState>({ x: 72, y: 22, rx: 0, ry: 0 });
@@ -242,6 +243,7 @@ const getDeviceInfo = () => {
 
 export function UserLogin() {
   const navigate = useNavigate();
+  const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -301,7 +303,7 @@ export function UserLogin() {
   const getErrorTitle = () => {
     if (loginError.includes("设备数量已达上限")) return "设备数量已达上限";
     if (loginError.includes("停用")) return "账号已停用";
-    return "登录失败";
+    return authMode === "register" ? "注册失败" : "登录失败";
   };
 
   const normalizeErrorMessage = (message: string) => {
@@ -309,15 +311,23 @@ export function UserLogin() {
     if (message.includes("过于频繁")) return message;
     if (message.includes("停用")) return "该账号当前无法登录，请联系管理员";
     if (message.includes("设备已失效")) return "当前设备登录已失效，请重新登录";
+    if (message.includes("已注册")) return "该手机号已注册，请直接登录";
     if (message.includes("手机号") || message.includes("密码")) return "手机号或密码不正确，请重新输入";
-    return message || "登录失败，请稍后重试";
+    return message || (authMode === "register" ? "注册失败，请稍后重试" : "登录失败，请稍后重试");
   };
 
-  const handleLogin = async (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
 
     if (!phone.trim() || !password.trim()) {
-      const message = "请输入您下单的手机号和密码";
+      const message = authMode === "register" ? "请输入手机号和密码完成注册" : "请输入您下单的手机号和密码";
+      setLoginError(message);
+      toast.error(message);
+      return;
+    }
+
+    if (authMode === "register" && password.trim().length < 6) {
+      const message = "密码长度至少 6 位";
       setLoginError(message);
       toast.error(message);
       return;
@@ -327,21 +337,26 @@ export function UserLogin() {
     setLoginError("");
 
     try {
-      const result = await mockApi.login(phone.trim(), password.trim(), getDeviceInfo());
+      const action = authMode === "register" ? mockApi.register : mockApi.login;
+      const result = await action(phone.trim(), password.trim(), getDeviceInfo());
       saveUserSession({
         token: result.token,
         userId: result.user.id,
         phone: result.user.phone,
       });
-      toast.success("登录成功");
+      toast.success(authMode === "register" ? "注册成功" : "登录成功");
       navigate("/user/courses", { replace: true });
     } catch (error) {
       const rawMessage =
         error instanceof ApiRequestError && error.code === 10041
           ? error.message
+          : error instanceof ApiRequestError && error.code === 10043
+            ? error.message
           : error instanceof Error
             ? error.message
-            : "登录失败，请稍后重试";
+            : authMode === "register"
+              ? "注册失败，请稍后重试"
+              : "登录失败，请稍后重试";
       const message = normalizeErrorMessage(rawMessage);
       setLoginError(message);
       toast.error(message);
@@ -424,13 +439,44 @@ export function UserLogin() {
                 <div className="mb-5">
                   <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-xs font-medium text-[#8fd6ff]">
                     <Sparkles className="size-3.5" />
-                    登录入口
+                    {authMode === "register" ? "注册入口" : "登录入口"}
                   </div>
                   <h1 className="mt-4 text-[24px] font-semibold leading-8 text-white md:text-[28px] md:leading-10">欢迎使用得宝-智学系统</h1>
-                  <p className="mt-3 text-sm leading-6 text-white/54 md:leading-7">请输入您的手机号和密码，登录后可直接进入我的课程。</p>
+                  <p className="mt-3 text-sm leading-6 text-white/54 md:leading-7">
+                    {authMode === "register" ? "请输入手机号并设置密码，注册成功后将自动进入我的课程。" : "请输入您的手机号和密码，登录后可直接进入我的课程。"}
+                  </p>
                 </div>
 
-                <form onSubmit={handleLogin} className="space-y-5">
+                <div className="mb-5 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-1">
+                  <button
+                    type="button"
+                    className={cn(
+                      "h-10 rounded-[14px] text-sm font-medium transition",
+                      authMode === "login" ? "bg-white text-slate-950" : "text-white/68 hover:bg-white/[0.06] hover:text-white",
+                    )}
+                    onClick={() => {
+                      setAuthMode("login");
+                      setLoginError("");
+                    }}
+                  >
+                    登录
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(
+                      "h-10 rounded-[14px] text-sm font-medium transition",
+                      authMode === "register" ? "bg-white text-slate-950" : "text-white/68 hover:bg-white/[0.06] hover:text-white",
+                    )}
+                    onClick={() => {
+                      setAuthMode("register");
+                      setLoginError("");
+                    }}
+                  >
+                    注册
+                  </button>
+                </div>
+
+                <form onSubmit={handleSubmit} className="space-y-5">
                   <div className="space-y-2">
                     <Label htmlFor="phone" className="text-white/72">
                       手机号
@@ -439,7 +485,7 @@ export function UserLogin() {
                       id="phone"
                       type="tel"
                       inputMode="numeric"
-                      placeholder="请输入您下单的手机号"
+                      placeholder={authMode === "register" ? "请输入您的手机号" : "请输入您下单的手机号"}
                       value={phone}
                       className={cn(
                         "h-12 rounded-2xl px-4 text-base text-white placeholder:text-white/28 transition",
@@ -464,7 +510,7 @@ export function UserLogin() {
                       <Input
                         id="password"
                         type={showPassword ? "text" : "password"}
-                        placeholder="请输入您的密码"
+                        placeholder={authMode === "register" ? "请设置登录密码" : "请输入您的密码"}
                         value={password}
                         className={cn(
                           "h-12 rounded-2xl px-4 pr-12 text-base text-white placeholder:text-white/28 transition",
@@ -504,7 +550,7 @@ export function UserLogin() {
                   )}
 
                   <Button type="submit" className="h-12 w-full rounded-2xl bg-white text-base text-slate-950 hover:bg-white/90" disabled={loading}>
-                    {loading ? "登录中..." : "进入学习中心"}
+                    {loading ? (authMode === "register" ? "注册中..." : "登录中...") : authMode === "register" ? "注册并进入学习中心" : "进入学习中心"}
                   </Button>
                 </form>
 
@@ -512,8 +558,8 @@ export function UserLogin() {
                   <div className="flex items-start gap-3">
                     <ShieldCheck className="mt-0.5 size-4 text-[#8fd6ff]" />
                     <div className="space-y-1">
-                      <p>默认密码：den2024</p>
-                      <p>如无法登录，可点击下方联系客服。</p>
+                      {authMode === "register" ? <p>注册后可直接登录并进入学习中心。</p> : <p>默认密码：den2024</p>}
+                      <p>{authMode === "register" ? "如注册或登录遇到问题，可点击下方联系客服。" : "如无法登录，可点击下方联系客服。"}</p>
                     </div>
                   </div>
                 </div>

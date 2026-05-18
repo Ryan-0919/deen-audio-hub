@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
-import { comparePassword, signAdminToken, signUserToken } from "../lib/auth.js";
+import { comparePassword, hashPassword, signAdminToken, signUserToken } from "../lib/auth.js";
 import { ok, fail } from "../lib/response.js";
 import { serializeUser } from "../lib/serializers.js";
 import { getClientIp, getNormalizedDeviceInfo } from "../lib/request.js";
@@ -10,6 +10,7 @@ import {
   resetAdminLoginAttempts,
   resetUserLoginAttempts,
   validatePhoneOrThrow,
+  validatePasswordOrThrow,
 } from "../lib/security.js";
 import { requireUserAuth } from "../middleware/auth.js";
 import { getReadableObjectUrl } from "../lib/upload.js";
@@ -19,6 +20,9 @@ import { normalizePortalConfig } from "../../src/shared/portal-config.js";
 const DEVICE_LIMIT = 5;
 const USER_LOGIN_RATE_LIMIT_ERROR_CODE = 10041;
 const ADMIN_LOGIN_RATE_LIMIT_ERROR_CODE = 10042;
+const USER_REGISTER_RATE_LIMIT_ERROR_CODE = 10043;
+
+const isUniqueConstraintError = (error) => Boolean(error && typeof error === "object" && "code" in error && error.code === "P2002");
 
 export const authRouter = Router();
 
@@ -226,6 +230,103 @@ authRouter.post("/user/login", async (req, res, next) => {
   } catch (error) {
     if (error?.statusCode) {
       return fail(res, error.message, error.statusCode, error.code ?? error.statusCode);
+    }
+
+    return next(error);
+  }
+});
+
+authRouter.post("/user/register", async (req, res, next) => {
+  const rawPhone = `${req.body?.phone ?? ""}`;
+  const rawPassword = `${req.body?.password ?? ""}`;
+  const { deviceKey, type, model } = req.body ?? {};
+
+  if (!rawPhone || !rawPassword || !deviceKey) {
+    return fail(res, "请输入完整的注册信息", 400);
+  }
+
+  try {
+    const phone = validatePhoneOrThrow(rawPhone);
+    const password = validatePasswordOrThrow(rawPassword);
+    const ip = getClientIp(req);
+    const rateLimitResult = consumeUserLoginAttempt({ ip, phone });
+
+    if (!rateLimitResult.ok) {
+      return fail(
+        res,
+        `注册尝试过于频繁，请 ${rateLimitResult.retryAfterSeconds} 秒后再试`,
+        429,
+        USER_REGISTER_RATE_LIMIT_ERROR_CODE,
+      );
+    }
+
+    const passwordHash = await hashPassword(password);
+    const deviceInfo = getNormalizedDeviceInfo(req, { type, model });
+    const now = new Date();
+
+    const createdUser = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          phone,
+          passwordHash,
+          status: "active",
+          lastLoginAt: now,
+        },
+      });
+
+      await tx.userDevice.create({
+        data: {
+          userId: user.id,
+          deviceKey,
+          type: deviceInfo.type,
+          model: deviceInfo.model,
+          ip: deviceInfo.ip,
+          loginAt: now,
+        },
+      });
+
+      return tx.user.findUnique({
+        where: { id: user.id },
+        include: {
+          permissions: true,
+          devices: true,
+          mockExamSeriesPermissions: true,
+          mockExamPermissions: true,
+        },
+      });
+    });
+
+    if (!createdUser) {
+      return fail(res, "注册失败，请稍后重试", 500);
+    }
+
+    const token = signUserToken({
+      userId: createdUser.id,
+      phone: createdUser.phone,
+      deviceKey,
+    });
+    resetUserLoginAttempts({ ip, phone });
+
+    return ok(
+      res,
+      {
+        success: true,
+        token,
+        user: serializeUser(createdUser),
+      },
+      "注册成功",
+    );
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return fail(res, "该手机号已注册，请直接登录", 400);
+    }
+
+    if (error?.statusCode) {
+      return fail(res, error.message, error.statusCode, error.code ?? error.statusCode);
+    }
+
+    if (error instanceof Error && error.message) {
+      return fail(res, error.message, 400);
     }
 
     return next(error);
