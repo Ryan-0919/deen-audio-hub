@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, ChevronUp, Circle, Clock3, LayoutGrid, Pause, Play, Volume2, XCircle } from "lucide-react";
+import { ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, ChevronUp, Clock3, LayoutGrid, Pause, Play, Volume2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
@@ -9,7 +9,6 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import type {
   MockExamQuestion,
   MockExamRecordDetail,
-  MockExamReviewWorkflowStatus,
   MockExamSubjectiveSubQuestion,
 } from "../../lib/mockData";
 import { mockApi } from "../../lib/mockData";
@@ -22,8 +21,6 @@ const pageFontStyle = {
 const handwritingStyle = {
   fontFamily: '"KaiTi","STKaiti","Kaiti SC",serif',
 };
-const REVIEW_CROSS_ICON = "https://hd-correct.oss-cn-beijing.aliyuncs.com/common/xcx-icons/%E5%8F%89%E5%8F%B7.png";
-
 const stripHtml = (value: string) => value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
 const truncateText = (value: string, limit = 68) => (value.length > limit ? `${value.slice(0, limit)}...` : value);
@@ -316,47 +313,6 @@ const reportCardStatusMeta: Record<
   },
 };
 
-const reviewWorkflowStatusMeta: Record<
-  MockExamReviewWorkflowStatus,
-  {
-    label: string;
-    className: string;
-    dotClassName: string;
-    description: string;
-  }
-> = {
-  not_required: {
-    label: "答题记录",
-    className: "border-[#e4e4e7] bg-white text-[#52525b]",
-    dotClassName: "bg-[#a1a1aa]",
-    description: "本次作答不参与批改，可直接查看题干、问题、微课、学生作答与参考答案。",
-  },
-  ai_pending: {
-    label: "待批改",
-    className: "border-amber-200 bg-amber-50 text-amber-700",
-    dotClassName: "bg-amber-500",
-    description: "试卷已提交，系统正在排队进入批改流程。",
-  },
-  ai_processing: {
-    label: "批改中",
-    className: "border-sky-200 bg-sky-50 text-sky-700",
-    dotClassName: "bg-sky-500",
-    description: "系统正在生成分问批注和总点评。",
-  },
-  manual_pending: {
-    label: "待老师核对",
-    className: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
-    dotClassName: "bg-fuchsia-500",
-    description: "结果已生成，正在等待人工复核后发布。",
-  },
-  published: {
-    label: "批改已发布",
-    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    dotClassName: "bg-emerald-500",
-    description: "本次试卷的批改结果已经可以正式查看。",
-  },
-};
-
 function SubjectiveQuestionBlock({
   question,
   subQuestion,
@@ -425,11 +381,7 @@ function SubjectiveAnswerReviewBlock({
   ) : skippedReview ? (
     "我的答案（本问已直接展示参考答案）"
   ) : (
-    <span className="inline-flex flex-wrap items-center gap-2">
-      <span>{`我的答案（得分：${Number(subQuestion.score ?? 0)}）点击`}</span>
-      <img src={REVIEW_CROSS_ICON} alt="" aria-hidden="true" className="h-[18px] w-[18px] object-contain" />
-      <span>查看错误评语</span>
-    </span>
+    `我的答案（得分：${Number(subQuestion.score ?? 0)}）`
   );
 
   return (
@@ -587,13 +539,9 @@ function ObjectiveQuestionCard({
 
 function SubjectiveSummaryCard({
   question,
-  pending,
-  reviewDisabled,
   onOpen,
 }: {
   question: MockExamQuestion;
-  pending: boolean;
-  reviewDisabled: boolean;
   onOpen: () => void;
 }) {
   return (
@@ -618,20 +566,10 @@ function SubjectiveSummaryCard({
             <div className="mt-3 text-[16px] leading-8 text-[#3f3f46]">{truncateText(getQuestionPreview(question), 116)}</div>
           </div>
         </div>
-        {!reviewDisabled ? (
-          <div className="shrink-0 text-right">
-            <div className="text-[13px] text-[#8f8f95]">{pending ? "当前状态" : "本题得分"}</div>
-            <div className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-[#18181b]">
-              {pending ? "待出分" : `${question.earnedScore}/${question.score}`}
-            </div>
-          </div>
-        ) : null}
       </div>
 
       <div className="mt-5 flex items-center justify-between border-t border-[#f1f1f4] pt-4 text-[14px] text-[#71717a]">
-        <span>
-          {reviewDisabled ? "点击查看本题答题记录" : pending ? "批改完成后可查看完整评语与遗漏点" : "点击进入本题完整批改详情"}
-        </span>
+        <span>点击查看本题做题记录</span>
         <span className="font-semibold text-[#e2485a] transition group-hover:translate-x-0.5">查看详情</span>
       </div>
     </button>
@@ -691,18 +629,14 @@ function SubjectiveReviewSheet({
         className="h-[92vh] rounded-t-[28px] border-0 bg-[#fafafa] p-0 [&>button]:right-5 [&>button]:top-5"
       >
         <SheetHeader className="border-b border-[#ececec] bg-white px-5 py-4 text-left">
-          <SheetTitle className="text-center text-[22px] font-semibold tracking-[-0.04em] text-[#18181b]">
-            {reviewDisabled ? "答题记录" : "批改结果"}
-          </SheetTitle>
-          <SheetDescription className="text-center text-[15px] text-[#71717a]">
-            {reviewDisabled ? "点击题号切换不同小问" : "点击题号切换不同小问的批改详情"}
-          </SheetDescription>
+          <SheetTitle className="text-center text-[22px] font-semibold tracking-[-0.04em] text-[#18181b]">做题记录</SheetTitle>
+          <SheetDescription className="text-center text-[15px] text-[#71717a]">点击题号切换不同小问</SheetDescription>
         </SheetHeader>
 
         <div className="h-full overflow-y-auto px-4 pb-10 pt-5" style={pageFontStyle}>
           <div className="flex items-center justify-center gap-3 text-[#18181b]">
             <div className="h-[1px] w-[88px] bg-[linear-gradient(90deg,transparent_0%,#d1d5db_100%)]" />
-            <span className="text-[19px] font-semibold tracking-[0.02em]">{reviewDisabled ? "答题记录" : "题目解析"}</span>
+            <span className="text-[19px] font-semibold tracking-[0.02em]">做题记录</span>
             <div className="h-[1px] w-[88px] bg-[linear-gradient(90deg,#d1d5db_0%,transparent_100%)]" />
           </div>
 
@@ -774,7 +708,7 @@ export function MockExamResult() {
         }
       } catch (error) {
         if (!disposed) {
-          toast.error(error instanceof Error ? error.message : "加载机考结果失败");
+          toast.error(error instanceof Error ? error.message : "加载机考记录失败");
         }
       } finally {
         if (!disposed) {
@@ -826,7 +760,7 @@ export function MockExamResult() {
     return (
       <div className="min-h-screen bg-[#fafafa] px-4 py-10" style={pageFontStyle}>
         <div className="mx-auto max-w-6xl rounded-[20px] border border-[#e4e4e7] bg-white px-6 py-8 text-[18px] text-[#71717a] shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
-          机考结果加载中...
+          机考记录加载中...
         </div>
       </div>
     );
@@ -836,19 +770,14 @@ export function MockExamResult() {
     return (
       <div className="min-h-screen bg-[#fafafa] px-4 py-10" style={pageFontStyle}>
         <div className="mx-auto max-w-6xl rounded-[20px] border border-[#e4e4e7] bg-white px-6 py-8 text-[18px] text-[#71717a] shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
-          未找到本次机考结果
+          未找到本次机考记录
         </div>
       </div>
     );
   }
 
   const latestSyncTime = formatDateText(record.publishedAt || record.reviewedAt || record.submittedAt);
-  const workflowMeta = reviewWorkflowStatusMeta[record.reviewWorkflowStatus];
   const reviewDisabled = record.reviewWorkflowStatus === "not_required";
-  const subjectivePendingCount = subjectiveQuestions.filter((question) =>
-    question.subjectiveSubQuestions.some((item) => !item.isReviewed),
-  ).length;
-
   const handleQuestionNavigate = (question: MockExamQuestion) => {
     if (isSubjectiveQuestion(question)) {
       setActiveSubjectiveQuestionId(question.id);
@@ -906,16 +835,11 @@ export function MockExamResult() {
                 <div className="flex flex-wrap items-start justify-between gap-5">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-3">
-                      <Badge className={`rounded-full border px-4 py-1.5 text-[13px] font-semibold ${workflowMeta.className}`}>
-                        <span className={`mr-2 inline-block size-2 rounded-full ${workflowMeta.dotClassName}`} />
-                        {workflowMeta.label}
-                      </Badge>
-                      <span className="text-[13px] tracking-[0.16em] text-[#8f8f95]">机考结果</span>
+                      <span className="text-[13px] tracking-[0.16em] text-[#8f8f95]">机考记录</span>
                     </div>
                     <h1 className="mt-4 text-[30px] font-semibold tracking-[-0.05em] text-[#18181b] md:text-[38px]">
                       {record.paper.title}
                     </h1>
-                    <p className="mt-3 max-w-[860px] text-[15px] leading-7 text-[#6b7280]">{workflowMeta.description}</p>
                   </div>
 
                   {record.paper.coverUrl ? (
@@ -960,17 +884,7 @@ export function MockExamResult() {
                   <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
                     <div>
                       <div className="text-[13px] tracking-[0.14em] text-[#8f8f95]">主观题</div>
-                      <h2 className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-[#18181b]">
-                        {reviewDisabled ? "答题记录" : "批改结果"}
-                      </h2>
-                    </div>
-                    <div className="text-[14px] text-[#71717a]">
-                      共 {subjectiveQuestions.length} 题
-                      {record.summary.finalScorePending
-                        ? `，待完成 ${subjectivePendingCount} 题`
-                        : reviewDisabled
-                          ? "，可直接查看题干、问题、微课、学生作答与参考答案"
-                          : "，可查看完整评语"}
+                      <h2 className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-[#18181b]">做题记录</h2>
                     </div>
                   </div>
 
@@ -979,8 +893,6 @@ export function MockExamResult() {
                       <SubjectiveSummaryCard
                         key={question.id}
                         question={question}
-                        pending={record.summary.finalScorePending}
-                        reviewDisabled={reviewDisabled}
                         onOpen={() => {
                           setActiveSubjectiveQuestionId(question.id);
                           setSheetOpen(true);
@@ -1030,24 +942,6 @@ export function MockExamResult() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-2 text-[13px] text-[#71717a]">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-[#1f8a48]" />
-                    <span>正确</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Circle className="size-4 text-[#b7791f]" />
-                    <span>部分得分</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <XCircle className="size-4 text-[#c24149]" />
-                    <span>错误</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Circle className="size-4 text-[#a1a1aa]" />
-                    <span>未作答</span>
-                  </div>
-                </div>
               </div>
 
               <div className="max-h-[calc(100vh-220px)] overflow-y-auto px-5 py-5">
