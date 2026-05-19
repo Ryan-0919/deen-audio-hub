@@ -1,22 +1,52 @@
-import { FileText } from "lucide-react";
+import { BookOpenText, FileText, PenSquare, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { AppLogo } from "../../components/branding/AppLogo";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { cn } from "../../components/ui/utils";
 import { type UserMockExamHistoryItem, mockApi } from "../../lib/mockData";
 
+type PrimaryGroup = "review" | "practice";
+type PracticeGroup = "objective" | "subjective";
+
+const isReviewRecord = (item: UserMockExamHistoryItem) => item.subjectiveQuestionCount > 0 && item.reviewEnabled;
+const isObjectivePracticeRecord = (item: UserMockExamHistoryItem) => item.subjectiveQuestionCount <= 0;
+const isSubjectivePracticeRecord = (item: UserMockExamHistoryItem) => item.subjectiveQuestionCount > 0 && !item.reviewEnabled;
+
+const getHistoryStatusMeta = (item: UserMockExamHistoryItem) => {
+  if (isReviewRecord(item)) {
+    return item.reviewVisibleToUser
+      ? {
+          label: "批改中",
+          category: "主观题 · 批改记录",
+          className: "border-amber-200 bg-amber-50 text-amber-700",
+        }
+      : {
+          label: "已批改",
+          category: "主观题 · 批改记录",
+          className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+        };
+  }
+
+  if (isObjectivePracticeRecord(item)) {
+    return {
+      label: "客观题",
+      category: "做题记录",
+      className: "border-sky-200 bg-sky-50 text-sky-700",
+    };
+  }
+
+  return {
+    label: "主观题",
+    category: "做题记录",
+    className: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
+  };
+};
+
 function HistoryCard({ item, index, onOpen }: { item: UserMockExamHistoryItem; index: number; onOpen: (recordId: string) => void }) {
-  const statusMeta = item.reviewVisibleToUser
-    ? {
-        label: "结果处理中",
-        className: "border-amber-200 bg-amber-50 text-amber-700",
-      }
-    : {
-        label: "可查看结果",
-        className: "border-emerald-200 bg-emerald-50 text-emerald-700",
-      };
+  const statusMeta = getHistoryStatusMeta(item);
 
   return (
     <motion.button
@@ -43,7 +73,10 @@ function HistoryCard({ item, index, onOpen }: { item: UserMockExamHistoryItem; i
           />
           <div className="absolute inset-x-0 bottom-0 h-28 bg-[linear-gradient(180deg,rgba(4,8,22,0)_0%,rgba(4,8,22,0.62)_68%,rgba(4,8,22,0.9)_100%)]" />
           <div className="absolute inset-x-0 bottom-0 px-4 pb-4 pt-10 md:px-5 md:pb-5">
-            <Badge className={`mb-3 rounded-full border px-3 py-1 text-[12px] font-semibold ${statusMeta.className}`}>{statusMeta.label}</Badge>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <Badge className={`rounded-full border px-3 py-1 text-[12px] font-semibold ${statusMeta.className}`}>{statusMeta.label}</Badge>
+              <span className="text-[11px] font-medium tracking-[0.16em] text-white/62">{statusMeta.category}</span>
+            </div>
             <h2 className="line-clamp-2 text-[20px] font-semibold leading-[1.15] tracking-[-0.04em] text-white md:text-[24px]">
               {item.paper.title}
             </h2>
@@ -59,6 +92,8 @@ export function UserMockExamHistory() {
   const [loading, setLoading] = useState(true);
   const [records, setRecords] = useState<UserMockExamHistoryItem[]>([]);
   const [errorMessage, setErrorMessage] = useState("");
+  const [primaryGroup, setPrimaryGroup] = useState<PrimaryGroup>("review");
+  const [practiceGroup, setPracticeGroup] = useState<PracticeGroup>("objective");
 
   useEffect(() => {
     let disposed = false;
@@ -88,6 +123,46 @@ export function UserMockExamHistory() {
       disposed = true;
     };
   }, []);
+
+  const reviewRecords = useMemo(() => records.filter(isReviewRecord), [records]);
+  const objectivePracticeRecords = useMemo(() => records.filter(isObjectivePracticeRecord), [records]);
+  const subjectivePracticeRecords = useMemo(() => records.filter(isSubjectivePracticeRecord), [records]);
+
+  useEffect(() => {
+    if (primaryGroup === "review" && reviewRecords.length === 0 && (objectivePracticeRecords.length > 0 || subjectivePracticeRecords.length > 0)) {
+      setPrimaryGroup("practice");
+      return;
+    }
+
+    if (primaryGroup === "practice" && objectivePracticeRecords.length === 0 && subjectivePracticeRecords.length === 0 && reviewRecords.length > 0) {
+      setPrimaryGroup("review");
+    }
+  }, [objectivePracticeRecords.length, primaryGroup, reviewRecords.length, subjectivePracticeRecords.length]);
+
+  useEffect(() => {
+    if (practiceGroup === "objective" && objectivePracticeRecords.length === 0 && subjectivePracticeRecords.length > 0) {
+      setPracticeGroup("subjective");
+      return;
+    }
+
+    if (practiceGroup === "subjective" && subjectivePracticeRecords.length === 0 && objectivePracticeRecords.length > 0) {
+      setPracticeGroup("objective");
+    }
+  }, [objectivePracticeRecords.length, practiceGroup, subjectivePracticeRecords.length]);
+
+  const visibleRecords = primaryGroup === "review" ? reviewRecords : practiceGroup === "objective" ? objectivePracticeRecords : subjectivePracticeRecords;
+  const emptyTitle =
+    primaryGroup === "review"
+      ? "暂无主观题批改记录"
+      : practiceGroup === "objective"
+        ? "暂无客观题做题记录"
+        : "暂无主观题做题记录";
+  const emptyDescription =
+    primaryGroup === "review"
+      ? "进入批改流程的主观题试卷，会统一显示在这里。"
+      : practiceGroup === "objective"
+        ? "你完成过的客观题机考记录，会统一显示在这里。"
+        : "主观题后续作答但不参与批改的记录，会统一显示在这里。";
 
   if (loading) {
     return (
@@ -120,6 +195,74 @@ export function UserMockExamHistory() {
             <div className="mb-6">
               <div className="text-[11px] uppercase tracking-[0.28em] text-white/36">DE EN FA KAO</div>
               <h1 className="mt-2 text-[30px] font-semibold tracking-[-0.06em] text-white md:text-[40px]">我的考试</h1>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPrimaryGroup("review")}
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition",
+                    primaryGroup === "review"
+                      ? "border-white bg-white text-slate-950 shadow-[0_14px_34px_rgba(255,255,255,0.14)]"
+                      : "border-white/10 bg-white/[0.05] text-white/62 hover:bg-white/[0.08] hover:text-white",
+                  )}
+                >
+                  <Sparkles className="size-4" />
+                  <span>批改记录</span>
+                  <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", primaryGroup === "review" ? "bg-[#fff1df] text-[#b45309]" : "bg-white/8 text-white/60")}>
+                    {reviewRecords.length}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPrimaryGroup("practice")}
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition",
+                    primaryGroup === "practice"
+                      ? "border-white bg-white text-slate-950 shadow-[0_14px_34px_rgba(255,255,255,0.14)]"
+                      : "border-white/10 bg-white/[0.05] text-white/62 hover:bg-white/[0.08] hover:text-white",
+                  )}
+                >
+                  <FileText className="size-4" />
+                  <span>做题记录</span>
+                  <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", primaryGroup === "practice" ? "bg-[#dbeafe] text-[#1d4ed8]" : "bg-white/8 text-white/60")}>
+                    {objectivePracticeRecords.length + subjectivePracticeRecords.length}
+                  </span>
+                </button>
+              </div>
+
+              {primaryGroup === "practice" ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPracticeGroup("objective")}
+                    className={cn(
+                      "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition",
+                      practiceGroup === "objective"
+                        ? "border-[#8fd6ff] bg-[#0d2238] text-[#8fd6ff]"
+                        : "border-white/10 bg-white/[0.03] text-white/56 hover:bg-white/[0.06] hover:text-white",
+                    )}
+                  >
+                    <BookOpenText className="size-4" />
+                    <span>客观题</span>
+                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs">{objectivePracticeRecords.length}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPracticeGroup("subjective")}
+                    className={cn(
+                      "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition",
+                      practiceGroup === "subjective"
+                        ? "border-[#ffd39a] bg-[#2c1b0b] text-[#ffd39a]"
+                        : "border-white/10 bg-white/[0.03] text-white/56 hover:bg-white/[0.06] hover:text-white",
+                    )}
+                  >
+                    <PenSquare className="size-4" />
+                    <span>主观题</span>
+                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs">{subjectivePracticeRecords.length}</span>
+                  </button>
+                </div>
+              ) : null}
             </div>
 
             <div>
@@ -146,9 +289,17 @@ export function UserMockExamHistory() {
                     去我的试卷
                   </Button>
                 </section>
+              ) : visibleRecords.length === 0 ? (
+                <section className="rounded-[28px] border border-dashed border-white/14 bg-white/[0.03] px-6 py-16 text-center">
+                  <div className="mx-auto flex size-14 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white/42">
+                    {primaryGroup === "review" ? <Sparkles className="size-6" /> : practiceGroup === "objective" ? <BookOpenText className="size-6" /> : <PenSquare className="size-6" />}
+                  </div>
+                  <p className="mt-4 text-lg font-medium text-white">{emptyTitle}</p>
+                  <p className="mt-2 text-sm leading-7 text-white/56">{emptyDescription}</p>
+                </section>
               ) : (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  {records.map((item, index) => (
+                  {visibleRecords.map((item, index) => (
                     <HistoryCard
                       key={item.id}
                       item={item}
