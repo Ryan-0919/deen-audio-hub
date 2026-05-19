@@ -135,15 +135,41 @@ body {
 }
 
 .KzrW119NxvD6FZu5TR9hvg\=\= {
-  width: 38px;
+  width: 14px;
+  border-right: 0;
+  background: linear-gradient(180deg, #f8f8f8 0%, #f1f1f1 100%);
+  cursor: col-resize;
 }
 
 .fCX6MGsD3PopmhyLo58bMA\=\= {
   flex-shrink: 0;
-  margin: 0px -2.5px;
-  width: 5px;
+  margin: 0px -6px 0px -4px;
+  width: 10px;
   height: 100%;
   cursor: col-resize;
+  position: relative;
+  z-index: 2;
+}
+
+.fCX6MGsD3PopmhyLo58bMA\=\=:hover {
+  background: rgba(82, 122, 195, 0.08);
+}
+
+.KzrW119NxvD6FZu5TR9hvg\=\= > .N-CLd1SlwL3\+HA9kUp-8lw\=\= {
+  padding: 0;
+  justify-content: center;
+  border-bottom: 0;
+  background: transparent;
+}
+
+.KzrW119NxvD6FZu5TR9hvg\=\= > .N-CLd1SlwL3\+HA9kUp-8lw\=\= > .R7N\+jVTL\+KtQY5MjXcuLOQ\=\= {
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 ._8\+rB95TY7bGxKVaAKQFIcw\=\= {

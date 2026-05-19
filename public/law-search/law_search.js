@@ -51,6 +51,11 @@ const MAX_ICON_URL = "https://oss.zhumavip.com/images/lawPage/ic-fangda.png";
 const RESTORE_ICON_URL = "https://oss.zhumavip.com/images/lawPage/ic-zuixiaohua.png";
 const MOBILE_MEDIA_QUERY = "(max-width: 768px)";
 const CLIPBOARD_KEYS = new Set(["c", "x"]);
+const LEFT_WIDTH_MIN = 240;
+const LEFT_WIDTH_MAX = 680;
+const LEFT_COLLAPSE_THRESHOLD = 72;
+const LEFT_REOPEN_DEFAULT_WIDTH = 320;
+const LEFT_COLLAPSED_HANDLE_WIDTH = 14;
 
 const state = {
   tree: [],
@@ -142,6 +147,7 @@ function bindStaticEvents() {
       return;
     }
     state.isLeftCollapsed = false;
+    state.leftWidth = Math.max(state.leftWidth, LEFT_REOPEN_DEFAULT_WIDTH);
     renderLayout();
   });
 
@@ -151,6 +157,24 @@ function bindStaticEvents() {
     }
     state.dragging = true;
     state.dragStart = { x: event.pageX };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    event.preventDefault();
+    event.stopPropagation();
+  });
+
+  getEl("law-left-collapsed").addEventListener("mousedown", (event) => {
+    if (isMobileLayout()) {
+      return;
+    }
+    state.dragging = true;
+    state.dragStart = { x: event.pageX };
+    state.isLeftCollapsed = false;
+    state.leftWidth = LEFT_REOPEN_DEFAULT_WIDTH;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    renderLayout();
+    event.preventDefault();
     event.stopPropagation();
   });
 
@@ -160,7 +184,12 @@ function bindStaticEvents() {
     }
 
     const nextWidth = state.leftWidth + event.pageX - state.dragStart.x;
-    state.leftWidth = clamp(nextWidth, 240, 680);
+    if (nextWidth <= LEFT_COLLAPSE_THRESHOLD) {
+      state.isLeftCollapsed = true;
+    } else {
+      state.isLeftCollapsed = false;
+      state.leftWidth = clamp(nextWidth, LEFT_WIDTH_MIN, LEFT_WIDTH_MAX);
+    }
     state.dragStart = { x: event.pageX };
     renderLayout();
     event.stopPropagation();
@@ -173,6 +202,8 @@ function bindStaticEvents() {
 
     state.dragging = false;
     state.dragStart = null;
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
     event.stopPropagation();
   });
 
@@ -337,6 +368,7 @@ function renderLayout() {
   getEl("law-left-expanded").hidden = mobile ? false : state.isLeftCollapsed;
   getEl("law-left-collapsed").hidden = mobile ? true : !state.isLeftCollapsed;
   getEl("law-left").style.width = mobile ? "100%" : `${state.leftWidth}px`;
+  getEl("law-left-collapsed").style.width = mobile ? "0" : `${LEFT_COLLAPSED_HANDLE_WIDTH}px`;
 }
 
 function getDialogBridge() {
