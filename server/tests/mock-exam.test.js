@@ -4299,3 +4299,133 @@ test("pumpMockExamAiReviewQueue releases stale in-memory running slots before co
 
   assert.equal(startedCount, 1);
 });
+
+test("pumpMockExamAiReviewQueue skips exhausted ai_pending records and continues scanning later runnable records", async () => {
+  __resetMockExamAiReviewQueueForTests();
+
+  const originalConfig = {
+    ...config.mockExamAiReview,
+  };
+  config.mockExamAiReview.maxConcurrency = 1;
+  config.mockExamAiReview.maxRetryCount = 3;
+
+  const currentTime = new Date("2026-05-19T12:00:00.000Z");
+  const exhaustedRecord = {
+    id: "record_queue_exhausted_blocker_1",
+    status: "submitted",
+    reviewWorkflowStatus: "ai_pending",
+    aiReviewRetryCount: 3,
+    aiReviewNextRetryAt: currentTime,
+    manualReviewerId: null,
+    manualReviewLockToken: null,
+    manualReviewLockExpiresAt: null,
+    lastAiReviewError: "已自动重试 3 次，已退回待批改",
+    submittedAt: new Date("2026-05-18T10:00:00.000Z"),
+    createdAt: new Date("2026-05-18T10:00:00.000Z"),
+  };
+  const runnableRecord = {
+    id: "record_queue_runnable_after_exhausted_1",
+    status: "submitted",
+    reviewWorkflowStatus: "ai_pending",
+    aiReviewRetryCount: 0,
+    aiReviewNextRetryAt: currentTime,
+    manualReviewerId: null,
+    manualReviewLockToken: null,
+    manualReviewLockExpiresAt: null,
+    lastAiReviewError: null,
+    submittedAt: new Date("2026-05-18T10:05:00.000Z"),
+    createdAt: new Date("2026-05-18T10:05:00.000Z"),
+  };
+
+  let startedRecordIds = [];
+  const fakeDb = {
+    systemConfig: {
+      findUnique: async () => ({
+        mockExamAiReviewConfigJson: JSON.stringify({
+          provider: "rules",
+        }),
+      }),
+    },
+    mockExamRecord: {
+      updateMany: async () => ({ count: 0 }),
+      findMany: async ({ where, select, skip = 0, take }) => {
+        if (where?.id?.in) {
+          return [];
+        }
+
+        const rows = [exhaustedRecord, runnableRecord].slice(skip, skip + (take ?? 2));
+        if (select?.id) {
+          return rows;
+        }
+        return rows;
+      },
+      findUnique: async ({ where }) => {
+        const recordId = `${where?.id ?? ""}`.trim();
+        if (recordId === runnableRecord.id) {
+          return {
+            ...runnableRecord,
+            user: { id: "user_after_exhausted_1", phone: "13800000001" },
+            paper: {
+              id: "paper_after_exhausted_1",
+              questions: [
+                createQuestion({
+                  id: "subjective_after_exhausted_1",
+                  type: "subjective_case",
+                  score: 1,
+                  options: [],
+                  correctAnswerJson: "[]",
+                }),
+              ],
+            },
+            answers: [
+              {
+                id: "answer_after_exhausted_1",
+                questionId: "subjective_after_exhausted_1",
+                answerJson: JSON.stringify({ sub_1: "考生答案" }),
+                reviewJson: null,
+                score: 0,
+              },
+            ],
+          };
+        }
+        return exhaustedRecord;
+      },
+      update: async ({ where, data }) => {
+        const recordId = `${where?.id ?? ""}`.trim();
+        if (data.reviewWorkflowStatus === "ai_processing") {
+          startedRecordIds.push(recordId);
+        }
+        if (recordId === runnableRecord.id) {
+          Object.assign(runnableRecord, data);
+          return {
+            ...runnableRecord,
+          };
+        }
+        Object.assign(exhaustedRecord, data);
+        return {
+          ...exhaustedRecord,
+        };
+      },
+    },
+    mockExamAnswer: {
+      update: async ({ data }) => data,
+    },
+    $transaction: async (callback) => callback(fakeDb),
+  };
+
+  try {
+    await pumpMockExamAiReviewQueue({
+      db: fakeDb,
+      currentTime,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    assert.deepEqual(startedRecordIds, [runnableRecord.id]);
+  } finally {
+    config.mockExamAiReview.maxConcurrency = originalConfig.maxConcurrency;
+    config.mockExamAiReview.maxRetryCount = originalConfig.maxRetryCount;
+    config.mockExamAiReview.retryDelayMs = originalConfig.retryDelayMs;
+    config.mockExamAiReview.queuePollIntervalMs = originalConfig.queuePollIntervalMs;
+    __resetMockExamAiReviewQueueForTests();
+  }
+});

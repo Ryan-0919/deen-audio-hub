@@ -8,6 +8,7 @@ const DEFAULT_MAX_CONCURRENCY = 3;
 const DEFAULT_MAX_RETRY_COUNT = 3;
 const DEFAULT_RETRY_DELAY_MS = 15000;
 const DEFAULT_QUEUE_POLL_INTERVAL_MS = 3000;
+const DEFAULT_QUEUE_SCAN_BATCH_SIZE = 20;
 
 const runningRecordIds = new Set();
 const forcedAdminQueueMap = new Map();
@@ -151,7 +152,7 @@ export const enqueueMockExamAiReview = async ({ db = prisma, recordId, adminId =
   }
 
   if (!normalizedAdminId && !canQueueAutoReview({ retryCount: record.aiReviewRetryCount, lastError: record.lastAiReviewError })) {
-    throw Object.assign(new Error("?????????????????????????????"), { statusCode: 409 });
+    throw Object.assign(new Error("当前试卷已达到自动批改次数上限，请转人工处理"), { statusCode: 409 });
   }
 
   const reviewerId = `${record.manualReviewerId ?? ""}`.trim();
@@ -308,65 +309,86 @@ export const pumpMockExamAiReviewQueue = async ({ db = prisma, currentTime = new
         return;
       }
 
-      const queuedRecords = await db.mockExamRecord.findMany({
-        where: {
-          status: "submitted",
-          reviewWorkflowStatus: "ai_pending",
-          OR: [
-            {
-              aiReviewNextRetryAt: null,
-            },
-            {
-              aiReviewNextRetryAt: {
-                lte: currentTime,
-              },
-            },
-          ],
-        },
-        orderBy: [{ submittedAt: "asc" }, { createdAt: "asc" }],
-        take: availableSlots * 2,
-        select: {
-          id: true,
-          manualReviewerId: true,
-          manualReviewLockToken: true,
-          manualReviewLockExpiresAt: true,
-          aiReviewRetryCount: true,
-          lastAiReviewError: true,
-        },
-      });
+      const runnableRecordIds = [];
+      const seenRecordIds = new Set();
+      const scanBatchSize = Math.max(DEFAULT_QUEUE_SCAN_BATCH_SIZE, availableSlots * 4);
+      let skip = 0;
 
-      const runnableRecordIds = queuedRecords
-        .map((item) => ({
-          recordId: `${item.id ?? ""}`.trim(),
-          manualReviewerId: `${item.manualReviewerId ?? ""}`.trim(),
-          manualReviewLockToken: `${item.manualReviewLockToken ?? ""}`.trim(),
-          manualReviewLockExpiresAt: item.manualReviewLockExpiresAt,
-          aiReviewRetryCount: item.aiReviewRetryCount,
-          lastAiReviewError: `${item.lastAiReviewError ?? ""}`.trim(),
-        }))
-        .filter(({ recordId, manualReviewerId, manualReviewLockToken, manualReviewLockExpiresAt, aiReviewRetryCount, lastAiReviewError }) => {
-          if (!recordId || runningRecordIds.has(recordId)) {
-            return false;
+      while (runnableRecordIds.length < availableSlots) {
+        const queuedRecords = await db.mockExamRecord.findMany({
+          where: {
+            status: "submitted",
+            reviewWorkflowStatus: "ai_pending",
+            OR: [
+              {
+                aiReviewNextRetryAt: null,
+              },
+              {
+                aiReviewNextRetryAt: {
+                  lte: currentTime,
+                },
+              },
+            ],
+          },
+          orderBy: [{ submittedAt: "asc" }, { createdAt: "asc" }],
+          skip,
+          take: scanBatchSize,
+          select: {
+            id: true,
+            manualReviewerId: true,
+            manualReviewLockToken: true,
+            manualReviewLockExpiresAt: true,
+            aiReviewRetryCount: true,
+            lastAiReviewError: true,
+          },
+        });
+
+        if (queuedRecords.length === 0) {
+          break;
+        }
+
+        for (const item of queuedRecords) {
+          const recordId = `${item.id ?? ""}`.trim();
+          if (!recordId || seenRecordIds.has(recordId) || runningRecordIds.has(recordId)) {
+            continue;
           }
+          seenRecordIds.add(recordId);
+
+          const manualReviewerId = `${item.manualReviewerId ?? ""}`.trim();
+          const manualReviewLockToken = `${item.manualReviewLockToken ?? ""}`.trim();
+          const lastAiReviewError = `${item.lastAiReviewError ?? ""}`.trim();
+          const manualReviewLockExpiresAt = item.manualReviewLockExpiresAt;
+          const aiReviewRetryCount = item.aiReviewRetryCount;
+
           if (!canQueueAutoReview({ retryCount: aiReviewRetryCount, lastError: lastAiReviewError })) {
-            return false;
+            continue;
           }
+
           if (
-            !hasActiveManualReviewLock(
+            hasActiveManualReviewLock(
               {
                 manualReviewerId,
                 manualReviewLockToken,
                 manualReviewLockExpiresAt,
               },
               currentTime,
-            )
+            ) &&
+            `${forcedAdminQueueMap.get(recordId) ?? ""}`.trim() !== manualReviewerId
           ) {
-            return true;
+            continue;
           }
-          return `${forcedAdminQueueMap.get(recordId) ?? ""}`.trim() === manualReviewerId;
-        })
-        .map(({ recordId }) => recordId)
-        .slice(0, availableSlots);
+
+          runnableRecordIds.push(recordId);
+          if (runnableRecordIds.length >= availableSlots) {
+            break;
+          }
+        }
+
+        if (queuedRecords.length < scanBatchSize) {
+          break;
+        }
+        skip += queuedRecords.length;
+      }
 
       for (const recordId of runnableRecordIds) {
         void consumeQueuedRecord({ db, recordId });
