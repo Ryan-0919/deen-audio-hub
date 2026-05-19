@@ -15,6 +15,7 @@ import { ApiRequestError, mockApi } from "../../lib/mockData";
 import { ensureUserDeviceKey, getUserToken, saveUserSession } from "../../lib/user-session";
 
 const DEVICE_LIMIT = 5;
+const MOBILE_LOGIN_BREAKPOINT = 768;
 const LOGIN_BACKGROUND_PARTICLES = [
   { left: "8%", top: "18%", size: 6, duration: 8.2, delay: 0.2 },
   { left: "18%", top: "72%", size: 4, duration: 10.4, delay: 1.1 },
@@ -37,11 +38,56 @@ type ActiveField = "phone" | "password" | null;
 type AuthMode = "login" | "register";
 const TERMS_PATH = "/legal/terms-of-service";
 const PRIVACY_PATH = "/legal/privacy-policy";
+const DEFAULT_POINTER_STATE: PointerState = { x: 72, y: 22, rx: 0, ry: 0 };
 
-function usePointerScene() {
-  const [pointer, setPointer] = useState<PointerState>({ x: 72, y: 22, rx: 0, ry: 0 });
+function shouldUseLowMotionLogin() {
+  if (typeof window === "undefined") return false;
+  return window.innerWidth < MOBILE_LOGIN_BREAKPOINT || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function useLoginLowMotion() {
+  const [lowMotion, setLowMotion] = useState<boolean>(() => shouldUseLowMotionLogin());
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => {
+      setLowMotion(window.innerWidth < MOBILE_LOGIN_BREAKPOINT || reducedMotionQuery.matches);
+    };
+
+    window.addEventListener("resize", update);
+
+    if (typeof reducedMotionQuery.addEventListener === "function") {
+      reducedMotionQuery.addEventListener("change", update);
+    } else {
+      reducedMotionQuery.addListener(update);
+    }
+
+    update();
+
+    return () => {
+      window.removeEventListener("resize", update);
+      if (typeof reducedMotionQuery.removeEventListener === "function") {
+        reducedMotionQuery.removeEventListener("change", update);
+      } else {
+        reducedMotionQuery.removeListener(update);
+      }
+    };
+  }, []);
+
+  return lowMotion;
+}
+
+function usePointerScene(enabled: boolean) {
+  const [pointer, setPointer] = useState<PointerState>({ ...DEFAULT_POINTER_STATE });
+
+  useEffect(() => {
+    if (!enabled) {
+      setPointer({ ...DEFAULT_POINTER_STATE });
+      return;
+    }
+
     let frame = 0;
 
     const handlePointerMove = (event: PointerEvent) => {
@@ -80,13 +126,34 @@ function usePointerScene() {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerleave", handlePointerLeave);
     };
-  }, []);
+  }, [enabled]);
 
   return pointer;
 }
 
-function LoginTechBackground({ pointer, activeField }: { pointer: PointerState; activeField: ActiveField }) {
+function LoginTechBackground({ pointer, activeField, lowMotion }: { pointer: PointerState; activeField: ActiveField; lowMotion: boolean }) {
   const focusBoost = activeField ? 1 : 0;
+
+  if (lowMotion) {
+    return (
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,#040816_0%,#07111d_36%,#06101a_64%,#091421_100%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_10%,rgba(79,142,255,0.20),transparent_26%),radial-gradient(circle_at_86%_18%,rgba(46,246,220,0.12),transparent_24%),radial-gradient(circle_at_50%_100%,rgba(106,85,255,0.12),transparent_24%)]" />
+        <div className="absolute left-[-16%] top-[-14%] h-[26rem] w-[26rem] rounded-full bg-[radial-gradient(circle,rgba(80,144,255,0.24)_0%,rgba(80,144,255,0)_70%)] blur-[90px]" />
+        <div className="absolute right-[-18%] top-[8%] h-[24rem] w-[24rem] rounded-full bg-[radial-gradient(circle,rgba(47,246,220,0.14)_0%,rgba(47,246,220,0)_72%)] blur-[96px]" />
+        <div className="absolute bottom-[-18%] left-[12%] h-[22rem] w-[22rem] rounded-full bg-[radial-gradient(circle,rgba(113,84,255,0.14)_0%,rgba(113,84,255,0)_72%)] blur-[98px]" />
+        <div
+          className="absolute inset-0 opacity-[0.08]"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(143,214,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(143,214,255,0.08) 1px, transparent 1px)",
+            backgroundSize: "84px 84px",
+          }}
+        />
+        <div className="absolute inset-x-0 top-0 h-36 bg-[radial-gradient(circle_at_top,rgba(143,214,255,0.20)_0%,rgba(143,214,255,0)_72%)]" />
+      </div>
+    );
+  }
 
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden [perspective:1600px]">
@@ -258,7 +325,8 @@ export function UserLogin() {
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [customerServiceUrl, setCustomerServiceUrl] = useState("");
   const [activeField, setActiveField] = useState<ActiveField>(null);
-  const pointer = usePointerScene();
+  const lowMotionLogin = useLoginLowMotion();
+  const pointer = usePointerScene(!lowMotionLogin);
 
   useEffect(() => {
     let active = true;
@@ -408,7 +476,7 @@ export function UserLogin() {
   if (checkingSession) {
     return (
       <div className="relative min-h-screen overflow-hidden bg-[#040816] px-4 py-5 text-white md:px-8 md:py-10">
-        <LoginTechBackground pointer={pointer} activeField={null} />
+        <LoginTechBackground pointer={pointer} activeField={null} lowMotion={lowMotionLogin} />
         <div className="relative mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-6xl items-center justify-center md:min-h-[calc(100vh-4rem)]">
           <div className="w-full max-w-md rounded-[26px] border border-white/10 bg-white/[0.05] p-7 text-center text-white/62 shadow-[0_28px_90px_rgba(0,0,0,0.22)] backdrop-blur-xl md:rounded-[32px] md:p-10">
             登录状态校验中...
@@ -419,46 +487,76 @@ export function UserLogin() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#040816] px-4 py-5 text-white md:px-8 md:py-10 [perspective:1800px]">
-      <LoginTechBackground pointer={pointer} activeField={activeField} />
+    <div className={cn("relative min-h-screen overflow-hidden bg-[#040816] px-4 py-5 text-white md:px-8 md:py-10", lowMotionLogin ? "" : "[perspective:1800px]")}>
+      <LoginTechBackground pointer={pointer} activeField={activeField} lowMotion={lowMotionLogin} />
 
       <div className="relative mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-6xl items-center justify-center md:min-h-[calc(100vh-4rem)]">
         <div className="w-full max-w-[520px]">
           <motion.div
-            className="relative mx-auto w-full overflow-hidden rounded-[26px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] p-4 shadow-[0_28px_90px_rgba(0,0,0,0.24)] backdrop-blur-[20px] md:rounded-[32px] md:p-7"
-            animate={{
-              rotateX: pointer.rx,
-              rotateY: pointer.ry,
-              x: pointer.ry * 1.8,
-              y: pointer.rx * -1.8,
-            }}
-            transition={{ type: "spring", stiffness: 55, damping: 20, mass: 1.1 }}
-            style={{ transformStyle: "preserve-3d" }}
+            className={cn(
+              "relative mx-auto w-full overflow-hidden rounded-[26px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] p-4 shadow-[0_28px_90px_rgba(0,0,0,0.24)] md:rounded-[32px] md:p-7",
+              lowMotionLogin ? "backdrop-blur-md" : "backdrop-blur-[20px]",
+            )}
+            animate={
+              lowMotionLogin
+                ? undefined
+                : {
+                    rotateX: pointer.rx,
+                    rotateY: pointer.ry,
+                    x: pointer.ry * 1.8,
+                    y: pointer.rx * -1.8,
+                  }
+            }
+            transition={lowMotionLogin ? undefined : { type: "spring", stiffness: 55, damping: 20, mass: 1.1 }}
+            style={lowMotionLogin ? undefined : { transformStyle: "preserve-3d" }}
           >
-            <motion.div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 rounded-[32px] bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.08),transparent_38%),linear-gradient(140deg,rgba(255,255,255,0.04),transparent_42%)]"
-              animate={{ x: pointer.ry * -4, y: pointer.rx * 4 }}
-              transition={{ type: "spring", stiffness: 42, damping: 20 }}
-            />
-            <motion.div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 rounded-[32px] p-px"
-              animate={{ opacity: activeField ? [0.28, 0.7, 0.28] : [0.16, 0.34, 0.16] }}
-              transition={{ duration: activeField ? 2.4 : 4.8, repeat: Infinity, ease: "linear" }}
-              style={{
-                background:
-                  "conic-gradient(from 0deg, rgba(143,214,255,0) 0deg, rgba(143,214,255,0.05) 40deg, rgba(143,214,255,0.55) 95deg, rgba(46,246,220,0.34) 140deg, rgba(143,214,255,0.04) 220deg, rgba(143,214,255,0) 360deg)",
-              }}
-            >
-              <div className="h-full w-full rounded-[31px] bg-transparent" />
-            </motion.div>
-            <motion.div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-[-18%] rounded-[40px] bg-[conic-gradient(from_0deg,transparent_0deg,rgba(143,214,255,0.08)_68deg,rgba(46,246,220,0.22)_108deg,transparent_150deg,transparent_360deg)] blur-2xl"
-              animate={{ rotate: [0, 360], opacity: activeField ? 0.85 : 0.45 }}
-              transition={{ rotate: { duration: activeField ? 5.5 : 10.5, repeat: Infinity, ease: "linear" }, opacity: { duration: 0.3 } }}
-            />
+            {lowMotionLogin ? (
+              <>
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 rounded-[32px] bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.07),transparent_38%),linear-gradient(140deg,rgba(255,255,255,0.04),transparent_42%)]"
+                />
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 rounded-[32px] p-px"
+                  style={{
+                    background:
+                      activeField
+                        ? "linear-gradient(135deg, rgba(143,214,255,0.16), rgba(46,246,220,0.18), rgba(143,214,255,0.12))"
+                        : "linear-gradient(135deg, rgba(143,214,255,0.08), rgba(46,246,220,0.10), rgba(143,214,255,0.06))",
+                  }}
+                >
+                  <div className="h-full w-full rounded-[31px] bg-transparent" />
+                </div>
+              </>
+            ) : (
+              <>
+                <motion.div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 rounded-[32px] bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.08),transparent_38%),linear-gradient(140deg,rgba(255,255,255,0.04),transparent_42%)]"
+                  animate={{ x: pointer.ry * -4, y: pointer.rx * 4 }}
+                  transition={{ type: "spring", stiffness: 42, damping: 20 }}
+                />
+                <motion.div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 rounded-[32px] p-px"
+                  animate={{ opacity: activeField ? [0.28, 0.7, 0.28] : [0.16, 0.34, 0.16] }}
+                  transition={{ duration: activeField ? 2.4 : 4.8, repeat: Infinity, ease: "linear" }}
+                  style={{
+                    background:
+                      "conic-gradient(from 0deg, rgba(143,214,255,0) 0deg, rgba(143,214,255,0.05) 40deg, rgba(143,214,255,0.55) 95deg, rgba(46,246,220,0.34) 140deg, rgba(143,214,255,0.04) 220deg, rgba(143,214,255,0) 360deg)",
+                  }}
+                >
+                  <div className="h-full w-full rounded-[31px] bg-transparent" />
+                </motion.div>
+                <motion.div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-[-18%] rounded-[40px] bg-[conic-gradient(from_0deg,transparent_0deg,rgba(143,214,255,0.08)_68deg,rgba(46,246,220,0.22)_108deg,transparent_150deg,transparent_360deg)] blur-2xl"
+                  animate={{ rotate: [0, 360], opacity: activeField ? 0.85 : 0.45 }}
+                  transition={{ rotate: { duration: activeField ? 5.5 : 10.5, repeat: Infinity, ease: "linear" }, opacity: { duration: 0.3 } }}
+                />
+              </>
+            )}
             <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-[radial-gradient(circle_at_top,rgba(143,214,255,0.26)_0%,rgba(143,214,255,0)_72%)]" />
 
             <div className="relative">
