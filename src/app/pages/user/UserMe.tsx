@@ -1,14 +1,26 @@
-import { ClipboardCheck, LogOut, Sparkles, Trophy, UserRound } from "lucide-react";
+import { ClipboardCheck, ImageUp, KeyRound, LogOut, PencilLine, Sparkles, Trophy, UserRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { motion } from "motion/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
+import { toast } from "sonner";
 import { AppLogo } from "../../components/branding/AppLogo";
+import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
 import { cn } from "../../components/ui/utils";
-import { type UserHomeConfig, mockApi } from "../../lib/mockData";
-import { clearUserSession, getUserDeviceKey, getUserDisplayName, getUserId } from "../../lib/user-session";
+import { type User, type UserHomeConfig, mockApi } from "../../lib/mockData";
+import {
+  clearUserSession,
+  getUserAvatarUrl,
+  getUserDeviceKey,
+  getUserDisplayName,
+  getUserId,
+  updateUserProfileSession,
+} from "../../lib/user-session";
 
 type ShortcutItem = {
   title: string;
@@ -19,6 +31,8 @@ type ShortcutItem = {
   glowClassName: string;
   accentText: string;
 };
+
+type SettingsDialogMode = "profile" | "password" | null;
 
 const EMPTY_HOME_CONFIG: UserHomeConfig = {
   memberHome: {
@@ -91,12 +105,28 @@ const fallbackShortcutItems: ShortcutItem[] = [
   },
 ];
 
+const getDisplayInitial = (name: string) => {
+  const normalized = `${name ?? ""}`.trim();
+  return normalized ? normalized.slice(0, 1).toUpperCase() : "U";
+};
+
 export function UserMe() {
   const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const [homeConfig, setHomeConfig] = useState<UserHomeConfig>(EMPTY_HOME_CONFIG);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [dialogMode, setDialogMode] = useState<SettingsDialogMode>(null);
+  const [nickname, setNickname] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
-  const displayName = getUserDisplayName() || "已登录用户";
+  const displayName = currentUser?.displayName || getUserDisplayName() || "已登录用户";
+  const avatarUrl = currentUser?.avatarUrl || getUserAvatarUrl() || "";
   const deviceKey = getUserDeviceKey();
 
   useEffect(() => {
@@ -104,6 +134,18 @@ export function UserMe() {
       .getUserHomeConfig()
       .then((config) => setHomeConfig(config))
       .catch(() => setHomeConfig(EMPTY_HOME_CONFIG));
+
+    void mockApi
+      .getCurrentUser()
+      .then((user) => {
+        setCurrentUser(user);
+        updateUserProfileSession({
+          displayName: user.displayName || user.nickname || "",
+          avatarUrl: user.avatarUrl || "",
+        });
+        setNickname(user.nickname || user.displayName || "");
+      })
+      .catch(() => undefined);
   }, []);
 
   const shortcutItems = useMemo(() => {
@@ -124,6 +166,12 @@ export function UserMe() {
     }));
   }, [homeConfig.accountCenter.shortcuts]);
 
+  const resetPasswordForm = () => {
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+  };
+
   const handleLogout = async () => {
     if (loggingOut) return;
 
@@ -139,6 +187,76 @@ export function UserMe() {
     } finally {
       clearUserSession();
       navigate("/");
+    }
+  };
+
+  const handleProfileSave = async () => {
+    const nextNickname = nickname.trim();
+    if (!nextNickname) {
+      toast.error("昵称不能为空");
+      return;
+    }
+
+    try {
+      setSavingProfile(true);
+      const updated = await mockApi.updateCurrentUserProfile({ nickname: nextNickname });
+      setCurrentUser(updated);
+      updateUserProfileSession({
+        displayName: updated.displayName || updated.nickname || "",
+        avatarUrl: updated.avatarUrl || "",
+      });
+      setNickname(updated.nickname || updated.displayName || "");
+      toast.success("昵称已更新");
+      setDialogMode(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "昵称更新失败");
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handlePasswordSave = async () => {
+    if (!currentPassword.trim() || !newPassword.trim() || !confirmPassword.trim()) {
+      toast.error("请填写完整的密码信息");
+      return;
+    }
+
+    try {
+      setSavingPassword(true);
+      await mockApi.updateCurrentUserPassword({
+        currentPassword: currentPassword.trim(),
+        newPassword: newPassword.trim(),
+        confirmPassword: confirmPassword.trim(),
+      });
+      toast.success("密码已修改");
+      resetPasswordForm();
+      setDialogMode(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "密码修改失败");
+    } finally {
+      setSavingPassword(false);
+    }
+  };
+
+  const handleAvatarUpload = async (file?: File) => {
+    if (!file) return;
+
+    try {
+      setUploadingAvatar(true);
+      const result = await mockApi.uploadCurrentUserAvatar(file);
+      setCurrentUser(result.user);
+      updateUserProfileSession({
+        displayName: result.user.displayName || result.user.nickname || "",
+        avatarUrl: result.user.avatarUrl || "",
+      });
+      toast.success("头像已更新");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "头像上传失败");
+    } finally {
+      setUploadingAvatar(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   };
 
@@ -177,8 +295,28 @@ export function UserMe() {
                 </div>
 
                 <div className="mt-5 flex flex-col gap-4 md:flex-row md:items-start">
-                  <div className="flex size-16 shrink-0 items-center justify-center rounded-[24px] border border-white/10 bg-white/[0.06] text-white shadow-[0_18px_50px_rgba(0,0,0,0.2)] md:size-20 md:rounded-[28px]">
-                    <UserRound className="size-9 md:size-10" />
+                  <div className="relative">
+                    <Avatar className="size-16 rounded-[24px] border border-white/10 bg-white/[0.06] shadow-[0_18px_50px_rgba(0,0,0,0.2)] md:size-20 md:rounded-[28px]">
+                      <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" />
+                      <AvatarFallback className="bg-white/[0.08] text-white">
+                        <UserRound className="size-9 md:size-10" />
+                      </AvatarFallback>
+                    </Avatar>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingAvatar}
+                      className="absolute -bottom-2 -right-2 flex size-9 items-center justify-center rounded-full border border-white/15 bg-[#0d1d31] text-[#8fd6ff] shadow-[0_18px_32px_rgba(0,0,0,0.28)] transition hover:bg-[#122641] hover:text-white disabled:opacity-60"
+                    >
+                      <ImageUp className="size-4" />
+                    </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(event) => void handleAvatarUpload(event.target.files?.[0])}
+                    />
                   </div>
 
                   <div className="min-w-0 flex-1">
@@ -190,6 +328,29 @@ export function UserMe() {
                     <p className="mt-3 max-w-3xl text-sm leading-7 text-white/58 md:text-[15px]">
                       {homeConfig.accountCenter.description || "这里统一放课程学习外的个人操作入口。你可以查看考试记录、考试排行榜，也可以随时安全退出当前设备。"}
                     </p>
+
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <Button
+                        type="button"
+                        onClick={() => setDialogMode("profile")}
+                        className="rounded-2xl bg-white text-slate-950 hover:bg-white/92"
+                      >
+                        <PencilLine className="size-4" />
+                        修改昵称
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          resetPasswordForm();
+                          setDialogMode("password");
+                        }}
+                        className="rounded-2xl border-white/12 bg-white/[0.04] text-white hover:bg-white/[0.10] hover:text-white"
+                      >
+                        <KeyRound className="size-4" />
+                        修改密码
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -240,6 +401,94 @@ export function UserMe() {
           </div>
         </motion.section>
       </div>
+
+      <Dialog open={dialogMode === "profile"} onOpenChange={(open) => setDialogMode(open ? "profile" : null)}>
+        <DialogContent className="border-white/10 bg-[#08111d] text-white sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>修改昵称</DialogTitle>
+            <DialogDescription className="text-white/55">昵称会同步显示在用户端顶部和个人中心。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="nickname" className="text-white/76">
+              昵称
+            </Label>
+            <Input
+              id="nickname"
+              value={nickname}
+              maxLength={20}
+              onChange={(event) => setNickname(event.target.value)}
+              className="border-white/10 bg-white/[0.06] text-white placeholder:text-white/28"
+              placeholder="请输入昵称"
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDialogMode(null)} className="border-white/12 bg-white/[0.04] text-white hover:bg-white/[0.10] hover:text-white">
+              取消
+            </Button>
+            <Button type="button" onClick={() => void handleProfileSave()} disabled={savingProfile} className="bg-white text-slate-950 hover:bg-white/92">
+              {savingProfile ? "保存中..." : "保存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dialogMode === "password"} onOpenChange={(open) => setDialogMode(open ? "password" : null)}>
+        <DialogContent className="border-white/10 bg-[#08111d] text-white sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>修改密码</DialogTitle>
+            <DialogDescription className="text-white/55">请输入原密码，并设置新的登录密码。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="current-password" className="text-white/76">
+                原密码
+              </Label>
+              <Input
+                id="current-password"
+                type="password"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+                className="border-white/10 bg-white/[0.06] text-white placeholder:text-white/28"
+                placeholder="请输入原密码"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-password" className="text-white/76">
+                新密码
+              </Label>
+              <Input
+                id="new-password"
+                type="password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                className="border-white/10 bg-white/[0.06] text-white placeholder:text-white/28"
+                placeholder="请输入新密码"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirm-password" className="text-white/76">
+                确认新密码
+              </Label>
+              <Input
+                id="confirm-password"
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                className="border-white/10 bg-white/[0.06] text-white placeholder:text-white/28"
+                placeholder="请再次输入新密码"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDialogMode(null)} className="border-white/12 bg-white/[0.04] text-white hover:bg-white/[0.10] hover:text-white">
+              取消
+            </Button>
+            <Button type="button" onClick={() => void handlePasswordSave()} disabled={savingPassword} className="bg-white text-slate-950 hover:bg-white/92">
+              {savingPassword ? "保存中..." : "保存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

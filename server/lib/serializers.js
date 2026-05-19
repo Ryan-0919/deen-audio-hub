@@ -116,6 +116,13 @@ export const serializeVideoListItem = (video) => ({
 export const serializeUser = (user) => ({
   id: user.id,
   phone: user.phone,
+  nickname: normalizeDisplayText(user.nickname ?? ""),
+  displayName: normalizeDisplayText(user.nickname ?? "") || normalizeDisplayText(user.phone ?? ""),
+  avatarUrl: getReadableObjectUrl({
+    objectKey: user.avatarObjectKey ?? "",
+    fallbackUrl: user.avatarUrl ?? "",
+  }),
+  avatarObjectKey: user.avatarObjectKey ?? "",
   password: "",
   status: user.status,
   registeredAt: formatDate(user.registeredAt),

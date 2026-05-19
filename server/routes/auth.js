@@ -18,13 +18,21 @@ import { requireUserAuth } from "../middleware/auth.js";
 import { getReadableObjectUrl } from "../lib/upload.js";
 import { getDevicesToEvictForNewLogin } from "../lib/device-limit.js";
 import { normalizePortalConfig } from "../../src/shared/portal-config.js";
+import { normalizeDisplayText } from "../lib/text.js";
 
 const DEVICE_LIMIT = 5;
 const USER_LOGIN_RATE_LIMIT_ERROR_CODE = 10041;
 const ADMIN_LOGIN_RATE_LIMIT_ERROR_CODE = 10042;
 const USER_REGISTER_RATE_LIMIT_ERROR_CODE = 10043;
+const USER_PROFILE_NICKNAME_MAX_LENGTH = 20;
 
 const isUniqueConstraintError = (error) => Boolean(error && typeof error === "object" && "code" in error && error.code === "P2002");
+
+const normalizeNickname = (value = "") => {
+  const text = normalizeDisplayText(value).replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  return text.slice(0, USER_PROFILE_NICKNAME_MAX_LENGTH);
+};
 
 export const authRouter = Router();
 
@@ -126,6 +134,9 @@ authRouter.post("/user/login", async (req, res, next) => {
       select: {
         id: true,
         phone: true,
+        nickname: true,
+        avatarUrl: true,
+        avatarObjectKey: true,
         passwordHash: true,
         status: true,
       },
@@ -286,6 +297,9 @@ authRouter.post("/user/register", async (req, res, next) => {
       const user = await tx.user.create({
         data: {
           phone,
+          nickname: "",
+          avatarUrl: null,
+          avatarObjectKey: null,
           passwordHash,
           status: "active",
           lastLoginAt: now,
@@ -376,6 +390,86 @@ authRouter.get("/user/me", requireUserAuth, async (req, res) => {
   });
 
   return ok(res, user ? serializeUser(user) : null);
+});
+
+authRouter.patch("/user/profile", requireUserAuth, async (req, res) => {
+  const nickname = normalizeNickname(`${req.body?.nickname ?? ""}`);
+
+  if (!nickname) {
+    return fail(res, "昵称不能为空", 400);
+  }
+
+  const updatedUser = await prisma.user.update({
+    where: { id: req.auth.userId },
+    data: {
+      nickname,
+    },
+    include: {
+      permissions: true,
+      devices: true,
+      mockExamSeriesPermissions: true,
+      mockExamPermissions: true,
+    },
+  });
+
+  return ok(res, serializeUser(updatedUser), "资料已更新");
+});
+
+authRouter.patch("/user/password", requireUserAuth, async (req, res) => {
+  const currentPassword = `${req.body?.currentPassword ?? ""}`;
+  const nextPassword = `${req.body?.newPassword ?? ""}`;
+  const confirmPassword = `${req.body?.confirmPassword ?? ""}`;
+
+  if (!currentPassword || !nextPassword || !confirmPassword) {
+    return fail(res, "请填写完整的密码信息", 400);
+  }
+
+  let validatedPassword;
+  let validatedConfirmPassword;
+
+  try {
+    validatedPassword = validatePasswordOrThrow(nextPassword, "新密码");
+    validatedConfirmPassword = validatePasswordOrThrow(confirmPassword, "确认密码");
+  } catch (error) {
+    if (error instanceof Error && error.message) {
+      return fail(res, error.message, 400);
+    }
+    throw error;
+  }
+
+  if (validatedPassword !== validatedConfirmPassword) {
+    return fail(res, "两次输入的新密码不一致", 400);
+  }
+
+  const currentUser = await prisma.user.findUnique({
+    where: { id: req.auth.userId },
+    select: {
+      id: true,
+      passwordHash: true,
+    },
+  });
+
+  if (!currentUser) {
+    return fail(res, "用户不存在", 404);
+  }
+
+  const isMatched = await comparePassword(currentPassword, currentUser.passwordHash);
+  if (!isMatched) {
+    return fail(res, "原密码不正确", 400);
+  }
+
+  if (currentPassword === validatedPassword) {
+    return fail(res, "新密码不能与原密码一致", 400);
+  }
+
+  await prisma.user.update({
+    where: { id: req.auth.userId },
+    data: {
+      passwordHash: await hashPassword(validatedPassword),
+    },
+  });
+
+  return ok(res, { success: true }, "密码已修改");
 });
 
 authRouter.post("/admin/login", async (req, res) => {

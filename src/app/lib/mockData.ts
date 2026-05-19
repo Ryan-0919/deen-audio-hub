@@ -16,6 +16,10 @@ export type AdminRole = "super_admin" | "operations_admin" | "user_admin" | "rev
 export interface User {
   id: string;
   phone: string;
+  nickname?: string;
+  displayName?: string;
+  avatarUrl?: string;
+  avatarObjectKey?: string;
   password: string;
   status: UserStatus;
   registeredAt: string;
@@ -2194,6 +2198,14 @@ export const mockApi = {
     ),
 
   getCurrentUser: () => request<User>("/api/auth/user/me", { auth: "user" }),
+
+  updateCurrentUserProfile: (payload: { nickname: string }) => patchJson<User>("/api/auth/user/profile", payload, "user"),
+
+  updateCurrentUserPassword: (payload: { currentPassword: string; newPassword: string; confirmPassword: string }) =>
+    patchJson<{ success: boolean }>("/api/auth/user/password", payload, "user"),
+
+  uploadCurrentUserAvatar: (file: File) =>
+    uploadSingleFile<{ user: User; uploaded: { objectKey: string; url: string; readableUrl?: string } }>("/api/user/profile/avatar", file, "user"),
 
   adminLogin: (account: string, password: string) =>
     postJson<{ success: boolean; token: string; admin: { id: string; account: string; name: string; role: AdminRole } }>(

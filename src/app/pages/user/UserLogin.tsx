@@ -356,6 +356,8 @@ export function UserLogin() {
           token,
           userId: currentUser.id,
           phone: currentUser.phone,
+          displayName: currentUser.displayName || currentUser.nickname || "",
+          avatarUrl: currentUser.avatarUrl || "",
         });
         navigate("/user/courses", { replace: true });
       } catch {
@@ -442,6 +444,8 @@ export function UserLogin() {
         token: result.token,
         userId: result.user.id,
         phone: result.user.phone,
+        displayName: result.user.displayName || result.user.nickname || "",
+        avatarUrl: result.user.avatarUrl || "",
       });
       toast.success(authMode === "register" ? "注册成功" : "登录成功");
       navigate("/user/courses", { replace: true });

@@ -37,11 +37,16 @@ const hasSystemImageReference = (systemConfig, objectKey) =>
       ),
   );
 
+const countUserAvatarReference = (objectKey) =>
+  prisma.user.count({
+    where: { avatarObjectKey: objectKey },
+  });
+
 export const cleanupObjectIfUnused = async (objectKey = "") => {
   const normalized = `${objectKey ?? ""}`.trim();
   if (!normalized) return false;
 
-  const [audioCount, audioHandoutCount, videoCount, videoHandoutCount, courseCoverCount, courseHandoutCount, productCoverCount, productImageCount, bannerImageCount, systemConfig] =
+  const [audioCount, audioHandoutCount, videoCount, videoHandoutCount, courseCoverCount, courseHandoutCount, productCoverCount, productImageCount, bannerImageCount, userAvatarCount, systemConfig] =
     await Promise.all([
     prisma.audio.count({
       where: { objectKey: normalized },
@@ -70,6 +75,7 @@ export const cleanupObjectIfUnused = async (objectKey = "") => {
     prisma.shopBanner.count({
       where: { imageObjectKey: normalized },
     }),
+    countUserAvatarReference(normalized),
     prisma.systemConfig.findUnique({
       where: { id: 1 },
       select: {
@@ -90,6 +96,7 @@ export const cleanupObjectIfUnused = async (objectKey = "") => {
     productCoverCount > 0 ||
     productImageCount > 0 ||
     bannerImageCount > 0 ||
+    userAvatarCount > 0 ||
     hasSystemImageReference(systemConfig, normalized)
   ) {
     return false;

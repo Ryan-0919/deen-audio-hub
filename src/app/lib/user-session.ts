@@ -2,6 +2,7 @@ const USER_TOKEN_KEY = "userToken";
 const USER_ID_KEY = "userId";
 const USER_PHONE_KEY = "userPhone";
 const USER_DISPLAY_NAME_KEY = "userDisplayName";
+const USER_AVATAR_URL_KEY = "userAvatarUrl";
 const USER_DEVICE_KEY = "userDeviceKey";
 
 const USER_SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
@@ -162,6 +163,8 @@ export const getUserDisplayName = () => {
   return storedDisplayName;
 };
 
+export const getUserAvatarUrl = () => readPersistedValue(USER_AVATAR_URL_KEY);
+
 export const getUserDeviceKey = () => readPersistedValue(USER_DEVICE_KEY);
 
 export const ensureUserDeviceKey = () => {
@@ -178,16 +181,30 @@ export const saveUserSession = ({
   userId,
   phone,
   displayName,
+  avatarUrl,
 }: {
   token: string;
   userId: string;
   phone: string;
   displayName?: string;
+  avatarUrl?: string;
 }) => {
   persistValue(USER_TOKEN_KEY, token);
   persistValue(USER_ID_KEY, userId);
   persistValue(USER_PHONE_KEY, phone);
   persistValue(USER_DISPLAY_NAME_KEY, displayName || buildDefaultUserDisplayName(phone));
+  persistValue(USER_AVATAR_URL_KEY, avatarUrl || "");
+};
+
+export const updateUserProfileSession = ({ displayName, avatarUrl }: { displayName?: string; avatarUrl?: string }) => {
+  if (displayName !== undefined) {
+    const phone = getUserPhone();
+    persistValue(USER_DISPLAY_NAME_KEY, displayName || buildDefaultUserDisplayName(phone));
+  }
+
+  if (avatarUrl !== undefined) {
+    persistValue(USER_AVATAR_URL_KEY, avatarUrl || "");
+  }
 };
 
 export const clearUserSession = () => {
@@ -195,4 +212,5 @@ export const clearUserSession = () => {
   persistValue(USER_ID_KEY, "");
   persistValue(USER_PHONE_KEY, "");
   persistValue(USER_DISPLAY_NAME_KEY, "");
+  persistValue(USER_AVATAR_URL_KEY, "");
 };

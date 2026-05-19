@@ -1,8 +1,9 @@
 import { BookMarked, UserRound } from "lucide-react";
 import { NavLink, Navigate, Outlet, useLocation } from "react-router";
 import { AppLogo } from "../components/branding/AppLogo";
+import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { cn } from "../components/ui/utils";
-import { getUserDisplayName, getUserToken } from "../lib/user-session";
+import { getUserAvatarUrl, getUserDisplayName, getUserToken } from "../lib/user-session";
 
 const navigation = [
   {
@@ -43,6 +44,7 @@ export function UserLayout() {
     location.pathname === "/user/my-courses" ||
     location.pathname.startsWith("/user/course/") ||
     location.pathname.startsWith("/user/video-course/");
+
   const isDarkShell =
     isHome ||
     location.pathname.startsWith("/user/player/") ||
@@ -53,7 +55,9 @@ export function UserLayout() {
     location.pathname.startsWith("/user/exam-leaderboard") ||
     location.pathname.startsWith("/user/me") ||
     location.pathname.startsWith("/user/typing-practice");
+
   const displayName = getUserDisplayName() || "已登录用户";
+  const avatarUrl = getUserAvatarUrl();
 
   return (
     <div
@@ -107,12 +111,18 @@ export function UserLayout() {
 
           <div
             className={cn(
-              "ml-auto inline-flex items-center rounded-full px-4 py-2 text-[13px] font-bold tracking-tight shadow-sm",
+              "ml-auto inline-flex items-center gap-3 rounded-full px-4 py-2 text-[13px] font-bold tracking-tight shadow-sm",
               isDarkShell
                 ? "border border-white/10 bg-white/[0.05] text-white/72"
                 : "border border-slate-200/60 bg-white/80 text-slate-500",
             )}
           >
+            <Avatar className="size-8 border border-white/10">
+              <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" />
+              <AvatarFallback className={cn(isDarkShell ? "bg-white/10 text-white" : "bg-slate-100 text-slate-700")}>
+                <UserRound className="size-4" />
+              </AvatarFallback>
+            </Avatar>
             <span className="max-w-[220px] truncate">{displayName}</span>
           </div>
         </div>

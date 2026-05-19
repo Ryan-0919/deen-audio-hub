@@ -1,13 +1,15 @@
 import { Router } from "express";
+import multer from "multer";
 import { Readable } from "node:stream";
 import { prisma } from "../lib/prisma.js";
 import { ok, fail } from "../lib/response.js";
-import { serializeAudio, serializeCourse, serializeTag, serializeVideo } from "../lib/serializers.js";
+import { serializeAudio, serializeCourse, serializeTag, serializeUser, serializeVideo } from "../lib/serializers.js";
 import { formatDateTime } from "../lib/time.js";
 import { requireUserAuth } from "../middleware/auth.js";
 import { syncScheduledCourses } from "../lib/scheduler.js";
-import { getReadableObjectUrl } from "../lib/upload.js";
+import { getReadableObjectUrl, uploadBuffer } from "../lib/upload.js";
 import { serializeMockExamPaperSummary } from "../lib/mock-exam.js";
+import { cleanupObjectIfReplaced } from "../lib/assets.js";
 import {
   buildAudioProgressMap,
   buildAudioTagContent,
@@ -24,6 +26,42 @@ import {
 export const userRouter = Router();
 
 userRouter.use(requireUserAuth);
+
+const MB = 1024 * 1024;
+const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
+const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+
+const buildUploadValidationError = (message) => {
+  const error = new Error(message);
+  error.statusCode = 400;
+  return error;
+};
+
+const getFileExtension = (fileName = "") => {
+  const index = fileName.lastIndexOf(".");
+  return index >= 0 ? fileName.slice(index).toLowerCase() : "";
+};
+
+const uploadAvatar = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * MB,
+    files: 1,
+  },
+  fileFilter(_req, file, callback) {
+    const extension = getFileExtension(file.originalname);
+    const mimeType = `${file.mimetype ?? ""}`.toLowerCase();
+    const extensionAllowed = IMAGE_EXTENSIONS.has(extension);
+    const mimeAllowed = IMAGE_MIME_TYPES.has(mimeType) || (!mimeType || mimeType === "application/octet-stream");
+
+    if (extensionAllowed && mimeAllowed) {
+      callback(null, true);
+      return;
+    }
+
+    callback(buildUploadValidationError("头像格式不支持，请重新选择后上传"));
+  },
+});
 
 const isUniqueConstraintError = (error) => error && typeof error === "object" && error.code === "P2002";
 const saveUserProgressRecord = async ({ userId, courseId, audioId, updateData, createData }) => {
@@ -64,6 +102,64 @@ const saveUserProgressRecord = async ({ userId, courseId, audioId, updateData, c
 };
 
 const serializeProgress = serializeAudioProgress;
+
+userRouter.post("/profile/avatar", (req, res, next) => {
+  uploadAvatar.single("file")(req, res, (error) => {
+    if (error) {
+      if (error?.statusCode) {
+        return fail(res, error.message, error.statusCode);
+      }
+      return next(error);
+    }
+    return next();
+  });
+}, async (req, res) => {
+  if (!req.file) {
+    return fail(res, "请先选择头像图片", 400);
+  }
+
+  const currentUser = await prisma.user.findUnique({
+    where: { id: req.auth.userId },
+    select: {
+      avatarObjectKey: true,
+    },
+  });
+
+  const uploaded = await uploadBuffer({
+    fileName: req.file.originalname,
+    buffer: req.file.buffer,
+    mimeType: req.file.mimetype,
+    folder: "user-avatars",
+  });
+
+  const updatedUser = await prisma.user.update({
+    where: { id: req.auth.userId },
+    data: {
+      avatarUrl: uploaded.url,
+      avatarObjectKey: uploaded.objectKey,
+    },
+    include: {
+      permissions: true,
+      devices: true,
+      mockExamSeriesPermissions: true,
+      mockExamPermissions: true,
+    },
+  });
+
+  void cleanupObjectIfReplaced({
+    previousObjectKey: currentUser?.avatarObjectKey ?? "",
+    nextObjectKey: uploaded.objectKey,
+  });
+
+  return ok(
+    res,
+    {
+      user: serializeUser(updatedUser),
+      uploaded,
+    },
+    "头像已上传",
+  );
+});
 
 const saveUserVideoProgressRecord = async ({ userId, courseId, videoId, updateData, createData }) => {
   const where = { userId, courseId, videoId };
