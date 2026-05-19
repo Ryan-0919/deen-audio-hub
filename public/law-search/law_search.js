@@ -156,7 +156,7 @@ function bindStaticEvents() {
       return;
     }
     state.dragging = true;
-    state.dragStart = { x: event.pageX };
+    state.dragStart = { x: event.pageX, width: state.leftWidth };
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
     event.preventDefault();
@@ -168,9 +168,9 @@ function bindStaticEvents() {
       return;
     }
     state.dragging = true;
-    state.dragStart = { x: event.pageX };
+    state.dragStart = { x: event.pageX, width: 0 };
     state.isLeftCollapsed = false;
-    state.leftWidth = LEFT_REOPEN_DEFAULT_WIDTH;
+    state.leftWidth = LEFT_WIDTH_MIN;
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
     renderLayout();
@@ -183,14 +183,13 @@ function bindStaticEvents() {
       return;
     }
 
-    const nextWidth = state.leftWidth + event.pageX - state.dragStart.x;
+    const nextWidth = state.dragStart.width + event.pageX - state.dragStart.x;
     if (nextWidth <= LEFT_COLLAPSE_THRESHOLD) {
       state.isLeftCollapsed = true;
     } else {
       state.isLeftCollapsed = false;
       state.leftWidth = clamp(nextWidth, LEFT_WIDTH_MIN, LEFT_WIDTH_MAX);
     }
-    state.dragStart = { x: event.pageX };
     renderLayout();
     event.stopPropagation();
   });
