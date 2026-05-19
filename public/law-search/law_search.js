@@ -55,7 +55,7 @@ const LEFT_WIDTH_MIN = 240;
 const LEFT_WIDTH_MAX = 680;
 const LEFT_COLLAPSE_THRESHOLD = 72;
 const LEFT_REOPEN_DEFAULT_WIDTH = 320;
-const LEFT_COLLAPSED_HANDLE_WIDTH = 14;
+const LEFT_COLLAPSED_HANDLE_WIDTH = 12;
 
 const state = {
   tree: [],
@@ -370,6 +370,7 @@ function renderLayout() {
   getEl("law-left-collapsed").hidden = mobile ? true : !state.isLeftCollapsed;
   getEl("law-left").style.width = mobile ? "100%" : `${state.leftWidth}px`;
   getEl("law-left-collapsed").style.width = mobile ? "0" : `${LEFT_COLLAPSED_HANDLE_WIDTH}px`;
+  getEl("law-left-collapsed").style.pointerEvents = mobile || !state.isLeftCollapsed ? "none" : "auto";
 }
 
 function getDialogBridge() {

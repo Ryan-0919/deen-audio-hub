@@ -92,6 +92,7 @@ body {
 
 .W6XcCrT2dd-qXREMlc\+POg\=\= {
   display: flex;
+  position: relative;
   height: calc(100% - 40px);
   border-top: 1px solid #dfdfdf;
 }
@@ -135,10 +136,15 @@ body {
 }
 
 .KzrW119NxvD6FZu5TR9hvg\=\= {
-  width: 14px;
-  border-right: 0;
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  border-right: 1px solid #d7dbe5;
   background: linear-gradient(180deg, #f8f8f8 0%, #f1f1f1 100%);
   cursor: col-resize;
+  z-index: 3;
 }
 
 .fCX6MGsD3PopmhyLo58bMA\=\= {
