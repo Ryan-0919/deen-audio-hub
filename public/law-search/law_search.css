@@ -143,16 +143,17 @@ body {
 
 .fCX6MGsD3PopmhyLo58bMA\=\= {
   flex-shrink: 0;
-  margin: 0px -6px 0px -4px;
-  width: 10px;
+  margin: 0;
+  width: 12px;
   height: 100%;
   cursor: col-resize;
   position: relative;
   z-index: 2;
+  background: linear-gradient(90deg, transparent 0, transparent 5px, #d7dbe5 5px, #d7dbe5 7px, transparent 7px, transparent 100%);
 }
 
 .fCX6MGsD3PopmhyLo58bMA\=\=:hover {
-  background: rgba(82, 122, 195, 0.08);
+  background: linear-gradient(90deg, transparent 0, transparent 4px, #9fb3d9 4px, #9fb3d9 8px, transparent 8px, transparent 100%);
 }
 
 .KzrW119NxvD6FZu5TR9hvg\=\= > .N-CLd1SlwL3\+HA9kUp-8lw\=\= {

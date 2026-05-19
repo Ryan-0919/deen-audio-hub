@@ -292,8 +292,8 @@ function renderShell() {
             </div>
             <div id="tree-root" class="${styles.listArea} ${styles.list}"></div>
           </div>
-          <div id="movebar" class="${styles.movebar}"></div>
         </div>
+        <div id="movebar" class="${styles.movebar}"></div>
         <div id="law-left-collapsed" class="${styles.hideLeft}" hidden>
           <div class="${styles.navbar}">
             <div id="expand-left" class="${styles.navOpen}" role="button" tabindex="0" aria-label="展开导航">
@@ -366,6 +366,7 @@ function renderLayout() {
   renderTopIcons();
 
   getEl("law-left-expanded").hidden = mobile ? false : state.isLeftCollapsed;
+  getEl("movebar").hidden = mobile ? true : state.isLeftCollapsed;
   getEl("law-left-collapsed").hidden = mobile ? true : !state.isLeftCollapsed;
   getEl("law-left").style.width = mobile ? "100%" : `${state.leftWidth}px`;
   getEl("law-left-collapsed").style.width = mobile ? "0" : `${LEFT_COLLAPSED_HANDLE_WIDTH}px`;
