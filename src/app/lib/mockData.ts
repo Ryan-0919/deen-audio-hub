@@ -2175,8 +2175,12 @@ export const mockApi = {
   login: (phone: string, password: string, deviceInfo: Record<string, string>) =>
     postJson<{ success: boolean; token: string; user: User }>("/api/auth/user/login", { phone, password, ...deviceInfo }, "user"),
 
-  register: (phone: string, password: string, deviceInfo: Record<string, string>) =>
-    postJson<{ success: boolean; token: string; user: User }>("/api/auth/user/register", { phone, password, ...deviceInfo }, "user"),
+  register: (phone: string, password: string, confirmPassword: string, agreeTerms: boolean, deviceInfo: Record<string, string>) =>
+    postJson<{ success: boolean; token: string; user: User }>(
+      "/api/auth/user/register",
+      { phone, password, confirmPassword, agreeTerms, ...deviceInfo },
+      "user",
+    ),
 
   getCurrentUser: () => request<User>("/api/auth/user/me", { auth: "user" }),
 

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { AppLogo } from "../../components/branding/AppLogo";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
+import { Checkbox } from "../../components/ui/checkbox";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { cn } from "../../components/ui/utils";
@@ -34,6 +35,8 @@ type PointerState = {
 
 type ActiveField = "phone" | "password" | null;
 type AuthMode = "login" | "register";
+const TERMS_PATH = "/legal/terms-of-service";
+const PRIVACY_PATH = "/legal/privacy-policy";
 
 function usePointerScene() {
   const [pointer, setPointer] = useState<PointerState>({ x: 72, y: 22, rx: 0, ry: 0 });
@@ -246,10 +249,13 @@ export function UserLogin() {
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [loginError, setLoginError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [agreeTerms, setAgreeTerms] = useState(false);
   const [customerServiceUrl, setCustomerServiceUrl] = useState("");
   const [activeField, setActiveField] = useState<ActiveField>(null);
   const pointer = usePointerScene();
@@ -326,19 +332,44 @@ export function UserLogin() {
       return;
     }
 
-    if (authMode === "register" && password.trim().length < 6) {
-      const message = "密码长度至少 6 位";
-      setLoginError(message);
-      toast.error(message);
-      return;
+    if (authMode === "register") {
+      if (!confirmPassword.trim()) {
+        const message = "请再次输入密码";
+        setLoginError(message);
+        toast.error(message);
+        return;
+      }
+
+      if (password.trim().length < 6) {
+        const message = "密码长度至少 6 位";
+        setLoginError(message);
+        toast.error(message);
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        const message = "两次输入的密码不一致";
+        setLoginError(message);
+        toast.error(message);
+        return;
+      }
+
+      if (!agreeTerms) {
+        const message = "请先阅读并同意用户协议与隐私政策";
+        setLoginError(message);
+        toast.error(message);
+        return;
+      }
     }
 
     setLoading(true);
     setLoginError("");
 
     try {
-      const action = authMode === "register" ? mockApi.register : mockApi.login;
-      const result = await action(phone.trim(), password.trim(), getDeviceInfo());
+      const result =
+        authMode === "register"
+          ? await mockApi.register(phone.trim(), password.trim(), confirmPassword.trim(), agreeTerms, getDeviceInfo())
+          : await mockApi.login(phone.trim(), password.trim(), getDeviceInfo());
       saveUserSession({
         token: result.token,
         userId: result.user.id,
@@ -457,6 +488,8 @@ export function UserLogin() {
                     onClick={() => {
                       setAuthMode("login");
                       setLoginError("");
+                      setConfirmPassword("");
+                      setAgreeTerms(false);
                     }}
                   >
                     登录
@@ -541,6 +574,59 @@ export function UserLogin() {
                     </div>
                   </div>
 
+                  {authMode === "register" ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="confirm-password" className="text-white/72">
+                        确认密码
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="confirm-password"
+                          type={showConfirmPassword ? "text" : "password"}
+                          placeholder="请再次输入登录密码"
+                          value={confirmPassword}
+                          className="h-12 rounded-2xl border-white/10 bg-white/[0.06] px-4 pr-12 text-base text-white placeholder:text-white/28 transition"
+                          onChange={(event) => {
+                            setConfirmPassword(event.target.value);
+                            if (loginError) setLoginError("");
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPassword((prev) => !prev)}
+                          className="absolute right-3 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full text-white/34 transition hover:bg-white/[0.06] hover:text-white/70"
+                          aria-label={showConfirmPassword ? "隐藏确认密码" : "显示确认密码"}
+                        >
+                          {showConfirmPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {authMode === "register" ? (
+                    <label className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm leading-6 text-white/68">
+                      <Checkbox
+                        checked={agreeTerms}
+                        onCheckedChange={(checked) => {
+                          setAgreeTerms(Boolean(checked));
+                          if (loginError) setLoginError("");
+                        }}
+                        className="mt-1 border-white/18 bg-white/[0.02] data-[state=checked]:border-white data-[state=checked]:bg-white data-[state=checked]:text-slate-950"
+                      />
+                      <span>
+                        我已阅读并同意
+                        {" "}
+                        <button type="button" className="text-[#8fd6ff] underline-offset-4 hover:underline" onClick={() => window.open(TERMS_PATH, "_blank", "noopener,noreferrer")}>
+                          用户协议
+                        </button>
+                        {" "}和{" "}
+                        <button type="button" className="text-[#8fd6ff] underline-offset-4 hover:underline" onClick={() => window.open(PRIVACY_PATH, "_blank", "noopener,noreferrer")}>
+                          隐私政策
+                        </button>
+                      </span>
+                    </label>
+                  ) : null}
+
                   {loginError && (
                     <Alert className="border-red-500/25 bg-red-500/10 text-red-100">
                       <TriangleAlert className="mt-0.5 size-4" />
@@ -558,7 +644,7 @@ export function UserLogin() {
                   <div className="flex items-start gap-3">
                     <ShieldCheck className="mt-0.5 size-4 text-[#8fd6ff]" />
                     <div className="space-y-1">
-                      {authMode === "register" ? <p>注册后可直接登录并进入学习中心。</p> : <p>默认密码：den2024</p>}
+                      {authMode === "register" ? <p>注册密码需为 6 - 32 位，请妥善保管。</p> : <p>默认密码：den2024</p>}
                       <p>{authMode === "register" ? "如注册或登录遇到问题，可点击下方联系客服。" : "如无法登录，可点击下方联系客服。"}</p>
                     </div>
                   </div>

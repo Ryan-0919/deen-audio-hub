@@ -2337,6 +2337,7 @@ export const aiReviewMockExamRecord = async ({
           status: true,
           manualReviewerId: true,
           manualReviewLockToken: true,
+          manualReviewLockExpiresAt: true,
         },
       });
 
@@ -2350,7 +2351,15 @@ export const aiReviewMockExamRecord = async ({
 
       const lockToken = `${latestRecord.manualReviewLockToken ?? ""}`.trim();
       const reviewerId = `${latestRecord.manualReviewerId ?? ""}`.trim();
-      if (lockToken && reviewerId && reviewerId !== `${adminId}`.trim()) {
+      const lockExpiresAt = latestRecord.manualReviewLockExpiresAt ? new Date(latestRecord.manualReviewLockExpiresAt) : null;
+      const hasActiveLock = Boolean(
+        lockToken &&
+          reviewerId &&
+          lockExpiresAt &&
+          Number.isFinite(lockExpiresAt.getTime()) &&
+          lockExpiresAt.getTime() > currentTime.getTime(),
+      );
+      if (hasActiveLock && reviewerId !== `${adminId}`.trim()) {
         throw createHttpError("该试卷已被人工领取，本次自动批改已终止", 409);
       }
 
@@ -2403,6 +2412,7 @@ export const aiReviewMockExamRecord = async ({
           status: true,
           manualReviewerId: true,
           manualReviewLockToken: true,
+          manualReviewLockExpiresAt: true,
         },
       });
 
@@ -2416,7 +2426,15 @@ export const aiReviewMockExamRecord = async ({
 
       const lockToken = `${latestRecord.manualReviewLockToken ?? ""}`.trim();
       const reviewerId = `${latestRecord.manualReviewerId ?? ""}`.trim();
-      if (lockToken && reviewerId && reviewerId !== `${adminId}`.trim()) {
+      const lockExpiresAt = latestRecord.manualReviewLockExpiresAt ? new Date(latestRecord.manualReviewLockExpiresAt) : null;
+      const hasActiveLock = Boolean(
+        lockToken &&
+          reviewerId &&
+          lockExpiresAt &&
+          Number.isFinite(lockExpiresAt.getTime()) &&
+          lockExpiresAt.getTime() > currentTime.getTime(),
+      );
+      if (hasActiveLock && reviewerId !== `${adminId}`.trim()) {
         throw createHttpError("该试卷已被人工领取，本次自动批改已终止", 409);
       }
 

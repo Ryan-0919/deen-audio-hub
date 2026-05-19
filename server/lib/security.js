@@ -36,6 +36,7 @@ const createBucketStore = () => {
 };
 
 const userLoginStore = createBucketStore();
+const userRegisterStore = createBucketStore();
 const adminLoginStore = createBucketStore();
 
 const normalizeDigits = (value = "") => `${value ?? ""}`.replace(/\D/g, "");
@@ -90,6 +91,15 @@ export const consumeUserLoginAttempt = ({ ip = "", phone = "" }) =>
 
 export const resetUserLoginAttempts = ({ ip = "", phone = "" }) =>
   resetAttempt(userLoginStore, [`user-ip-phone:${ip}:${normalizePhone(phone)}`]);
+
+export const consumeUserRegisterAttempt = ({ ip = "", phone = "" }) =>
+  consumeAttempt(userRegisterStore, [`user-register-ip:${ip}`, `user-register-ip-phone:${ip}:${normalizePhone(phone)}`], {
+    windowMs: 10 * 60 * 1000,
+    maxAttempts: 6,
+  });
+
+export const resetUserRegisterAttempts = ({ ip = "", phone = "" }) =>
+  resetAttempt(userRegisterStore, [`user-register-ip-phone:${ip}:${normalizePhone(phone)}`]);
 
 export const consumeAdminLoginAttempt = ({ ip = "", account = "" }) =>
   consumeAttempt(adminLoginStore, [`admin-ip:${ip}`, `admin-ip-account:${ip}:${`${account ?? ""}`.trim().toLowerCase()}`], {

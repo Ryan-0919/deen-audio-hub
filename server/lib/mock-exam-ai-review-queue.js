@@ -22,6 +22,20 @@ const getRetryDelayMs = () => Math.max(0, Number(config.mockExamAiReview?.retryD
 const getQueuePollIntervalMs = () =>
   Math.max(500, Number(config.mockExamAiReview?.queuePollIntervalMs ?? DEFAULT_QUEUE_POLL_INTERVAL_MS) || DEFAULT_QUEUE_POLL_INTERVAL_MS);
 
+const hasActiveManualReviewLock = (record, currentTime = new Date()) => {
+  const reviewerId = `${record?.manualReviewerId ?? ""}`.trim();
+  const lockToken = `${record?.manualReviewLockToken ?? ""}`.trim();
+  const expiresAt = record?.manualReviewLockExpiresAt ? new Date(record.manualReviewLockExpiresAt) : null;
+
+  return Boolean(
+    reviewerId &&
+      lockToken &&
+      expiresAt &&
+      Number.isFinite(expiresAt.getTime()) &&
+      expiresAt.getTime() > currentTime.getTime(),
+  );
+};
+
 const canQueueAutoReview = ({ retryCount, lastError }) => {
   const currentRetryCount = Math.max(0, Number(retryCount ?? 0) || 0);
   const maxRetryCount = getMaxRetryCount();
@@ -96,6 +110,7 @@ export const enqueueMockExamAiReview = async ({ db = prisma, recordId, adminId =
       lastAiReviewError: true,
       manualReviewerId: true,
       manualReviewLockToken: true,
+      manualReviewLockExpiresAt: true,
     },
   });
 
@@ -117,12 +132,12 @@ export const enqueueMockExamAiReview = async ({ db = prisma, recordId, adminId =
   }
 
   const reviewerId = `${record.manualReviewerId ?? ""}`.trim();
-  const lockToken = `${record.manualReviewLockToken ?? ""}`.trim();
-  if (lockToken && reviewerId && reviewerId !== normalizedAdminId) {
+  const hasActiveLock = hasActiveManualReviewLock(record, currentTime);
+  if (hasActiveLock && reviewerId !== normalizedAdminId) {
     throw Object.assign(new Error("该试卷已被人工领取，不能进入自动批改队列"), { statusCode: 409 });
   }
 
-  if (lockToken && reviewerId && reviewerId === normalizedAdminId) {
+  if (hasActiveLock && reviewerId === normalizedAdminId) {
     forcedAdminQueueMap.set(normalizedRecordId, normalizedAdminId);
   } else {
     forcedAdminQueueMap.delete(normalizedRecordId);
@@ -157,6 +172,7 @@ const retryFailedMockExamAiReview = async ({ db, recordId, error, currentTime = 
       aiReviewRetryCount: true,
       manualReviewerId: true,
       manualReviewLockToken: true,
+      manualReviewLockExpiresAt: true,
       reviewWorkflowStatus: true,
     },
   });
@@ -168,8 +184,8 @@ const retryFailedMockExamAiReview = async ({ db, recordId, error, currentTime = 
 
   const forcedAdminId = `${forcedAdminQueueMap.get(recordId) ?? ""}`.trim();
   const reviewerId = `${latestRecord.manualReviewerId ?? ""}`.trim();
-  const lockToken = `${latestRecord.manualReviewLockToken ?? ""}`.trim();
-  if (lockToken && reviewerId && reviewerId !== forcedAdminId) {
+  const hasActiveLock = hasActiveManualReviewLock(latestRecord, currentTime);
+  if (hasActiveLock && reviewerId !== forcedAdminId) {
     await db.mockExamRecord.update({
       where: { id: recordId },
       data: {
@@ -285,6 +301,7 @@ export const pumpMockExamAiReviewQueue = async ({ db = prisma, currentTime = new
           id: true,
           manualReviewerId: true,
           manualReviewLockToken: true,
+          manualReviewLockExpiresAt: true,
           aiReviewRetryCount: true,
           lastAiReviewError: true,
         },
@@ -295,17 +312,27 @@ export const pumpMockExamAiReviewQueue = async ({ db = prisma, currentTime = new
           recordId: `${item.id ?? ""}`.trim(),
           manualReviewerId: `${item.manualReviewerId ?? ""}`.trim(),
           manualReviewLockToken: `${item.manualReviewLockToken ?? ""}`.trim(),
+          manualReviewLockExpiresAt: item.manualReviewLockExpiresAt,
           aiReviewRetryCount: item.aiReviewRetryCount,
           lastAiReviewError: `${item.lastAiReviewError ?? ""}`.trim(),
         }))
-        .filter(({ recordId, manualReviewerId, manualReviewLockToken, aiReviewRetryCount, lastAiReviewError }) => {
+        .filter(({ recordId, manualReviewerId, manualReviewLockToken, manualReviewLockExpiresAt, aiReviewRetryCount, lastAiReviewError }) => {
           if (!recordId || runningRecordIds.has(recordId)) {
             return false;
           }
           if (!canQueueAutoReview({ retryCount: aiReviewRetryCount, lastError: lastAiReviewError })) {
             return false;
           }
-          if (!manualReviewLockToken || !manualReviewerId) {
+          if (
+            !hasActiveManualReviewLock(
+              {
+                manualReviewerId,
+                manualReviewLockToken,
+                manualReviewLockExpiresAt,
+              },
+              currentTime,
+            )
+          ) {
             return true;
           }
           return `${forcedAdminQueueMap.get(recordId) ?? ""}`.trim() === manualReviewerId;

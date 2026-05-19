@@ -1033,8 +1033,8 @@ const getAdminMockExamReviewStatus = (record, adminId = "", currentTime = new Da
   if (workflowStatus === "not_required") return "not_required";
   if (workflowStatus === "published") return "published";
   if (workflowStatus === "manual_pending") return "manual_pending";
-  if (isManualReviewLockedByAdmin(record, adminId, currentTime)) return "manual_reviewing";
   if (workflowStatus === "ai_processing") return "ai_processing";
+  if (isManualReviewLockedByAdmin(record, adminId, currentTime)) return "manual_reviewing";
   return "ai_pending";
 };
 
@@ -1094,11 +1094,6 @@ const buildAdminMockExamReviewStatusWhere = ({
   if (reviewStatus === "ai_processing") {
     return {
       reviewWorkflowStatus: "ai_processing",
-      ...(activeCurrentAdminLockWhere
-        ? {
-            NOT: activeCurrentAdminLockWhere,
-          }
-        : {}),
     };
   }
 

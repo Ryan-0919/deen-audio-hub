@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   consumeAdminLoginAttempt,
   consumeUserLoginAttempt,
+  consumeUserRegisterAttempt,
   isValidPhone,
   normalizePhone,
   validatePasswordOrThrow,
@@ -39,6 +40,22 @@ test("user login limiter blocks after 10 failed attempts within the window", () 
   }
 
   const blocked = consumeUserLoginAttempt({ ip, phone });
+  assert.equal(blocked.ok, false);
+  assert.ok(blocked.retryAfterSeconds >= 1);
+});
+
+test("user register limiter blocks after 6 failed attempts within the window", () => {
+  const uniqueKey = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+  const ip = `198.51.100.${Math.floor(Math.random() * 100)}`;
+  const phone = `13900${uniqueKey.replace(/\D/g, "").slice(-6).padStart(6, "0")}`;
+
+  for (let index = 0; index < 6; index += 1) {
+    const result = consumeUserRegisterAttempt({ ip, phone });
+    assert.equal(result.ok, true);
+    assert.equal(result.retryAfterSeconds, 0);
+  }
+
+  const blocked = consumeUserRegisterAttempt({ ip, phone });
   assert.equal(blocked.ok, false);
   assert.ok(blocked.retryAfterSeconds >= 1);
 });

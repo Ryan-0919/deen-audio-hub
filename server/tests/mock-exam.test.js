@@ -1505,6 +1505,60 @@ test("serializeMockExamReviewDetail prefers manual_pending after save even if cu
   assert.equal(detail.reviewStatus, "manual_pending");
 });
 
+test("serializeMockExamReviewDetail prefers ai_processing over current admin manual lock", () => {
+  const now = new Date("2026-05-18T08:00:00.000Z");
+  const detail = serializeMockExamReviewDetail(
+    {
+      id: "record_ai_processing_status",
+      status: "submitted",
+      attemptNo: 1,
+      questionCount: 1,
+      correctCount: 0,
+      totalScore: 0,
+      allottedSeconds: 3600,
+      consumedSeconds: 1200,
+      startedAt: now,
+      submittedAt: now,
+      reviewedAt: null,
+      publishedAt: null,
+      reviewWorkflowStatus: "ai_processing",
+      manualReviewerId: "admin_1",
+      manualReviewerName: "张老师",
+      manualReviewLockToken: "lock_ai_1",
+      manualReviewClaimedAt: now,
+      manualReviewLockExpiresAt: new Date(now.getTime() + 10 * 60 * 1000),
+      manualReviewVersion: 3,
+      user: {
+        id: "user_ai_1",
+        phone: "13800000001",
+      },
+      paper: {
+        id: "paper_ai_processing_status",
+        code: "TEST-AI-1",
+        title: "测试卷-AI处理中",
+        subtitle: "",
+        coverUrl: "",
+        coverObjectKey: "",
+        phase: "民法",
+        year: 2026,
+        totalScore: 20,
+        passScore: 12,
+        durationSeconds: 3600,
+        reviewEnabled: true,
+        paperType: "subjective",
+        questions: [createQuestion({ id: "paper_ai_processing_status_q1", type: "subjective_case", correctAnswerJson: "[]", options: [] })],
+      },
+      answers: [],
+    },
+    now,
+    {
+      currentAdminId: "admin_1",
+    },
+  );
+
+  assert.equal(detail.reviewStatus, "ai_processing");
+});
+
 test("aiReviewMockExamRecord persists rubric point hit state", async () => {
   const question = createQuestion({
     id: "subjective_ai_review_1",
@@ -4049,4 +4103,60 @@ test("pumpMockExamAiReviewQueue skips manually claimed records", async () => {
   await new Promise((resolve) => setTimeout(resolve, 30));
 
   assert.equal(startedCount, 0);
+});
+
+test("pumpMockExamAiReviewQueue ignores expired manual locks", async () => {
+  __resetMockExamAiReviewQueueForTests();
+
+  const currentTime = new Date("2026-05-14T11:00:00.000Z");
+  const expiredLockTime = new Date("2026-05-14T10:30:00.000Z");
+  const lockedRecord = {
+    id: "record_queue_expired_lock_1",
+    status: "submitted",
+    reviewWorkflowStatus: "ai_pending",
+    aiReviewRetryCount: 0,
+    aiReviewNextRetryAt: null,
+    manualReviewerId: "admin_other",
+    manualReviewLockToken: "lock_other",
+    manualReviewLockExpiresAt: expiredLockTime,
+    submittedAt: currentTime,
+    createdAt: currentTime,
+  };
+
+  let startedCount = 0;
+  const fakeDb = {
+    systemConfig: {
+      findUnique: async () => ({
+        mockExamAiReviewConfigJson: JSON.stringify({
+          provider: "rules",
+        }),
+      }),
+    },
+    mockExamRecord: {
+      updateMany: async () => ({ count: 0 }),
+      findMany: async () => [lockedRecord],
+      findUnique: async () => lockedRecord,
+      update: async ({ data }) => {
+        if (data.reviewWorkflowStatus === "ai_processing") {
+          startedCount += 1;
+        }
+        return {
+          ...lockedRecord,
+          ...data,
+        };
+      },
+    },
+    mockExamAnswer: {
+      update: async ({ data }) => data,
+    },
+    $transaction: async (callback) => callback(fakeDb),
+  };
+
+  await pumpMockExamAiReviewQueue({
+    db: fakeDb,
+    currentTime,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 30));
+
+  assert.equal(startedCount, 1);
 });

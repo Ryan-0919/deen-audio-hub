@@ -7,8 +7,10 @@ import { getClientIp, getNormalizedDeviceInfo } from "../lib/request.js";
 import {
   consumeAdminLoginAttempt,
   consumeUserLoginAttempt,
+  consumeUserRegisterAttempt,
   resetAdminLoginAttempts,
   resetUserLoginAttempts,
+  resetUserRegisterAttempts,
   validatePhoneOrThrow,
   validatePasswordOrThrow,
 } from "../lib/security.js";
@@ -239,6 +241,12 @@ authRouter.post("/user/login", async (req, res, next) => {
 authRouter.post("/user/register", async (req, res, next) => {
   const rawPhone = `${req.body?.phone ?? ""}`;
   const rawPassword = `${req.body?.password ?? ""}`;
+  const rawConfirmPassword = `${req.body?.confirmPassword ?? ""}`;
+  const agreeTerms =
+    req.body?.agreeTerms === true ||
+    req.body?.agreeTerms === "true" ||
+    req.body?.agreeTerms === 1 ||
+    req.body?.agreeTerms === "1";
   const { deviceKey, type, model } = req.body ?? {};
 
   if (!rawPhone || !rawPassword || !deviceKey) {
@@ -248,8 +256,18 @@ authRouter.post("/user/register", async (req, res, next) => {
   try {
     const phone = validatePhoneOrThrow(rawPhone);
     const password = validatePasswordOrThrow(rawPassword);
+    const confirmPassword = validatePasswordOrThrow(rawConfirmPassword, "确认密码");
+
+    if (password !== confirmPassword) {
+      return fail(res, "两次输入的密码不一致", 400);
+    }
+
+    if (!agreeTerms) {
+      return fail(res, "请先阅读并同意用户协议与隐私政策", 400);
+    }
+
     const ip = getClientIp(req);
-    const rateLimitResult = consumeUserLoginAttempt({ ip, phone });
+    const rateLimitResult = consumeUserRegisterAttempt({ ip, phone });
 
     if (!rateLimitResult.ok) {
       return fail(
@@ -305,7 +323,7 @@ authRouter.post("/user/register", async (req, res, next) => {
       phone: createdUser.phone,
       deviceKey,
     });
-    resetUserLoginAttempts({ ip, phone });
+    resetUserRegisterAttempts({ ip, phone });
 
     return ok(
       res,
