@@ -35,6 +35,7 @@ mockExamUserRouter.get("/launch-config", async (_req, res) => {
 mockExamUserRouter.get("/papers", async (req, res) => {
   try {
     const userId = req.auth.userId;
+    const currentTime = new Date();
     await syncExpiredMockExamRecords({ db: prisma, userId });
 
     const [seriesPermissionRows, legacyPermissionRows] = await Promise.all([
@@ -120,17 +121,20 @@ mockExamUserRouter.get("/papers", async (req, res) => {
           })
         : [];
 
-    const list = papers.map((paper) => {
+    const list = papers
+      .map((paper) => {
       const paperRecords = records.filter((item) => item.paperId === paper.id);
       const activeRecord = paperRecords.find((item) => item.status === "in_progress") ?? null;
       const latestRecord = paperRecords.find((item) => item.status === "submitted") ?? null;
 
-      return serializeMockExamPaperSummary({
-        paper,
-        activeRecord,
-        latestRecord,
-      });
-    });
+        return serializeMockExamPaperSummary({
+          paper,
+          activeRecord,
+          latestRecord,
+          currentTime,
+        });
+      })
+      .filter((paper) => paper.isOpen);
 
     return ok(res, list);
   } catch (error) {
