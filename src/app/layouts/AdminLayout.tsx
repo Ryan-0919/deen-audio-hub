@@ -1,4 +1,5 @@
 import {
+  Activity,
   BookOpen,
   Bot,
   FileText,
@@ -25,6 +26,7 @@ const navigationGroups = [
   {
     title: "基础管理",
     items: [
+      { name: "仪表盘", href: "/admin/dashboard", icon: Activity },
       { name: "管理员账号", href: "/admin/admins", icon: ShieldCheck },
       { name: "用户管理", href: "/admin/users", icon: Users },
       { name: "音频课程管理", href: "/admin/courses?type=audio", icon: BookOpen },

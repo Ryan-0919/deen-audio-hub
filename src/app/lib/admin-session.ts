@@ -17,7 +17,7 @@ const ADMIN_SESSION_KEYS: Record<AdminConsoleMode, AdminSessionKeys> = {
     account: "adminAccount",
     role: "adminRole",
     loginPath: "/admin/login",
-    homePath: "/admin/users",
+    homePath: "/admin/dashboard",
   },
   review: {
     token: "reviewAdminToken",
@@ -62,7 +62,7 @@ export const getAdminHomePathForRole = (role: string | null | undefined) => {
   if (role === "operations_admin") return "/admin/courses";
   if (role === "user_admin") return "/admin/users";
   if (role === "review_admin") return "/adminpg/papers";
-  return "/admin/users";
+  return "/admin/dashboard";
 };
 
 export const getReviewHomePathForRole = (_role: string | null | undefined) => "/adminpg/papers";

@@ -1088,6 +1088,79 @@ adminRouter.get("/users/summary", async (_req, res) => {
   });
 });
 
+adminRouter.get("/dashboard/summary", async (_req, res) => {
+  const now = new Date();
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+
+  const sevenDaysAgo = new Date(todayStart);
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+
+  const thirtyDaysAgo = new Date(todayStart);
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+
+  const currentOnlineCutoff = new Date(now.getTime() - 30 * 60 * 1000);
+
+  const [currentOnlineUsers, todayOnlineUsers, todayRegisteredUsers, recentSevenDayRegisteredUsers, recentThirtyDayOnlineUsers] =
+    await Promise.all([
+      prisma.userDevice.findMany({
+        where: {
+          updatedAt: {
+            gte: currentOnlineCutoff,
+          },
+        },
+        select: {
+          userId: true,
+        },
+        distinct: ["userId"],
+      }),
+      prisma.user.findMany({
+        where: {
+          lastLoginAt: {
+            gte: todayStart,
+          },
+        },
+        select: {
+          id: true,
+        },
+      }),
+      prisma.user.count({
+        where: {
+          registeredAt: {
+            gte: todayStart,
+          },
+        },
+      }),
+      prisma.user.count({
+        where: {
+          registeredAt: {
+            gte: sevenDaysAgo,
+          },
+        },
+      }),
+      prisma.user.findMany({
+        where: {
+          lastLoginAt: {
+            gte: thirtyDaysAgo,
+          },
+        },
+        select: {
+          id: true,
+        },
+      }),
+    ]);
+
+  return ok(res, {
+    currentOnlineUsers: currentOnlineUsers.length,
+    todayOnlineUsers: todayOnlineUsers.length,
+    todayRegisteredUsers,
+    recentSevenDayRegisteredUsers,
+    recentThirtyDayOnlineUsers: recentThirtyDayOnlineUsers.length,
+    onlineWindowMinutes: 30,
+    generatedAt: formatDateTime(now),
+  });
+});
+
 adminRouter.get("/logs/summary", async (_req, res) => {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);

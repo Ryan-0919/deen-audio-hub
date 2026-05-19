@@ -528,6 +528,16 @@ export interface UserSummary {
   fullDevices: number;
 }
 
+export interface AdminDashboardSummary {
+  currentOnlineUsers: number;
+  todayOnlineUsers: number;
+  todayRegisteredUsers: number;
+  recentSevenDayRegisteredUsers: number;
+  recentThirtyDayOnlineUsers: number;
+  onlineWindowMinutes: number;
+  generatedAt: string;
+}
+
 export interface AudioLibraryTagOption {
   id: string;
   name: string;
@@ -2715,6 +2725,7 @@ export const mockApi = {
       })}`,
       { auth: "admin" },
     ),
+  getAdminDashboardSummary: () => request<AdminDashboardSummary>("/api/admin/dashboard/summary", { auth: "admin" }),
   getUserSummary: () => request<UserSummary>("/api/admin/users/summary", { auth: "admin" }),
   getAllAdmins: () => request<AdminAccount[]>("/api/admin/admins", { auth: "admin" }),
   getAllMockExamPermissionPapers: () =>

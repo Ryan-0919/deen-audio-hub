@@ -51,6 +51,7 @@ const AudioPlayer = lazyPage(() => import("./pages/user/AudioPlayer"), "AudioPla
 const VideoCourseDetail = lazyPage(() => import("./pages/user/VideoCourseDetail"), "VideoCourseDetail");
 const VideoPlayer = lazyPage(() => import("./pages/user/VideoPlayer"), "VideoPlayer");
 const UserMe = lazyPage(() => import("./pages/user/UserMe"), "UserMe");
+const AdminDashboard = lazyPage(() => import("./pages/admin/AdminDashboard"), "AdminDashboard");
 const AdminLogin = lazyPage(() => import("./pages/admin/AdminLogin"), "AdminLogin");
 const ReviewLogin = lazyPage(() => import("./pages/review/ReviewLogin"), "ReviewLogin");
 const ReviewDashboard = lazyPage(() => import("./pages/review/ReviewDashboard"), "ReviewDashboard");
@@ -126,6 +127,8 @@ export const router = createBrowserRouter([
     element: withSuspense(<AdminLayout />),
     errorElement: <RouteErrorPage />,
     children: [
+      { index: true, element: <Navigate to="/admin/dashboard" replace /> },
+      { path: "dashboard", element: withSuspense(<AdminDashboard />) },
       { path: "admins", element: withSuspense(<AdminAccountList />) },
       { path: "users", element: withSuspense(<UserList />) },
       { path: "courses", element: withSuspense(<CourseList />) },
