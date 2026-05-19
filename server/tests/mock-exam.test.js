@@ -3912,6 +3912,57 @@ test("enqueueMockExamAiReview allows admin to requeue reviewed records and bumps
   assert.equal(record.aiReviewNextRetryAt?.toISOString(), currentTime.toISOString());
 });
 
+test("enqueueMockExamAiReview clears current admin manual lock before returning to ai queue", async () => {
+  __resetMockExamAiReviewQueueForTests();
+
+  const currentTime = new Date("2026-05-19T10:00:00.000Z");
+  let record = {
+    id: "record_queue_clear_lock_1",
+    status: "submitted",
+    reviewWorkflowStatus: "manual_pending",
+    aiReviewRetryCount: 1,
+    aiReviewNextRetryAt: new Date("2026-05-19T09:00:00.000Z"),
+    aiReviewStartedAt: new Date("2026-05-19T09:00:00.000Z"),
+    aiReviewFinishedAt: new Date("2026-05-19T09:05:00.000Z"),
+    lastAiReviewError: "old error",
+    publishedAt: null,
+    manualReviewerId: "admin_1",
+    manualReviewerName: "张老师",
+    manualReviewLockToken: "lock_current",
+    manualReviewClaimedAt: new Date("2026-05-19T09:06:00.000Z"),
+    manualReviewLockExpiresAt: new Date("2026-05-19T10:30:00.000Z"),
+    manualReviewVersion: 4,
+  };
+
+  const fakeDb = {
+    mockExamRecord: {
+      findUnique: async () => record,
+      update: async ({ data }) => {
+        record = {
+          ...record,
+          ...data,
+        };
+        return record;
+      },
+      findMany: async () => [],
+    },
+  };
+
+  await enqueueMockExamAiReview({
+    db: fakeDb,
+    recordId: record.id,
+    adminId: "admin_1",
+    currentTime,
+  });
+
+  assert.equal(record.reviewWorkflowStatus, "ai_pending");
+  assert.equal(record.manualReviewerId, null);
+  assert.equal(record.manualReviewerName, null);
+  assert.equal(record.manualReviewLockToken, null);
+  assert.equal(record.manualReviewClaimedAt, null);
+  assert.equal(record.manualReviewLockExpiresAt, null);
+});
+
 test("pumpMockExamAiReviewQueue retries failures up to max retry count then returns to ai_pending", async () => {
   __resetMockExamAiReviewQueueForTests();
 

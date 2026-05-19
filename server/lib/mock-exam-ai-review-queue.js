@@ -137,11 +137,7 @@ export const enqueueMockExamAiReview = async ({ db = prisma, recordId, adminId =
     throw Object.assign(new Error("该试卷已被人工领取，不能进入自动批改队列"), { statusCode: 409 });
   }
 
-  if (hasActiveLock && reviewerId === normalizedAdminId) {
-    forcedAdminQueueMap.set(normalizedRecordId, normalizedAdminId);
-  } else {
-    forcedAdminQueueMap.delete(normalizedRecordId);
-  }
+  forcedAdminQueueMap.delete(normalizedRecordId);
 
   await db.mockExamRecord.update({
     where: { id: normalizedRecordId },
@@ -154,6 +150,11 @@ export const enqueueMockExamAiReview = async ({ db = prisma, recordId, adminId =
       lastAiReviewError: null,
       reviewedAt: null,
       publishedAt: null,
+      manualReviewerId: null,
+      manualReviewerName: null,
+      manualReviewLockToken: null,
+      manualReviewClaimedAt: null,
+      manualReviewLockExpiresAt: null,
       manualReviewVersion: {
         increment: 1,
       },
