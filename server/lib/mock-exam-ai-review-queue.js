@@ -14,7 +14,6 @@ const forcedAdminQueueMap = new Map();
 let queueTimer = null;
 let queuePumpPromise = null;
 let queueRecoveryPromise = null;
-let hasRecoveredStaleAiProcessing = false;
 
 const getMaxConcurrency = () => Math.max(1, Number(config.mockExamAiReview?.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY) || DEFAULT_MAX_CONCURRENCY);
 const getMaxRetryCount = () => Math.max(0, Number(config.mockExamAiReview?.maxRetryCount ?? DEFAULT_MAX_RETRY_COUNT) || DEFAULT_MAX_RETRY_COUNT);
@@ -58,11 +57,35 @@ const isConflictLikeError = (error) => {
   return statusCode === 409;
 };
 
-const ensureRecoveredStaleAiProcessing = async ({ db, currentTime = new Date() }) => {
-  if (hasRecoveredStaleAiProcessing) {
+const pruneCompletedRunningRecords = async ({ db }) => {
+  if (runningRecordIds.size === 0 || typeof db?.mockExamRecord?.findMany !== "function") {
     return;
   }
 
+  const trackedRecordIds = Array.from(runningRecordIds);
+  const activeProcessingRecords = await db.mockExamRecord.findMany({
+    where: {
+      id: {
+        in: trackedRecordIds,
+      },
+      reviewWorkflowStatus: "ai_processing",
+    },
+    select: {
+      id: true,
+    },
+  });
+  const activeProcessingIdSet = new Set(
+    activeProcessingRecords.map((item) => `${item?.id ?? ""}`.trim()).filter(Boolean),
+  );
+
+  trackedRecordIds.forEach((recordId) => {
+    if (!activeProcessingIdSet.has(recordId)) {
+      runningRecordIds.delete(recordId);
+    }
+  });
+};
+
+const ensureRecoveredStaleAiProcessing = async ({ db, currentTime = new Date() }) => {
   if (queueRecoveryPromise) {
     await queueRecoveryPromise;
     return;
@@ -74,7 +97,7 @@ const ensureRecoveredStaleAiProcessing = async ({ db, currentTime = new Date() }
         db,
         currentTime,
       });
-      hasRecoveredStaleAiProcessing = true;
+      await pruneCompletedRunningRecords({ db });
     } finally {
       queueRecoveryPromise = null;
     }
@@ -137,7 +160,11 @@ export const enqueueMockExamAiReview = async ({ db = prisma, recordId, adminId =
     throw Object.assign(new Error("该试卷已被人工领取，不能进入自动批改队列"), { statusCode: 409 });
   }
 
-  forcedAdminQueueMap.delete(normalizedRecordId);
+  if (normalizedAdminId) {
+    forcedAdminQueueMap.set(normalizedRecordId, normalizedAdminId);
+  } else {
+    forcedAdminQueueMap.delete(normalizedRecordId);
+  }
 
   await db.mockExamRecord.update({
     where: { id: normalizedRecordId },
@@ -378,5 +405,14 @@ export const __resetMockExamAiReviewQueueForTests = () => {
   forcedAdminQueueMap.clear();
   queuePumpPromise = null;
   queueRecoveryPromise = null;
-  hasRecoveredStaleAiProcessing = false;
+};
+
+export const __setRunningMockExamAiReviewQueueRecordIdsForTests = (recordIds = []) => {
+  runningRecordIds.clear();
+  for (const recordId of Array.isArray(recordIds) ? recordIds : []) {
+    const normalizedRecordId = `${recordId ?? ""}`.trim();
+    if (normalizedRecordId) {
+      runningRecordIds.add(normalizedRecordId);
+    }
+  }
 };

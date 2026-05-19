@@ -14,6 +14,7 @@ import {
 import { aiReviewMockExamRecord } from "../lib/mock-exam-ai-review.js";
 import {
   __resetMockExamAiReviewQueueForTests,
+  __setRunningMockExamAiReviewQueueRecordIdsForTests,
   enqueueMockExamAiReview,
   pumpMockExamAiReviewQueue,
 } from "../lib/mock-exam-ai-review-queue.js";
@@ -4193,6 +4194,93 @@ test("pumpMockExamAiReviewQueue ignores expired manual locks", async () => {
         }
         return {
           ...lockedRecord,
+          ...data,
+        };
+      },
+    },
+    mockExamAnswer: {
+      update: async ({ data }) => data,
+    },
+    $transaction: async (callback) => callback(fakeDb),
+  };
+
+  await pumpMockExamAiReviewQueue({
+    db: fakeDb,
+    currentTime,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 30));
+
+  assert.equal(startedCount, 1);
+});
+
+test("pumpMockExamAiReviewQueue releases stale in-memory running slots before consuming queued records", async () => {
+  __resetMockExamAiReviewQueueForTests();
+  __setRunningMockExamAiReviewQueueRecordIdsForTests(["record_stale_running_1"]);
+
+  const currentTime = new Date("2026-05-19T11:00:00.000Z");
+  const subjectiveQuestion = createQuestion({
+    id: "subjective_queue_after_stale_1",
+    type: "subjective_case",
+    score: 6,
+    options: [],
+    correctAnswerJson: "[]",
+  });
+  const queuedRecord = {
+    id: "record_queue_after_stale_1",
+    status: "submitted",
+    reviewWorkflowStatus: "ai_pending",
+    aiReviewRetryCount: 0,
+    aiReviewNextRetryAt: null,
+    manualReviewerId: null,
+    manualReviewLockToken: null,
+    manualReviewLockExpiresAt: null,
+    submittedAt: currentTime,
+    createdAt: currentTime,
+  };
+
+  let startedCount = 0;
+  const fakeDb = {
+    systemConfig: {
+      findUnique: async () => ({
+        mockExamAiReviewConfigJson: JSON.stringify({
+          provider: "rules",
+        }),
+      }),
+    },
+    mockExamRecord: {
+      updateMany: async () => ({ count: 0 }),
+      findMany: async ({ where, select }) => {
+        if (where?.id?.in) {
+          return [];
+        }
+        if (select?.id) {
+          return [queuedRecord];
+        }
+        return [queuedRecord];
+      },
+      findUnique: async () => ({
+        ...queuedRecord,
+        user: { id: "user_1", phone: "13800000000" },
+        paper: {
+          id: "paper_1",
+          questions: [subjectiveQuestion],
+        },
+        answers: [
+          {
+            id: "answer_queue_after_stale_1",
+            questionId: subjectiveQuestion.id,
+            answerJson: JSON.stringify({ sub_1: "这是考生作答" }),
+            reviewJson: null,
+            score: 0,
+          },
+        ],
+      }),
+      update: async ({ data }) => {
+        if (data.reviewWorkflowStatus === "ai_processing") {
+          startedCount += 1;
+        }
+        return {
+          ...queuedRecord,
           ...data,
         };
       },
