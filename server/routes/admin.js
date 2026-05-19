@@ -1101,8 +1101,9 @@ adminRouter.get("/dashboard/summary", async (_req, res) => {
 
   const currentOnlineCutoff = new Date(now.getTime() - 30 * 60 * 1000);
 
-  const [currentOnlineUsers, todayOnlineUsers, todayRegisteredUsers, recentSevenDayRegisteredUsers, recentThirtyDayOnlineUsers] =
+  const [totalUsers, currentOnlineUsers, todayOnlineUsers, todayRegisteredUsers, recentSevenDayRegisteredUsers, recentThirtyDayOnlineUsers] =
     await Promise.all([
+      prisma.user.count(),
       prisma.userDevice.findMany({
         where: {
           updatedAt: {
@@ -1151,6 +1152,7 @@ adminRouter.get("/dashboard/summary", async (_req, res) => {
     ]);
 
   return ok(res, {
+    totalUsers,
     currentOnlineUsers: currentOnlineUsers.length,
     todayOnlineUsers: todayOnlineUsers.length,
     todayRegisteredUsers,

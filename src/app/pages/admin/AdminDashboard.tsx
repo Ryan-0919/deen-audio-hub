@@ -9,6 +9,7 @@ import type { AdminDashboardSummary } from "../../lib/mockData";
 import { mockApi } from "../../lib/mockData";
 
 const EMPTY_SUMMARY: AdminDashboardSummary = {
+  totalUsers: 0,
   currentOnlineUsers: 0,
   todayOnlineUsers: 0,
   todayRegisteredUsers: 0,
@@ -109,7 +110,7 @@ export function AdminDashboard() {
 
       {loading ? (
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 5 }).map((_, index) => (
+          {Array.from({ length: 6 }).map((_, index) => (
             <Card key={index} className="rounded-[28px] border border-slate-200 shadow-none">
               <CardContent className="space-y-4 p-6">
                 <Skeleton className="h-4 w-24" />
@@ -121,6 +122,13 @@ export function AdminDashboard() {
         </div>
       ) : (
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          <MetricCard
+            title="用户总数"
+            value={summary.totalUsers}
+            hint="当前平台全部用户总量"
+            icon={Users}
+            tone="slate"
+          />
           <MetricCard
             title="当前在线人数"
             value={summary.currentOnlineUsers}
@@ -154,7 +162,7 @@ export function AdminDashboard() {
             value={summary.recentThirtyDayOnlineUsers}
             hint="包含今天在内，最近 30 天至少登录过一次的用户数"
             icon={Users}
-            tone="slate"
+            tone="blue"
           />
         </div>
       )}
@@ -164,6 +172,7 @@ export function AdminDashboard() {
           <CardTitle className="text-2xl tracking-[-0.04em] text-slate-900">统计口径</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm leading-7 text-slate-600">
+          <p>用户总数：按 `User` 表当前全部用户总量统计。</p>
           <p>当前在线人数：按 `UserDevice.updatedAt` 在最近 30 分钟内的去重用户统计。</p>
           <p>今日在线人数：按 `User.lastLoginAt` 在今日 00:00 之后的用户统计。</p>
           <p>今日注册人数、近 7 天注册人数：按 `User.registeredAt` 统计。</p>

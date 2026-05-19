@@ -529,6 +529,7 @@ export interface UserSummary {
 }
 
 export interface AdminDashboardSummary {
+  totalUsers: number;
   currentOnlineUsers: number;
   todayOnlineUsers: number;
   todayRegisteredUsers: number;
