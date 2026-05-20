@@ -649,6 +649,133 @@ export interface QuestionBankItem {
   updatedAt: string;
 }
 
+export type BookQuestionBankStatus = "draft" | "published" | "closed";
+export type BookQuestionBankItemStatusFilter = "all" | "answered" | "unanswered" | "viewed" | "mastered" | "redo";
+
+export interface BookQuestionBankProgress {
+  answeredCount: number;
+  viewedAnswerCount: number;
+  masteredCount: number;
+  redoCount: number;
+  lastSubjectId: string;
+  lastBookItemId: string;
+  lastPracticedAt: string;
+}
+
+export interface BookQuestionBank {
+  id: string;
+  name: string;
+  code: string;
+  coverUrl: string;
+  coverObjectKey: string;
+  description: string;
+  status: BookQuestionBankStatus;
+  isVisible: boolean;
+  sortOrder: number;
+  subjectCount: number;
+  itemCount: number;
+  createdAt: string;
+  updatedAt: string;
+  progress?: BookQuestionBankProgress;
+}
+
+export interface BookQuestionBankSubject {
+  id: string;
+  bookId: string;
+  name: string;
+  code: string;
+  description: string;
+  sortOrder: number;
+  itemCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BookQuestionBankAnswerState {
+  answerJson: unknown;
+  draftText: string;
+  isAnswered: boolean;
+  hasViewedAnswer: boolean;
+  isMastered: boolean;
+  isRedoMarked: boolean;
+  answeredAt: string;
+  viewedAnswerAt: string;
+  updatedAt: string;
+}
+
+export interface BookQuestionBankItemSummary {
+  id: string;
+  bookId: string;
+  subjectId: string;
+  questionBankItemId: string;
+  title: string;
+  customTitle: string;
+  questionNo: string;
+  yearLabel: string;
+  pageLabel: string;
+  tags: string[];
+  sortOrder: number;
+  status: boolean;
+  subjectName: string;
+  folderName: string;
+  questionType: MockExamQuestionType;
+  questionTypeLabel: string;
+  score: number;
+  hasLessonAudio: boolean;
+  createdAt: string;
+  updatedAt: string;
+  answerState?: BookQuestionBankAnswerState;
+}
+
+export interface BookQuestionBankPracticeItem extends BookQuestionBankItemSummary {
+  stem: string;
+  material: string;
+  analysis: string;
+  correctAnswerKeys: string[];
+  options: QuestionBankOption[];
+  sectionLabel: string;
+  sectionDescription: string;
+  subjectiveSubQuestions: QuestionBankSubQuestion[];
+  lessonAudioUrl?: string;
+  lessonAudioObjectKey?: string;
+  lessonAudioDurationSeconds?: number;
+  answerState: BookQuestionBankAnswerState;
+}
+
+export interface BookQuestionBankDetailPayload {
+  book: BookQuestionBank;
+  subjects: BookQuestionBankSubject[];
+  progress: BookQuestionBankProgress;
+  items: BookQuestionBankItemSummary[];
+}
+
+export interface BookQuestionBankPracticePayload {
+  book: BookQuestionBank;
+  item: BookQuestionBankPracticeItem;
+  prevBookItemId: string;
+  nextBookItemId: string;
+}
+
+export interface BookQuestionBankAvailableItem extends QuestionBankItem {}
+
+export interface AdminBookQuestionBankPermissionRow {
+  id: string;
+  userId: string;
+  bookId: string;
+  phone: string;
+  nickname: string;
+  displayName: string;
+  sourceType: string;
+  sourceId: string;
+  createdAt: string;
+}
+
+export interface AdminBookQuestionBankPermissionGrantResult {
+  totalPhones: number;
+  createdUsers: string[];
+  grantedCount: number;
+}
+
 export interface QuestionBankItemPayload {
   folderId: string;
   questionType: MockExamQuestionType;
@@ -2270,6 +2397,37 @@ export const mockApi = {
     request<LawSearchResult[]>(`/api/user/laws/search${buildQueryString({ keyword })}`, { auth: "user" }),
 
   getMockExamPapers: () => request<MockExamPaper[]>("/api/user/mock-exams/papers", { auth: "user" }),
+  getUserBookQuestionBanks: () => request<BookQuestionBank[]>("/api/user/book-question-banks/books", { auth: "user" }),
+  getUserBookQuestionBankDetail: (bookId: string, params?: { subjectId?: string; statusFilter?: BookQuestionBankItemStatusFilter }) =>
+    request<BookQuestionBankDetailPayload>(
+      `/api/user/book-question-banks/books/${bookId}${buildQueryString({
+        subjectId: params?.subjectId && params.subjectId !== "all" ? params.subjectId : undefined,
+        statusFilter: params?.statusFilter && params.statusFilter !== "all" ? params.statusFilter : undefined,
+      })}`,
+      { auth: "user" },
+    ),
+  getUserBookQuestionBankResumeTarget: (bookId: string) =>
+    request<{ bookItemId: string }>(`/api/user/book-question-banks/books/${bookId}/resume`, { auth: "user" }),
+  getUserBookQuestionBankPractice: (bookId: string, bookItemId: string) =>
+    request<BookQuestionBankPracticePayload>(`/api/user/book-question-banks/books/${bookId}/items/${bookItemId}`, { auth: "user" }),
+  saveUserBookQuestionBankAnswer: (
+    bookId: string,
+    bookItemId: string,
+    payload: {
+      answerJson?: unknown;
+      draftText?: string;
+    },
+  ) => patchJson<BookQuestionBankAnswerState>(`/api/user/book-question-banks/books/${bookId}/items/${bookItemId}/answer`, payload, "user"),
+  markUserBookQuestionBankViewedAnswer: (bookId: string, bookItemId: string) =>
+    postJson<BookQuestionBankAnswerState>(`/api/user/book-question-banks/books/${bookId}/items/${bookItemId}/view-answer`, {}, "user"),
+  updateUserBookQuestionBankItemState: (
+    bookId: string,
+    bookItemId: string,
+    payload: {
+      isMastered?: boolean;
+      isRedoMarked?: boolean;
+    },
+  ) => patchJson<BookQuestionBankAnswerState>(`/api/user/book-question-banks/books/${bookId}/items/${bookItemId}/state`, payload, "user"),
   getMockExamLaunchConfig: () => request<MockExamLaunchConfig>("/api/user/mock-exams/launch-config", { auth: "user" }),
   getUserMockExamHistory: () => request<UserMockExamHistoryItem[]>("/api/user/mock-exams/history", { auth: "user" }),
   getUserMockExamLeaderboardPapers: () => request<MockExamLeaderboardPaperOption[]>("/api/user/mock-exams/leaderboard/papers", { auth: "user" }),
@@ -2752,6 +2910,105 @@ export const mockApi = {
     patchJson<AdminMockExamSeriesOption>(`/api/admin/mock-exams/series/${seriesId}`, payload, "admin"),
   deleteAdminMockExamSeries: (seriesId: string) =>
     deleteRequest<{ success: boolean; id: string; name: string }>(`/api/admin/mock-exams/series/${seriesId}`, "admin"),
+  getAdminBookQuestionBanks: () => request<BookQuestionBank[]>("/api/admin/book-question-banks/books", { auth: "admin" }),
+  createAdminBookQuestionBank: (payload: {
+    name: string;
+    code: string;
+    coverUrl?: string;
+    coverObjectKey?: string;
+    description?: string;
+    status?: BookQuestionBankStatus;
+    isVisible?: boolean;
+    sortOrder?: number | string;
+  }) => postJson<BookQuestionBank>("/api/admin/book-question-banks/books", payload, "admin"),
+  updateAdminBookQuestionBank: (
+    bookId: string,
+    payload: {
+      name: string;
+      code: string;
+      coverUrl?: string;
+      coverObjectKey?: string;
+      description?: string;
+      status?: BookQuestionBankStatus;
+      isVisible?: boolean;
+      sortOrder?: number | string;
+    },
+  ) => patchJson<BookQuestionBank>(`/api/admin/book-question-banks/books/${bookId}`, payload, "admin"),
+  deleteAdminBookQuestionBank: (bookId: string) =>
+    deleteRequest<{ success: boolean; id: string; name: string }>(`/api/admin/book-question-banks/books/${bookId}`, "admin"),
+  getAdminBookQuestionBankSubjects: (bookId: string) =>
+    request<BookQuestionBankSubject[]>(`/api/admin/book-question-banks/books/${bookId}/subjects`, { auth: "admin" }),
+  createAdminBookQuestionBankSubject: (
+    bookId: string,
+    payload: { name: string; code: string; description?: string; sortOrder?: number | string },
+  ) => postJson<BookQuestionBankSubject>(`/api/admin/book-question-banks/books/${bookId}/subjects`, payload, "admin"),
+  updateAdminBookQuestionBankSubject: (
+    bookId: string,
+    subjectId: string,
+    payload: { name: string; code: string; description?: string; sortOrder?: number | string },
+  ) => patchJson<BookQuestionBankSubject>(`/api/admin/book-question-banks/books/${bookId}/subjects/${subjectId}`, payload, "admin"),
+  deleteAdminBookQuestionBankSubject: (bookId: string, subjectId: string) =>
+    deleteRequest<{ success: boolean; id: string; name: string }>(`/api/admin/book-question-banks/books/${bookId}/subjects/${subjectId}`, "admin"),
+  getAdminBookQuestionBankAvailableItems: (params: {
+    paperType: QuestionBankPaperType;
+    folderId?: string;
+    keyword?: string;
+    page?: number;
+    pageSize?: number;
+  }) =>
+    request<PagedResult<BookQuestionBankAvailableItem>>(
+      `/api/admin/book-question-banks/available-items${buildQueryString({
+        paperType: params.paperType,
+        folderId: params.folderId,
+        keyword: params.keyword,
+        page: params.page,
+        pageSize: params.pageSize,
+      })}`,
+      { auth: "admin" },
+    ),
+  getAdminBookQuestionBankItems: (bookId: string, params?: { subjectId?: string }) =>
+    request<BookQuestionBankItemSummary[]>(
+      `/api/admin/book-question-banks/books/${bookId}/items${buildQueryString({
+        subjectId: params?.subjectId && params.subjectId !== "all" ? params.subjectId : undefined,
+      })}`,
+      { auth: "admin" },
+    ),
+  createAdminBookQuestionBankItem: (
+    bookId: string,
+    payload: {
+      subjectId: string;
+      questionBankItemId: string;
+      title?: string;
+      questionNo?: string;
+      yearLabel?: string;
+      pageLabel?: string;
+      tags?: string[];
+      sortOrder?: number | string;
+      status?: boolean;
+    },
+  ) => postJson<BookQuestionBankItemSummary>(`/api/admin/book-question-banks/books/${bookId}/items`, payload, "admin"),
+  updateAdminBookQuestionBankItem: (
+    bookId: string,
+    bookItemId: string,
+    payload: {
+      subjectId?: string;
+      title?: string;
+      questionNo?: string;
+      yearLabel?: string;
+      pageLabel?: string;
+      tags?: string[];
+      sortOrder?: number | string;
+      status?: boolean;
+    },
+  ) => patchJson<BookQuestionBankItemSummary>(`/api/admin/book-question-banks/books/${bookId}/items/${bookItemId}`, payload, "admin"),
+  deleteAdminBookQuestionBankItem: (bookId: string, bookItemId: string) =>
+    deleteRequest<{ success: boolean; id: string; title: string }>(`/api/admin/book-question-banks/books/${bookId}/items/${bookItemId}`, "admin"),
+  getAdminBookQuestionBankPermissions: (bookId: string) =>
+    request<AdminBookQuestionBankPermissionRow[]>(`/api/admin/book-question-banks/books/${bookId}/permissions`, { auth: "admin" }),
+  grantAdminBookQuestionBankPermissions: (bookId: string, phones: string[]) =>
+    postJson<AdminBookQuestionBankPermissionGrantResult>(`/api/admin/book-question-banks/books/${bookId}/permissions`, { phones }, "admin"),
+  revokeAdminBookQuestionBankPermission: (bookId: string, userId: string) =>
+    deleteRequest<{ success: boolean }>(`/api/admin/book-question-banks/books/${bookId}/permissions/${userId}`, "admin"),
   createAdminAccount: (payload: { account: string; name: string; password: string; role: AdminRole }) =>
     postJson<AdminAccount>("/api/admin/admins", payload, "admin"),
   updateAdminAccount: (adminId: string, payload: { account: string; name: string; role: AdminRole }) =>

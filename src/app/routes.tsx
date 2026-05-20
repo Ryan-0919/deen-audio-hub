@@ -35,6 +35,9 @@ const MockExamResult = lazyPage(() => import("./pages/user/MockExamResult"), "Mo
 const MockExamReviewPending = lazyPage(() => import("./pages/user/MockExamReviewPending"), "MockExamReviewPending");
 const UserMockExamHistory = lazyPage(() => import("./pages/user/UserMockExamHistory"), "UserMockExamHistory");
 const UserMockExamLeaderboard = lazyPage(() => import("./pages/user/UserMockExamLeaderboard"), "UserMockExamLeaderboard");
+const MyBookQuestionBanks = lazyPage(() => import("./pages/user/MyBookQuestionBanks"), "MyBookQuestionBanks");
+const BookQuestionBankDetail = lazyPage(() => import("./pages/user/BookQuestionBankDetail"), "BookQuestionBankDetail");
+const BookQuestionBankPractice = lazyPage(() => import("./pages/user/BookQuestionBankPractice"), "BookQuestionBankPractice");
 const TypingPracticeHome = lazyPage(() => import("./pages/user/TypingPracticeHome"), "TypingPracticeHome");
 const TypingPracticeGame = lazyPage(() => import("./pages/user/TypingPracticeGame"), "TypingPracticeGame");
 const TypingPracticeResult = lazyPage(() => import("./pages/user/TypingPracticeResult"), "TypingPracticeResult");
@@ -45,6 +48,7 @@ const MockExamReviewList = lazyPage(() => import("./pages/admin/MockExamReviewLi
 const MockExamAiReviewConfig = lazyPage(() => import("./pages/admin/MockExamAiReviewConfig"), "MockExamAiReviewConfig");
 const MockExamLaunchConfig = lazyPage(() => import("./pages/admin/MockExamLaunchConfig"), "MockExamLaunchConfig");
 const QuestionBank = lazyPage(() => import("./pages/admin/QuestionBank"), "QuestionBank");
+const BookQuestionBankAdmin = lazyPage(() => import("./pages/admin/BookQuestionBankAdmin"), "BookQuestionBankAdmin");
 const TypingPracticeAdmin = lazyPage(() => import("./pages/admin/TypingPracticeAdmin"), "TypingPracticeAdmin");
 const CourseDetail = lazyPage(() => import("./pages/user/CourseDetail"), "CourseDetail");
 const AudioPlayer = lazyPage(() => import("./pages/user/AudioPlayer"), "AudioPlayer");
@@ -97,6 +101,9 @@ export const router = createBrowserRouter([
       { path: "objective-mock-exams", element: withSuspense(<MockExamHome />) },
       { path: "my-exams", element: withSuspense(<UserMockExamHistory />) },
       { path: "exam-leaderboard", element: withSuspense(<UserMockExamLeaderboard />) },
+      { path: "book-question-banks", element: withSuspense(<MyBookQuestionBanks />) },
+      { path: "book-question-banks/:bookId", element: withSuspense(<BookQuestionBankDetail />) },
+      { path: "book-question-banks/:bookId/items/:bookItemId", element: withSuspense(<BookQuestionBankPractice />) },
       { path: "mock-exams/papers/:paperId", element: withSuspense(<MockExamLaunch />) },
       { path: "mock-exams/papers/:paperId/launch", element: <LegacyMockExamLaunchRedirect /> },
       { path: "mock-exams/records/:recordId", element: withSuspense(<MockExamRoom />) },
@@ -140,6 +147,7 @@ export const router = createBrowserRouter([
       { path: "laws", element: withSuspense(<LawAdmin />) },
       { path: "mock-exams", element: <Navigate to="/admin/mock-exams/papers" replace /> },
       { path: "mock-exams/question-bank", element: withSuspense(<QuestionBank />) },
+      { path: "book-question-banks", element: withSuspense(<BookQuestionBankAdmin />) },
       { path: "mock-exams/papers", element: withSuspense(<MockExamPaperList />) },
       { path: "mock-exams/scores", element: withSuspense(<MockExamPaperScores />) },
       { path: "mock-exams/papers/:paperId/scores", element: withSuspense(<MockExamPaperScores />) },

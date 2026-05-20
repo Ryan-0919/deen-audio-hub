@@ -40,6 +40,7 @@ const navigationGroups = [
     title: "机考系统",
     items: [
       { name: "机考题库", href: "/admin/mock-exams/question-bank", icon: FolderOpen },
+      { name: "题库产品管理", href: "/admin/book-question-banks", icon: BookOpen },
       { name: "机考试卷", href: "/admin/mock-exams/papers", icon: FileText },
       { name: "学员考试记录", href: "/admin/mock-exams/scores", icon: History },
       { name: "启动页设置", href: "/admin/mock-exams/launch-settings", icon: Settings },

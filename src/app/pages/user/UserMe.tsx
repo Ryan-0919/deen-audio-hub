@@ -86,6 +86,15 @@ const EMPTY_HOME_CONFIG: UserHomeConfig = {
 
 const fallbackShortcutItems: ShortcutItem[] = [
   {
+    title: "我的题库",
+    description: "进入书籍型题库，按科目练习 300 小案例和主观近 8 年真题。",
+    path: "/user/book-question-banks",
+    icon: ClipboardCheck,
+    iconClassName: "text-[#8fd6ff]",
+    glowClassName: "from-[#38a6ff]/28 via-[#1f6fff]/16 to-transparent",
+    accentText: "进入我的题库",
+  },
+  {
     title: "我的考试",
     description: "查看你参加过的考试记录与结果。",
     path: "/user/my-exams",
@@ -151,9 +160,18 @@ export function UserMe() {
   const shortcutItems = useMemo(() => {
     const sourceItems =
       homeConfig.accountCenter.shortcuts.length > 0 ? homeConfig.accountCenter.shortcuts : EMPTY_HOME_CONFIG.accountCenter.shortcuts;
-    const ensuredItems = sourceItems.some((item) => item.path === "/user/exam-leaderboard")
-      ? sourceItems
-      : [...sourceItems, EMPTY_HOME_CONFIG.accountCenter.shortcuts[1]];
+    const nextItems = [...sourceItems];
+    if (!nextItems.some((item) => item.path === "/user/book-question-banks")) {
+      nextItems.unshift({
+        title: "我的题库",
+        description: "进入书籍型题库，按科目练习 300 小案例和主观近 8 年真题。",
+        path: "/user/book-question-banks",
+        accentText: "进入我的题库",
+      });
+    }
+    const ensuredItems = nextItems.some((item) => item.path === "/user/exam-leaderboard")
+      ? nextItems
+      : [...nextItems, EMPTY_HOME_CONFIG.accountCenter.shortcuts[1]];
 
     return ensuredItems.map((item, index) => ({
       title: item.title,
