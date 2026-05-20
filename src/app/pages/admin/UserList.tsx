@@ -2,6 +2,7 @@ import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { CircleAlert, KeyRound, Laptop, Loader2, Plus, RefreshCcw, ShieldCheck, ShieldOff, Trash2, Upload, UserPlus } from "lucide-react";
 import { toast } from "sonner";
+import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
@@ -44,6 +45,10 @@ const buildSeriesMeta = (series: MockExamSeriesPermissionOption) => {
   }
   return parts.join(" · ");
 };
+
+const getUserDisplayName = (user: User) => user.displayName?.trim() || user.nickname?.trim() || "未设置昵称";
+
+const getUserInitial = (user: User) => getUserDisplayName(user).slice(0, 1).toUpperCase();
 
 export function UserList() {
   const [users, setUsers] = useState<User[]>([]);
@@ -682,7 +687,7 @@ export function UserList() {
                       }
                     />
                   </TableHead>
-                  <TableHead>手机号</TableHead>
+                  <TableHead>用户信息</TableHead>
                   <TableHead>注册日期</TableHead>
                   <TableHead>上次登录</TableHead>
                   <TableHead>课程权限</TableHead>
@@ -705,7 +710,18 @@ export function UserList() {
                         }
                       />
                     </TableCell>
-                    <TableCell className="font-medium text-slate-900">{user.phone}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="size-10 border border-slate-200">
+                          <AvatarImage src={user.avatarUrl} alt={getUserDisplayName(user)} className="object-cover" />
+                          <AvatarFallback className="bg-slate-100 text-slate-700">{getUserInitial(user)}</AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <div className="truncate font-medium text-slate-900">{getUserDisplayName(user)}</div>
+                          <div className="truncate text-sm text-slate-500">{user.phone}</div>
+                        </div>
+                      </div>
+                    </TableCell>
                     <TableCell>{user.registeredAt}</TableCell>
                     <TableCell>{user.lastLogin || "-"}</TableCell>
                     <TableCell>
@@ -943,7 +959,7 @@ export function UserList() {
         <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>编辑用户权限</DialogTitle>
-            <DialogDescription>{selectedUser?.phone ?? ""}</DialogDescription>
+            <DialogDescription>{selectedUser ? `${getUserDisplayName(selectedUser)} · ${selectedUser.phone}` : ""}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4 md:grid-cols-2">
             <div className="space-y-3">
@@ -968,7 +984,7 @@ export function UserList() {
         <DialogContent className="max-h-[85vh] w-[calc(100vw-1.5rem)] max-w-4xl overflow-y-auto sm:w-full">
           <DialogHeader>
             <DialogTitle>重置机考试卷状态</DialogTitle>
-            <DialogDescription>{selectedUser?.phone ?? ""}</DialogDescription>
+            <DialogDescription>{selectedUser ? `${getUserDisplayName(selectedUser)} · ${selectedUser.phone}` : ""}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             {selectedUserResetPapers.length === 0 ? (
@@ -1076,7 +1092,7 @@ export function UserList() {
       <Sheet open={showDeviceSheet} onOpenChange={setShowDeviceSheet}>
         <SheetContent side="right" className="w-[560px] max-w-[560px] bg-white p-0">
           <SheetHeader className="border-b border-slate-200">
-            <SheetTitle>{selectedUser?.phone ?? "设备管理"}</SheetTitle>
+            <SheetTitle>{selectedUser ? `${getUserDisplayName(selectedUser)} · ${selectedUser.phone}` : "设备管理"}</SheetTitle>
             <SheetDescription>管理员可查看登录设备并清理设备。</SheetDescription>
           </SheetHeader>
           <div className="space-y-4 p-4">
