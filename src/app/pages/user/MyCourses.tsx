@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { ArrowRight, BookOpenText, FilePenLine, Keyboard, Library, LogOut, Scale, Sparkles, type LucideIcon } from "lucide-react";
+import { ArrowRight, BookOpenText, ClipboardCheck, FilePenLine, Keyboard, Library, LogOut, Scale, Sparkles, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { AppLogo } from "../../components/branding/AppLogo";
@@ -83,6 +83,16 @@ type HomeActionCard = {
 
 const DEFAULT_ACTIONS: Array<Omit<HomeActionCard, "meta">> = [
   {
+    path: "/user/book-question-banks",
+    eyebrow: "题库练习",
+    title: "我的题库",
+    description: "进入书籍型题库，按科目练习 300 小案例和主观近 8 年真题。",
+    icon: ClipboardCheck,
+    iconClassName: "text-[#8fd6ff]",
+    glowClassName: "from-[#38a6ff]/30 via-[#1f6fff]/16 to-transparent",
+    accentClassName: "text-[#8fd6ff]",
+  },
+  {
     path: "/user/mock-exams",
     eyebrow: "机考训练",
     title: "进入主观批改",
@@ -139,6 +149,7 @@ const normalizeActionPath = (value: string, fallback: string) => {
   if (!path) return fallback;
   if (path === "/user/courses") return "/user/my-courses";
   if (
+    path === "/user/book-question-banks" ||
     path === "/user/my-courses" ||
     path === "/user/mock-exams" ||
     path === "/user/objective-mock-exams" ||
@@ -222,6 +233,7 @@ export function MyCourses() {
 
   const actionMetaMap = useMemo(
     () => ({
+      "/user/book-question-banks": "按科目持续练题",
       "/user/my-courses": courses.length > 0 ? `已开通 ${courses.length} 门课程` : "查看全部课程",
       "/user/mock-exams": papers.length > 0 ? "进入主观题试卷列表" : "查看可用主观题试卷",
       "/user/objective-mock-exams": papers.length > 0 ? "进入客观题试卷列表" : "查看可用客观题试卷",

@@ -1,4 +1,4 @@
-import { ClipboardCheck, ImageUp, KeyRound, LogOut, PencilLine, Sparkles, Trophy, UserRound } from "lucide-react";
+import { ImageUp, KeyRound, LogOut, PencilLine, Sparkles, Trophy, UserRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -86,15 +86,6 @@ const EMPTY_HOME_CONFIG: UserHomeConfig = {
 
 const fallbackShortcutItems: ShortcutItem[] = [
   {
-    title: "我的题库",
-    description: "进入书籍型题库，按科目练习 300 小案例和主观近 8 年真题。",
-    path: "/user/book-question-banks",
-    icon: ClipboardCheck,
-    iconClassName: "text-[#8fd6ff]",
-    glowClassName: "from-[#38a6ff]/28 via-[#1f6fff]/16 to-transparent",
-    accentText: "进入我的题库",
-  },
-  {
     title: "我的考试",
     description: "查看你参加过的考试记录与结果。",
     path: "/user/my-exams",
@@ -160,15 +151,7 @@ export function UserMe() {
   const shortcutItems = useMemo(() => {
     const sourceItems =
       homeConfig.accountCenter.shortcuts.length > 0 ? homeConfig.accountCenter.shortcuts : EMPTY_HOME_CONFIG.accountCenter.shortcuts;
-    const nextItems = [...sourceItems];
-    if (!nextItems.some((item) => item.path === "/user/book-question-banks")) {
-      nextItems.unshift({
-        title: "我的题库",
-        description: "进入书籍型题库，按科目练习 300 小案例和主观近 8 年真题。",
-        path: "/user/book-question-banks",
-        accentText: "进入我的题库",
-      });
-    }
+    const nextItems = sourceItems.filter((item) => item.path !== "/user/book-question-banks");
     const ensuredItems = nextItems.some((item) => item.path === "/user/exam-leaderboard")
       ? nextItems
       : [...nextItems, EMPTY_HOME_CONFIG.accountCenter.shortcuts[1]];
