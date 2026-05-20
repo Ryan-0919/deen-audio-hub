@@ -1,4 +1,4 @@
-import { ImageUp, KeyRound, LogOut, PencilLine, Sparkles, Trophy, UserRound } from "lucide-react";
+import { ClipboardCheck, ImageUp, KeyRound, LogOut, PencilLine, Sparkles, Trophy, UserRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
