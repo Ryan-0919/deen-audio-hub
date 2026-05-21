@@ -97,10 +97,7 @@ const EMPTY_HOME_CONFIG: UserHomeConfig = {
 
 const buildPaperMetaText = (paper: MockExamPaper) => [paper.year ? `${paper.year}年` : "", paper.phase || ""].filter(Boolean).join(" · ");
 
-const buildAttemptsText = (paper: MockExamPaper) =>
-  [paper.maxAttempts > 0 ? `限考 ${paper.maxAttempts} 次` : "不限次数", isSubjectivePaper(paper) ? (paper.reviewEnabled ? "人工批改" : "直接解析") : ""]
-    .filter(Boolean)
-    .join(" · ");
+const buildAttemptsText = (_paper: MockExamPaper) => "";
 
 const buildOpenTimeText = (paper: MockExamPaper) => {
   if (paper.isOpen) {
