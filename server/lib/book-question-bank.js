@@ -5,6 +5,8 @@ import { getReadableObjectUrl } from "./upload.js";
 
 export const DEFAULT_BOOK_QUESTION_BANK_USER_PASSWORD = "den2024";
 
+const SUBJECTIVE_QUESTION_TYPE = "subjective_case";
+
 const createHttpError = (message, statusCode = 400) => {
   const error = new Error(message);
   error.statusCode = statusCode;
@@ -12,6 +14,15 @@ const createHttpError = (message, statusCode = 400) => {
 };
 
 const normalizeText = (value) => `${value ?? ""}`.replace(/\r\n/g, "\n").trim();
+const normalizeFileBaseName = (value) =>
+  `${value ?? ""}`
+    .trim()
+    .replace(/\\/g, "/")
+    .split("/")
+    .pop()
+    ?.replace(/\.[^.]+$/, "")
+    .replace(/\s+/g, "")
+    .toLowerCase() ?? "";
 
 const parseJsonSafely = (value, fallback) => {
   if (!value) return fallback;
@@ -58,6 +69,11 @@ const toNonNegativeInt = (value, fallback = 0) => {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 };
 
+const toPositiveInt = (value, fallback = 1) => {
+  const parsed = Number.parseInt(`${value ?? ""}`.trim(), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
 const toBookStatus = (value) => {
   const normalized = `${value ?? ""}`.trim();
   if (normalized === "published" || normalized === "closed") return normalized;
@@ -65,35 +81,113 @@ const toBookStatus = (value) => {
 };
 
 const isBookVisibleForUser = (book) => book?.status === "published" && Boolean(book?.isVisible);
+const isSubjectiveQuestionType = (type) => `${type ?? ""}`.trim() === SUBJECTIVE_QUESTION_TYPE;
 
-const buildQuestionMeta = (item) => {
-  const raw = parseJsonSafely(item?.questionMetaJson, {});
-  const subQuestions = Array.isArray(raw?.subQuestions) ? raw.subQuestions : [];
+const normalizeRubricPoints = (items = []) =>
+  (Array.isArray(items) ? items : [])
+    .map((item, index) => ({
+      id: `${item?.id ?? `point_${index + 1}`}`.trim(),
+      title: normalizeText(item?.title),
+      score: Math.max(0, Number.parseInt(`${item?.score ?? ""}`, 10) || 0),
+      description: normalizeText(item?.description),
+      keywords: normalizeStringArray(item?.keywords),
+      sortOrder: Number(item?.sortOrder ?? index + 1),
+    }))
+    .filter((item) => item.title)
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((item, index) => ({
+      ...item,
+      sortOrder: index + 1,
+      id: item.id || `point_${index + 1}`,
+    }));
+
+const normalizeSubjectiveSubQuestions = (items = [], stem = "") => {
+  const normalized = (Array.isArray(items) ? items : [])
+    .map((item, index) => ({
+      id: `${item?.id ?? `sub_${index + 1}`}`.trim(),
+      title: normalizeText(item?.title),
+      placeholder: normalizeText(item?.placeholder) || "请在此输入答案。",
+      abilityLabel: normalizeText(item?.abilityLabel),
+      referenceAnswer: normalizeText(item?.referenceAnswer),
+      rubricGuidance: normalizeText(item?.rubricGuidance),
+      rubricPoints: normalizeRubricPoints(item?.rubricPoints),
+      sortOrder: Number(item?.sortOrder ?? index + 1),
+    }))
+    .filter((item) => item.title)
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((item, index) => ({
+      ...item,
+      sortOrder: index + 1,
+    }));
+
+  if (normalized.length > 0) {
+    return normalized;
+  }
+
+  return [
+    {
+      id: "sub_1",
+      title: normalizeText(stem) || "请作答",
+      placeholder: "请在此输入答案。",
+      abilityLabel: "",
+      referenceAnswer: "",
+      rubricGuidance: "",
+      rubricPoints: [],
+      sortOrder: 1,
+    },
+  ];
+};
+
+const normalizeObjectiveOptions = (options = []) =>
+  (Array.isArray(options) ? options : [])
+    .map((option, index) => ({
+      key: `${option?.key ?? option?.optionKey ?? ""}`.trim().toUpperCase(),
+      content: normalizeText(option?.content),
+      sortOrder: Number(option?.sortOrder ?? index + 1),
+    }))
+    .filter((option) => option.key && option.content)
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((option, index) => ({
+      ...option,
+      sortOrder: index + 1,
+    }));
+
+const parseQuestionMeta = ({ questionType, questionMetaJson, stem }) => {
+  const raw = parseJsonSafely(questionMetaJson, {});
+  const title = normalizeText(raw?.title);
+  const sectionLabel = normalizeText(raw?.sectionLabel) || questionTypeLabelMap[questionType] || "题目";
+  const sectionDescription = normalizeText(raw?.sectionDescription);
+  const subjectiveSubQuestions = isSubjectiveQuestionType(questionType)
+    ? normalizeSubjectiveSubQuestions(raw?.subQuestions, stem)
+    : [];
 
   return {
-    title: normalizeText(raw?.title),
-    sectionLabel: normalizeText(raw?.sectionLabel) || questionTypeLabelMap[item?.type] || "题目",
-    sectionDescription: normalizeText(raw?.sectionDescription),
-    subjectiveSubQuestions: subQuestions
-      .map((subQuestion, index) => ({
-        id: `${subQuestion?.id ?? `sub_${index + 1}`}`.trim(),
-        title: normalizeText(subQuestion?.title),
-        placeholder: normalizeText(subQuestion?.placeholder) || "请在此输入答案。",
-        abilityLabel: normalizeText(subQuestion?.abilityLabel),
-        referenceAnswer: normalizeText(subQuestion?.referenceAnswer),
-        rubricGuidance: normalizeText(subQuestion?.rubricGuidance),
-        rubricPoints: (Array.isArray(subQuestion?.rubricPoints) ? subQuestion.rubricPoints : [])
-          .map((point, pointIndex) => ({
-            id: `${point?.id ?? `point_${pointIndex + 1}`}`.trim(),
-            title: normalizeText(point?.title),
-            score: Math.max(0, Number.parseInt(`${point?.score ?? ""}`, 10) || 0),
-            description: normalizeText(point?.description),
-            keywords: normalizeStringArray(point?.keywords),
-          }))
-          .filter((point) => point.title),
-      }))
-      .filter((subQuestion) => subQuestion.title),
+    title,
+    sectionLabel,
+    sectionDescription,
+    subjectiveSubQuestions,
   };
+};
+
+const buildQuestionMetaJson = ({ questionType, title, sectionLabel, sectionDescription, subjectiveSubQuestions, stem }) => {
+  const normalizedTitle = normalizeText(title);
+  const normalizedSectionLabel = normalizeText(sectionLabel);
+  const normalizedSectionDescription = normalizeText(sectionDescription);
+
+  if (isSubjectiveQuestionType(questionType)) {
+    return JSON.stringify({
+      title: normalizedTitle,
+      sectionLabel: normalizedSectionLabel || "主观题",
+      sectionDescription: normalizedSectionDescription,
+      subQuestions: normalizeSubjectiveSubQuestions(subjectiveSubQuestions, stem),
+    });
+  }
+
+  return JSON.stringify({
+    title: normalizedTitle,
+    sectionLabel: normalizedSectionLabel || questionTypeLabelMap[questionType] || "题目",
+    sectionDescription: normalizedSectionDescription,
+  });
 };
 
 const buildDisplayTitle = ({ customTitle, metaTitle, stem, material, sortOrder }) =>
@@ -103,11 +197,201 @@ const buildDisplayTitle = ({ customTitle, metaTitle, stem, material, sortOrder }
   normalizeText(material).split("\n").find(Boolean) ||
   `题目 ${sortOrder}`;
 
-const buildReadableAudioUrl = (item) =>
+const resolveReadableAudioUrl = ({ objectKey = "", url = "" }) =>
   getReadableObjectUrl({
-    objectKey: item?.lessonAudioObjectKey ?? "",
-    fallbackUrl: item?.lessonAudioUrl ?? "",
+    objectKey,
+    fallbackUrl: url,
   });
+
+const resolveBookItemContent = (item) => {
+  const legacy = item?.questionBankItem ?? null;
+  const resolvedType = item?.type ?? legacy?.type ?? "single_choice";
+  const resolvedStem = normalizeText(item?.stem ?? legacy?.stem ?? "");
+  const resolvedMaterial = normalizeText(item?.material ?? legacy?.material ?? "");
+  const resolvedAnalysis = normalizeText(item?.analysis ?? legacy?.analysis ?? "");
+  const resolvedLessonAudioUrl = normalizeText(item?.lessonAudioUrl ?? legacy?.lessonAudioUrl ?? "");
+  const resolvedLessonAudioObjectKey = normalizeText(item?.lessonAudioObjectKey ?? legacy?.lessonAudioObjectKey ?? "");
+  const resolvedLessonAudioDurationSeconds =
+    Number(item?.lessonAudioDurationSeconds ?? legacy?.lessonAudioDurationSeconds ?? 0) || 0;
+  const resolvedScore = Number(item?.score ?? legacy?.score ?? 0) || 0;
+  const resolvedCorrectAnswerJson = item?.correctAnswerJson ?? legacy?.correctAnswerJson ?? "[]";
+  const resolvedQuestionMetaJson = item?.questionMetaJson ?? legacy?.questionMetaJson ?? null;
+  const resolvedOptions =
+    Array.isArray(item?.options) && item.options.length > 0
+      ? item.options
+      : Array.isArray(legacy?.options)
+        ? legacy.options
+        : [];
+  const questionMeta = parseQuestionMeta({
+    questionType: resolvedType,
+    questionMetaJson: resolvedQuestionMetaJson,
+    stem: resolvedStem,
+  });
+
+  return {
+    sourceQuestionBankItemId: `${item?.questionBankItemId ?? legacy?.id ?? ""}`.trim(),
+    folderName: normalizeDisplayText(legacy?.folder?.name ?? ""),
+    questionType: resolvedType,
+    questionTypeLabel: questionTypeLabelMap[resolvedType] ?? resolvedType,
+    stem: normalizeDisplayText(resolvedStem),
+    material: normalizeDisplayText(resolvedMaterial),
+    analysis: normalizeDisplayText(resolvedAnalysis),
+    score: resolvedScore,
+    correctAnswerKeys: normalizeAnswerKeys(parseJsonSafely(resolvedCorrectAnswerJson, [])),
+    options: resolvedOptions
+      .slice()
+      .sort((left, right) => Number(left.sortOrder ?? 0) - Number(right.sortOrder ?? 0))
+      .map((option) => ({
+        id: option.id,
+        key: `${option.optionKey ?? option.key ?? ""}`.trim().toUpperCase(),
+        content: normalizeDisplayText(option.content),
+      })),
+    sectionLabel: normalizeDisplayText(questionMeta.sectionLabel),
+    sectionDescription: normalizeDisplayText(questionMeta.sectionDescription),
+    subjectiveSubQuestions: questionMeta.subjectiveSubQuestions.map((subQuestion) => ({
+      id: subQuestion.id,
+      title: normalizeDisplayText(subQuestion.title),
+      placeholder: normalizeDisplayText(subQuestion.placeholder),
+      abilityLabel: normalizeDisplayText(subQuestion.abilityLabel),
+      referenceAnswer: normalizeDisplayText(subQuestion.referenceAnswer),
+      rubricGuidance: normalizeDisplayText(subQuestion.rubricGuidance),
+      rubricPoints: (subQuestion.rubricPoints ?? []).map((point) => ({
+        id: point.id,
+        title: normalizeDisplayText(point.title),
+        score: Number(point.score ?? 0) || 0,
+        description: normalizeDisplayText(point.description),
+        keywords: normalizeStringArray(point.keywords),
+      })),
+    })),
+    questionMetaTitle: normalizeDisplayText(questionMeta.title),
+    lessonAudioUrl: resolveReadableAudioUrl({
+      objectKey: resolvedLessonAudioObjectKey,
+      url: resolvedLessonAudioUrl,
+    }),
+    lessonAudioObjectKey: resolvedLessonAudioObjectKey,
+    lessonAudioDurationSeconds: resolvedLessonAudioDurationSeconds,
+  };
+};
+
+const validateBookQuestionItemPayload = (payload) => {
+  const questionType = `${payload?.questionType ?? payload?.type ?? ""}`.trim();
+  const title = normalizeText(payload?.title);
+  const stem = normalizeText(payload?.stem);
+  const material = normalizeText(payload?.material);
+  const analysis = normalizeText(payload?.analysis);
+  const lessonAudioUrl = normalizeText(payload?.lessonAudioUrl);
+  const lessonAudioObjectKey = normalizeText(payload?.lessonAudioObjectKey);
+  const lessonAudioDurationSeconds = Math.max(0, Number.parseInt(`${payload?.lessonAudioDurationSeconds ?? ""}`, 10) || 0);
+  const defaultScore = isSubjectiveQuestionType(questionType) ? 20 : 2;
+  const score = toPositiveInt(payload?.score, defaultScore);
+
+  if (!questionTypeLabelMap[questionType]) {
+    throw createHttpError("题型不正确");
+  }
+
+  if (!stem) {
+    throw createHttpError("题干不能为空");
+  }
+
+  if (!isSubjectiveQuestionType(questionType)) {
+    const options = normalizeObjectiveOptions(payload?.options);
+    const correctAnswerKeys = normalizeAnswerKeys(payload?.correctAnswerKeys);
+
+    if (options.length < 2) {
+      throw createHttpError("客观题至少需要两个选项");
+    }
+
+    if (correctAnswerKeys.length <= 0) {
+      throw createHttpError("请至少设置一个正确答案");
+    }
+
+    const optionKeySet = new Set(options.map((option) => option.key));
+    if (correctAnswerKeys.some((key) => !optionKeySet.has(key))) {
+      throw createHttpError("正确答案必须来自已填写的选项");
+    }
+
+    if (questionType === "single_choice" && correctAnswerKeys.length !== 1) {
+      throw createHttpError("单选题必须且只能有一个正确答案");
+    }
+
+    if (questionType === "multiple_choice" && correctAnswerKeys.length < 2) {
+      throw createHttpError("多选题至少需要两个正确答案");
+    }
+
+    return {
+      title,
+      questionType,
+      stem,
+      material,
+      analysis,
+      lessonAudioUrl,
+      lessonAudioObjectKey,
+      lessonAudioDurationSeconds,
+      score,
+      correctAnswerJson: JSON.stringify(correctAnswerKeys),
+      options,
+      questionMetaJson: buildQuestionMetaJson({
+        questionType,
+        title,
+        sectionLabel: payload?.sectionLabel,
+        sectionDescription: payload?.sectionDescription,
+        subjectiveSubQuestions: [],
+        stem,
+      }),
+    };
+  }
+
+  return {
+    title,
+    questionType,
+    stem,
+    material,
+    analysis,
+    lessonAudioUrl,
+    lessonAudioObjectKey,
+    lessonAudioDurationSeconds,
+    score,
+    correctAnswerJson: JSON.stringify([]),
+    options: [],
+    questionMetaJson: buildQuestionMetaJson({
+      questionType,
+      title,
+      sectionLabel: payload?.sectionLabel,
+      sectionDescription: payload?.sectionDescription,
+      subjectiveSubQuestions: payload?.subjectiveSubQuestions,
+      stem,
+    }),
+  };
+};
+
+const createBookQuestionBankItemData = ({ bookId, subjectId, sortOrder, validated, payload }) => ({
+  bookId,
+  subjectId,
+  title: validated.title || null,
+  questionNo: normalizeText(payload?.questionNo) || null,
+  yearLabel: normalizeText(payload?.yearLabel) || null,
+  pageLabel: normalizeText(payload?.pageLabel) || null,
+  tagsJson: JSON.stringify(normalizeStringArray(payload?.tags)),
+  type: validated.questionType,
+  stem: validated.stem,
+  material: validated.material || null,
+  analysis: validated.analysis || null,
+  lessonAudioUrl: validated.lessonAudioUrl || null,
+  lessonAudioObjectKey: validated.lessonAudioObjectKey || null,
+  lessonAudioDurationSeconds: validated.lessonAudioDurationSeconds,
+  score: validated.score,
+  correctAnswerJson: validated.correctAnswerJson,
+  questionMetaJson: validated.questionMetaJson,
+  sortOrder,
+  status: payload?.status !== false,
+  options: {
+    create: validated.options.map((option) => ({
+      optionKey: option.key,
+      content: option.content,
+      sortOrder: option.sortOrder,
+    })),
+  },
+});
 
 export const serializeBookQuestionBank = (book) => ({
   id: book.id,
@@ -153,12 +437,12 @@ export const serializeBookQuestionBankPracticeState = (state) => ({
 });
 
 export const serializeBookQuestionBankItemSummary = (item) => {
-  const questionMeta = buildQuestionMeta(item.questionBankItem);
+  const resolved = resolveBookItemContent(item);
   const displayTitle = buildDisplayTitle({
     customTitle: item.title,
-    metaTitle: questionMeta.title,
-    stem: item.questionBankItem?.stem,
-    material: item.questionBankItem?.material,
+    metaTitle: resolved.questionMetaTitle,
+    stem: resolved.stem,
+    material: resolved.material,
     sortOrder: item.sortOrder,
   });
 
@@ -166,7 +450,7 @@ export const serializeBookQuestionBankItemSummary = (item) => {
     id: item.id,
     bookId: item.bookId,
     subjectId: item.subjectId,
-    questionBankItemId: item.questionBankItemId,
+    questionBankItemId: resolved.sourceQuestionBankItemId,
     title: normalizeDisplayText(displayTitle),
     customTitle: normalizeDisplayText(item.title ?? ""),
     questionNo: normalizeDisplayText(item.questionNo ?? ""),
@@ -176,24 +460,34 @@ export const serializeBookQuestionBankItemSummary = (item) => {
     sortOrder: Number(item.sortOrder ?? 0),
     status: Boolean(item.status),
     subjectName: normalizeDisplayText(item.subject?.name ?? ""),
-    folderName: normalizeDisplayText(item.questionBankItem?.folder?.name ?? ""),
-    questionType: item.questionBankItem?.type ?? "single_choice",
-    questionTypeLabel: questionTypeLabelMap[item.questionBankItem?.type] ?? item.questionBankItem?.type ?? "题目",
-    score: Number(item.questionBankItem?.score ?? 0),
-    hasLessonAudio: Boolean(item.questionBankItem?.lessonAudioUrl || item.questionBankItem?.lessonAudioObjectKey),
+    folderName: normalizeDisplayText(resolved.folderName || "独立题库"),
+    questionType: resolved.questionType,
+    questionTypeLabel: resolved.questionTypeLabel,
+    stem: resolved.stem,
+    material: resolved.material,
+    analysis: resolved.analysis,
+    score: Number(resolved.score ?? 0),
+    correctAnswerKeys: resolved.correctAnswerKeys,
+    options: resolved.options,
+    sectionLabel: resolved.sectionLabel,
+    sectionDescription: resolved.sectionDescription,
+    subjectiveSubQuestions: resolved.subjectiveSubQuestions,
+    lessonAudioUrl: resolved.lessonAudioUrl,
+    lessonAudioObjectKey: resolved.lessonAudioObjectKey,
+    lessonAudioDurationSeconds: resolved.lessonAudioDurationSeconds,
+    hasLessonAudio: Boolean(resolved.lessonAudioUrl || resolved.lessonAudioObjectKey),
     createdAt: formatDateTime(item.createdAt),
     updatedAt: formatDateTime(item.updatedAt),
   };
 };
 
 export const serializeBookQuestionBankPracticeItem = (bookItem, state) => {
-  const questionItem = bookItem.questionBankItem;
-  const questionMeta = buildQuestionMeta(questionItem);
+  const resolved = resolveBookItemContent(bookItem);
   const displayTitle = buildDisplayTitle({
     customTitle: bookItem.title,
-    metaTitle: questionMeta.title,
-    stem: questionItem.stem,
-    material: questionItem.material,
+    metaTitle: resolved.questionMetaTitle,
+    stem: resolved.stem,
+    material: resolved.material,
     sortOrder: bookItem.sortOrder,
   });
 
@@ -201,7 +495,7 @@ export const serializeBookQuestionBankPracticeItem = (bookItem, state) => {
     id: bookItem.id,
     bookId: bookItem.bookId,
     subjectId: bookItem.subjectId,
-    questionBankItemId: bookItem.questionBankItemId,
+    questionBankItemId: resolved.sourceQuestionBankItemId,
     title: normalizeDisplayText(displayTitle),
     customTitle: normalizeDisplayText(bookItem.title ?? ""),
     questionNo: normalizeDisplayText(bookItem.questionNo ?? ""),
@@ -211,42 +505,24 @@ export const serializeBookQuestionBankPracticeItem = (bookItem, state) => {
     sortOrder: Number(bookItem.sortOrder ?? 0),
     status: Boolean(bookItem.status),
     subjectName: normalizeDisplayText(bookItem.subject?.name ?? ""),
-    questionType: questionItem.type,
-    questionTypeLabel: questionTypeLabelMap[questionItem.type] ?? questionItem.type,
-    stem: normalizeDisplayText(questionItem.stem),
-    material: normalizeDisplayText(questionItem.material ?? ""),
-    analysis: normalizeDisplayText(questionItem.analysis ?? ""),
-    score: Number(questionItem.score ?? 0),
-    correctAnswerKeys: normalizeAnswerKeys(parseJsonSafely(questionItem.correctAnswerJson, [])),
-    options: (questionItem.options ?? [])
-      .slice()
-      .sort((left, right) => Number(left.sortOrder ?? 0) - Number(right.sortOrder ?? 0))
-      .map((option) => ({
-        id: option.id,
-        key: `${option.optionKey ?? ""}`.trim().toUpperCase(),
-        content: normalizeDisplayText(option.content),
-      })),
-    sectionLabel: normalizeDisplayText(questionMeta.sectionLabel),
-    sectionDescription: normalizeDisplayText(questionMeta.sectionDescription),
+    folderName: normalizeDisplayText(resolved.folderName || "独立题库"),
+    questionType: resolved.questionType,
+    questionTypeLabel: resolved.questionTypeLabel,
+    stem: resolved.stem,
+    material: resolved.material,
+    analysis: resolved.analysis,
+    score: Number(resolved.score ?? 0),
+    correctAnswerKeys: resolved.correctAnswerKeys,
+    options: resolved.options,
+    sectionLabel: resolved.sectionLabel,
+    sectionDescription: resolved.sectionDescription,
     subjectiveSubQuestions:
-      questionMeta.subjectiveSubQuestions.length > 0
-        ? questionMeta.subjectiveSubQuestions.map((subQuestion) => ({
-            ...subQuestion,
-            title: normalizeDisplayText(subQuestion.title),
-            placeholder: normalizeDisplayText(subQuestion.placeholder),
-            abilityLabel: normalizeDisplayText(subQuestion.abilityLabel),
-            referenceAnswer: normalizeDisplayText(subQuestion.referenceAnswer),
-            rubricGuidance: normalizeDisplayText(subQuestion.rubricGuidance),
-            rubricPoints: subQuestion.rubricPoints.map((point) => ({
-              ...point,
-              title: normalizeDisplayText(point.title),
-              description: normalizeDisplayText(point.description),
-            })),
-          }))
+      resolved.subjectiveSubQuestions.length > 0
+        ? resolved.subjectiveSubQuestions
         : [
             {
               id: "sub_1",
-              title: normalizeDisplayText(questionItem.stem),
+              title: resolved.stem || "请作答",
               placeholder: "请在此输入答案。",
               abilityLabel: "",
               referenceAnswer: "",
@@ -254,54 +530,10 @@ export const serializeBookQuestionBankPracticeItem = (bookItem, state) => {
               rubricPoints: [],
             },
           ],
-    lessonAudioUrl: buildReadableAudioUrl(questionItem),
-    lessonAudioObjectKey: questionItem.lessonAudioObjectKey ?? "",
-    lessonAudioDurationSeconds: Number(questionItem.lessonAudioDurationSeconds ?? 0) || 0,
+    lessonAudioUrl: resolved.lessonAudioUrl,
+    lessonAudioObjectKey: resolved.lessonAudioObjectKey,
+    lessonAudioDurationSeconds: resolved.lessonAudioDurationSeconds,
     answerState: serializeBookQuestionBankPracticeState(state),
-  };
-};
-
-const serializeQuestionBankItemForSelection = (item) => {
-  const questionMeta = buildQuestionMeta(item);
-
-  return {
-    id: item.id,
-    folderId: item.folderId,
-    folderName: normalizeDisplayText(item.folder?.name ?? ""),
-    paperType: item.folder?.paperType ?? "objective",
-    questionType: item.type,
-    questionTypeLabel: questionTypeLabelMap[item.type] ?? item.type,
-    title: normalizeDisplayText(
-      buildDisplayTitle({
-        customTitle: "",
-        metaTitle: questionMeta.title,
-        stem: item.stem,
-        material: item.material,
-        sortOrder: item.sortOrder,
-      }),
-    ),
-    stem: normalizeDisplayText(item.stem),
-    material: normalizeDisplayText(item.material ?? ""),
-    analysis: normalizeDisplayText(item.analysis ?? ""),
-    score: Number(item.score ?? 0),
-    sortOrder: Number(item.sortOrder ?? 0),
-    correctAnswerKeys: normalizeAnswerKeys(parseJsonSafely(item.correctAnswerJson, [])),
-    options: (item.options ?? [])
-      .slice()
-      .sort((left, right) => Number(left.sortOrder ?? 0) - Number(right.sortOrder ?? 0))
-      .map((option) => ({
-        id: option.id,
-        key: `${option.optionKey ?? ""}`.trim().toUpperCase(),
-        content: normalizeDisplayText(option.content),
-      })),
-    sectionLabel: normalizeDisplayText(questionMeta.sectionLabel),
-    sectionDescription: normalizeDisplayText(questionMeta.sectionDescription),
-    subjectiveSubQuestions: questionMeta.subjectiveSubQuestions,
-    lessonAudioUrl: buildReadableAudioUrl(item),
-    lessonAudioObjectKey: item.lessonAudioObjectKey ?? "",
-    lessonAudioDurationSeconds: Number(item.lessonAudioDurationSeconds ?? 0) || 0,
-    createdAt: formatDateTime(item.createdAt),
-    updatedAt: formatDateTime(item.updatedAt),
   };
 };
 
@@ -354,34 +586,42 @@ const ensureBookPermissionForUser = async ({ db, userId, bookId }) => {
   return permission.book;
 };
 
-const ensureBookItemExists = async ({ db, bookId, bookItemId }) => {
+const getBookItemInclude = () => ({
+  subject: true,
+  options: {
+    orderBy: {
+      sortOrder: "asc",
+    },
+  },
+  questionBankItem: {
+    include: {
+      folder: {
+        select: {
+          id: true,
+          name: true,
+          paperType: true,
+        },
+      },
+      options: {
+        orderBy: {
+          sortOrder: "asc",
+        },
+      },
+    },
+  },
+});
+
+const ensureBookItemExists = async ({ db, bookId, bookItemId, allowHidden = false }) => {
   const item = await db.bookQuestionBankItem.findFirst({
     where: {
       id: bookItemId,
       bookId,
+      ...(allowHidden ? {} : { status: true }),
     },
-    include: {
-      subject: true,
-      questionBankItem: {
-        include: {
-          folder: {
-            select: {
-              id: true,
-              name: true,
-              paperType: true,
-            },
-          },
-          options: {
-            orderBy: {
-              sortOrder: "asc",
-            },
-          },
-        },
-      },
-    },
+    include: getBookItemInclude(),
   });
 
-  if (!item || !item.status) {
+  if (!item) {
     throw createHttpError("题目不存在", 404);
   }
 
@@ -616,7 +856,7 @@ export const createAdminBookQuestionBankSubject = async ({ db, bookId, payload }
     return serializeBookQuestionBankSubject(subject);
   } catch (error) {
     if (error?.code === "P2002") {
-      throw createHttpError("同一题库下科目名称或编码已存在");
+      throw createHttpError("当前题库下科目名称或编码已存在");
     }
     throw error;
   }
@@ -654,7 +894,7 @@ export const updateAdminBookQuestionBankSubject = async ({ db, bookId, subjectId
     return serializeBookQuestionBankSubject(subject);
   } catch (error) {
     if (error?.code === "P2002") {
-      throw createHttpError("同一题库下科目名称或编码已存在");
+      throw createHttpError("当前题库下科目名称或编码已存在");
     }
     throw error;
   }
@@ -675,9 +915,9 @@ export const deleteAdminBookQuestionBankSubject = async ({ db, bookId, subjectId
     },
   });
 
-  if (!subject) throw createHttpError("科目不存在", 404);
+  if (!subject) throw createHttpError("题库科目不存在", 404);
   if (Number(subject._count?.items ?? 0) > 0) {
-    throw createHttpError("请先移除该科目下的题目后再删除");
+    throw createHttpError("请先清空该科目下题目后再删除");
   }
 
   await db.bookQuestionBankSubject.delete({
@@ -693,84 +933,37 @@ export const deleteAdminBookQuestionBankSubject = async ({ db, bookId, subjectId
   };
 };
 
-export const listAdminBookQuestionBankAvailableItems = async ({ db, paperType, folderId, keyword, page = 1, pageSize = 20 }) => {
-  const where = {
-    folder: {
-      is: {
-        paperType: `${paperType ?? ""}`.trim() === "subjective" ? "subjective" : "objective",
-      },
-    },
-    ...(folderId ? { folderId } : {}),
-    ...(keyword
-      ? {
-          OR: [{ stem: { contains: keyword } }, { material: { contains: keyword } }, { analysis: { contains: keyword } }],
-        }
-      : {}),
-  };
+export const listAdminBookQuestionBankAvailableItems = async () => ({
+  items: [],
+  total: 0,
+  page: 1,
+  pageSize: 20,
+  totalPages: 1,
+});
 
-  const total = await db.questionBankItem.count({ where });
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const currentPage = Math.min(Math.max(page, 1), totalPages);
-  const items =
-    total <= 0
-      ? []
-      : await db.questionBankItem.findMany({
-          where,
-          include: {
-            folder: {
-              select: {
-                id: true,
-                name: true,
-                paperType: true,
-              },
-            },
-            options: {
-              orderBy: {
-                sortOrder: "asc",
-              },
-            },
-          },
-          orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-          skip: (currentPage - 1) * pageSize,
-          take: pageSize,
-        });
-
-  return {
-    items: items.map(serializeQuestionBankItemForSelection),
-    total,
-    page: currentPage,
-    pageSize,
-    totalPages,
-  };
-};
-
-export const listAdminBookQuestionBankItems = async ({ db, bookId, subjectId }) => {
+export const listAdminBookQuestionBankItems = async ({ db, bookId, subjectId, keyword = "", questionType = "" }) => {
   await ensureBookExists({ db, bookId });
 
+  const normalizedKeyword = normalizeText(keyword);
+  const normalizedQuestionType = `${questionType ?? ""}`.trim();
   const items = await db.bookQuestionBankItem.findMany({
     where: {
       bookId,
       ...(subjectId ? { subjectId } : {}),
+      ...(normalizedQuestionType ? { type: normalizedQuestionType } : {}),
+      ...(normalizedKeyword
+        ? {
+            OR: [
+              { title: { contains: normalizedKeyword } },
+              { stem: { contains: normalizedKeyword } },
+              { material: { contains: normalizedKeyword } },
+              { analysis: { contains: normalizedKeyword } },
+              { questionNo: { contains: normalizedKeyword } },
+            ],
+          }
+        : {}),
     },
-    include: {
-      subject: {
-        select: {
-          id: true,
-          name: true,
-          sortOrder: true,
-        },
-      },
-      questionBankItem: {
-        include: {
-          folder: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-        },
-      },
-    },
+    include: getBookItemInclude(),
     orderBy: [{ subject: { sortOrder: "asc" } }, { sortOrder: "asc" }, { createdAt: "asc" }],
   });
 
@@ -779,84 +972,207 @@ export const listAdminBookQuestionBankItems = async ({ db, bookId, subjectId }) 
 
 export const createAdminBookQuestionBankItem = async ({ db, bookId, payload }) => {
   const subjectId = `${payload?.subjectId ?? ""}`.trim();
-  const questionBankItemId = `${payload?.questionBankItemId ?? ""}`.trim();
-
   if (!subjectId) throw createHttpError("请选择科目");
-  if (!questionBankItemId) throw createHttpError("请选择题目");
 
   await ensureBookSubjectExists({ db, bookId, subjectId });
+  const validated = validateBookQuestionItemPayload(payload);
 
-  const questionBankItem = await db.questionBankItem.findUnique({
-    where: {
-      id: questionBankItemId,
-    },
+  const item = await db.$transaction(async (tx) => {
+    const maxSort = await tx.bookQuestionBankItem.findFirst({
+      where: {
+        bookId,
+        subjectId,
+      },
+      orderBy: {
+        sortOrder: "desc",
+      },
+      select: {
+        sortOrder: true,
+      },
+    });
+
+    return tx.bookQuestionBankItem.create({
+      data: createBookQuestionBankItemData({
+        bookId,
+        subjectId,
+        sortOrder: toNonNegativeInt(payload?.sortOrder, Number(maxSort?.sortOrder ?? 0) + 1),
+        validated,
+        payload,
+      }),
+      include: getBookItemInclude(),
+    });
   });
 
-  if (!questionBankItem) {
-    throw createHttpError("题库题目不存在", 404);
+  return serializeBookQuestionBankItemSummary(item);
+};
+
+export const importAdminBookQuestionBankItems = async ({ db, bookId, subjectId, items }) => {
+  const normalizedSubjectId = `${subjectId ?? ""}`.trim();
+  if (!normalizedSubjectId) {
+    throw createHttpError("请选择导入科目");
   }
 
-  const duplicatedItem = await db.bookQuestionBankItem.findFirst({
+  await ensureBookSubjectExists({ db, bookId, subjectId: normalizedSubjectId });
+
+  if (!Array.isArray(items) || items.length <= 0) {
+    throw createHttpError("Excel 中没有可导入的题目");
+  }
+
+  const validatedItems = items.map((item, index) => {
+    try {
+      return validateBookQuestionItemPayload({
+        subjectId: normalizedSubjectId,
+        title: item?.questionMeta?.title ?? "",
+        questionType: item?.type,
+        stem: item?.stem,
+        material: item?.material,
+        analysis: item?.analysis,
+        score: item?.score,
+        correctAnswerKeys: item?.correctAnswerKeys,
+        options: item?.options,
+        sectionLabel: item?.questionMeta?.sectionLabel,
+        sectionDescription: item?.questionMeta?.sectionDescription,
+        subjectiveSubQuestions: item?.questionMeta?.subQuestions,
+        lessonAudioUrl: item?.lessonAudioUrl,
+        lessonAudioObjectKey: item?.lessonAudioObjectKey,
+        lessonAudioDurationSeconds: item?.lessonAudioDurationSeconds,
+        status: true,
+      });
+    } catch (error) {
+      throw createHttpError(`第 ${index + 1} 题：${error instanceof Error ? error.message : "题目格式不正确"}`);
+    }
+  });
+
+  await db.$transaction(async (tx) => {
+    const maxSort = await tx.bookQuestionBankItem.findFirst({
+      where: {
+        bookId,
+        subjectId: normalizedSubjectId,
+      },
+      orderBy: {
+        sortOrder: "desc",
+      },
+      select: {
+        sortOrder: true,
+      },
+    });
+
+    let nextSortOrder = Number(maxSort?.sortOrder ?? 0);
+
+    for (let index = 0; index < validatedItems.length; index += 1) {
+      nextSortOrder += 1;
+      const sourceItem = items[index];
+      const validated = validatedItems[index];
+
+      await tx.bookQuestionBankItem.create({
+        data: createBookQuestionBankItemData({
+          bookId,
+          subjectId: normalizedSubjectId,
+          sortOrder: nextSortOrder,
+          validated,
+          payload: {
+            title: sourceItem?.questionMeta?.title ?? "",
+            questionNo: sourceItem?.questionNo ?? "",
+            yearLabel: sourceItem?.yearLabel ?? "",
+            pageLabel: sourceItem?.pageLabel ?? "",
+            tags: sourceItem?.tags ?? [],
+            status: true,
+          },
+        }),
+      });
+    }
+  });
+
+  return {
+    parsedCount: items.length,
+    createdCount: validatedItems.length,
+  };
+};
+
+const buildAudioMatchCandidateSet = (item) => {
+  const candidates = new Set();
+  const pushCandidate = (value) => {
+    const normalized = normalizeFileBaseName(value);
+    if (normalized) {
+      candidates.add(normalized);
+    }
+  };
+
+  pushCandidate(item?.questionMeta?.title);
+  pushCandidate(item?.title);
+  pushCandidate(item?.questionNo);
+  pushCandidate(item?.stem?.split?.("\n")?.[0] ?? "");
+
+  return candidates;
+};
+
+export const attachImportedBookQuestionBankAudios = async ({ db, bookId, subjectId, items, audioAssets }) => {
+  const normalizedSubjectId = `${subjectId ?? ""}`.trim();
+  if (!normalizedSubjectId) {
+    throw createHttpError("请选择导入科目");
+  }
+
+  if (!Array.isArray(items) || items.length <= 0 || !Array.isArray(audioAssets) || audioAssets.length <= 0) {
+    return {
+      matchedCount: 0,
+      unmatchedAudioNames: [],
+    };
+  }
+
+  const importedItems = await db.bookQuestionBankItem.findMany({
     where: {
       bookId,
-      questionBankItemId,
+      subjectId: normalizedSubjectId,
     },
+    orderBy: [{ sortOrder: "desc" }],
+    take: items.length,
     select: {
       id: true,
-    },
-  });
-
-  if (duplicatedItem) {
-    throw createHttpError("该题目已加入当前题库产品", 409);
-  }
-
-  const maxSort = await db.bookQuestionBankItem.findFirst({
-    where: {
-      bookId,
-      subjectId,
-    },
-    orderBy: {
-      sortOrder: "desc",
-    },
-    select: {
       sortOrder: true,
     },
   });
 
-  const item = await db.bookQuestionBankItem.create({
-    data: {
-      bookId,
-      subjectId,
-      questionBankItemId,
-      title: normalizeText(payload?.title) || null,
-      questionNo: normalizeText(payload?.questionNo) || null,
-      yearLabel: normalizeText(payload?.yearLabel) || null,
-      pageLabel: normalizeText(payload?.pageLabel) || null,
-      tagsJson: JSON.stringify(normalizeStringArray(payload?.tags)),
-      sortOrder: toNonNegativeInt(payload?.sortOrder, Number(maxSort?.sortOrder ?? 0) + 1),
-      status: payload?.status !== false,
-    },
-    include: {
-      subject: {
-        select: {
-          id: true,
-          name: true,
+  const orderedImportedItems = importedItems.slice().sort((left, right) => left.sortOrder - right.sortOrder);
+  const pendingAudioMap = new Map(
+    audioAssets.map((asset) => [
+      normalizeFileBaseName(asset.fileName),
+      asset,
+    ]),
+  );
+
+  let matchedCount = 0;
+
+  await db.$transaction(async (tx) => {
+    for (let index = 0; index < items.length; index += 1) {
+      const sourceItem = items[index];
+      const createdItem = orderedImportedItems[index];
+      if (!createdItem) continue;
+
+      const candidates = buildAudioMatchCandidateSet(sourceItem);
+      const matchedKey = Array.from(candidates).find((candidate) => pendingAudioMap.has(candidate));
+      const audioAsset = matchedKey ? pendingAudioMap.get(matchedKey) : pendingAudioMap.values().next().value;
+      if (!audioAsset) continue;
+
+      await tx.bookQuestionBankItem.update({
+        where: {
+          id: createdItem.id,
         },
-      },
-      questionBankItem: {
-        include: {
-          folder: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
+        data: {
+          lessonAudioUrl: audioAsset.readableUrl || audioAsset.url || null,
+          lessonAudioObjectKey: audioAsset.objectKey || null,
+          lessonAudioDurationSeconds: Number(audioAsset.durationSeconds ?? 0) || 0,
         },
-      },
-    },
+      });
+
+      matchedCount += 1;
+      pendingAudioMap.delete(matchedKey || normalizeFileBaseName(audioAsset.fileName));
+    }
   });
 
-  return serializeBookQuestionBankItemSummary(item);
+  return {
+    matchedCount,
+    unmatchedAudioNames: Array.from(pendingAudioMap.values()).map((asset) => asset.fileName),
+  };
 };
 
 export const updateAdminBookQuestionBankItem = async ({ db, bookId, bookItemId, payload }) => {
@@ -865,47 +1181,104 @@ export const updateAdminBookQuestionBankItem = async ({ db, bookId, bookItemId, 
       id: bookItemId,
       bookId,
     },
-  });
-
-  if (!existing) {
-    throw createHttpError("题目映射不存在", 404);
-  }
-
-  const nextSubjectId = `${payload?.subjectId ?? existing.subjectId}`.trim();
-  await ensureBookSubjectExists({ db, bookId, subjectId: nextSubjectId });
-
-  const item = await db.bookQuestionBankItem.update({
-    where: {
-      id: bookItemId,
-    },
-    data: {
-      subjectId: nextSubjectId,
-      title: normalizeText(payload?.title) || null,
-      questionNo: normalizeText(payload?.questionNo) || null,
-      yearLabel: normalizeText(payload?.yearLabel) || null,
-      pageLabel: normalizeText(payload?.pageLabel) || null,
-      tagsJson: JSON.stringify(normalizeStringArray(payload?.tags)),
-      sortOrder: toNonNegativeInt(payload?.sortOrder, Number(existing.sortOrder ?? 0)),
-      status: payload?.status !== false,
-    },
     include: {
-      subject: {
-        select: {
-          id: true,
-          name: true,
+      options: {
+        orderBy: {
+          sortOrder: "asc",
         },
       },
       questionBankItem: {
         include: {
-          folder: {
-            select: {
-              id: true,
-              name: true,
+          options: {
+            orderBy: {
+              sortOrder: "asc",
             },
           },
         },
       },
     },
+  });
+
+  if (!existing) {
+    throw createHttpError("题目不存在", 404);
+  }
+
+  const legacySource = resolveBookItemContent(existing);
+  const nextSubjectId = `${payload?.subjectId ?? existing.subjectId}`.trim();
+  await ensureBookSubjectExists({ db, bookId, subjectId: nextSubjectId });
+
+  const validated = validateBookQuestionItemPayload({
+    title: payload?.title ?? existing.title ?? legacySource.questionMetaTitle,
+    questionType: payload?.questionType ?? existing.type ?? legacySource.questionType,
+    stem: payload?.stem ?? existing.stem ?? legacySource.stem,
+    material: payload?.material ?? existing.material ?? legacySource.material,
+    analysis: payload?.analysis ?? existing.analysis ?? legacySource.analysis,
+    lessonAudioUrl: payload?.lessonAudioUrl ?? existing.lessonAudioUrl ?? legacySource.lessonAudioUrl,
+    lessonAudioObjectKey: payload?.lessonAudioObjectKey ?? existing.lessonAudioObjectKey ?? legacySource.lessonAudioObjectKey,
+    lessonAudioDurationSeconds:
+      payload?.lessonAudioDurationSeconds ?? existing.lessonAudioDurationSeconds ?? legacySource.lessonAudioDurationSeconds,
+    score: payload?.score ?? existing.score ?? legacySource.score,
+    correctAnswerKeys:
+      payload?.correctAnswerKeys ??
+      parseJsonSafely(existing.correctAnswerJson, legacySource.correctAnswerKeys),
+    options:
+      payload?.options ??
+      (existing.options?.length > 0
+        ? existing.options.map((option) => ({
+            key: option.optionKey,
+            content: option.content,
+            sortOrder: option.sortOrder,
+          }))
+        : legacySource.options.map((option, index) => ({
+            key: option.key,
+            content: option.content,
+            sortOrder: index + 1,
+          }))),
+    sectionLabel: payload?.sectionLabel ?? legacySource.sectionLabel,
+    sectionDescription: payload?.sectionDescription ?? legacySource.sectionDescription,
+    subjectiveSubQuestions: payload?.subjectiveSubQuestions ?? legacySource.subjectiveSubQuestions,
+  });
+
+  const item = await db.$transaction(async (tx) => {
+    await tx.bookQuestionBankItemOption.deleteMany({
+      where: {
+        itemId: bookItemId,
+      },
+    });
+
+    return tx.bookQuestionBankItem.update({
+      where: {
+        id: bookItemId,
+      },
+      data: {
+        subjectId: nextSubjectId,
+        title: validated.title || null,
+        questionNo: normalizeText(payload?.questionNo ?? existing.questionNo) || null,
+        yearLabel: normalizeText(payload?.yearLabel ?? existing.yearLabel) || null,
+        pageLabel: normalizeText(payload?.pageLabel ?? existing.pageLabel) || null,
+        tagsJson: JSON.stringify(normalizeStringArray(payload?.tags ?? parseJsonSafely(existing.tagsJson, []))),
+        type: validated.questionType,
+        stem: validated.stem,
+        material: validated.material || null,
+        analysis: validated.analysis || null,
+        lessonAudioUrl: validated.lessonAudioUrl || null,
+        lessonAudioObjectKey: validated.lessonAudioObjectKey || null,
+        lessonAudioDurationSeconds: validated.lessonAudioDurationSeconds,
+        score: validated.score,
+        correctAnswerJson: validated.correctAnswerJson,
+        questionMetaJson: validated.questionMetaJson,
+        sortOrder: toNonNegativeInt(payload?.sortOrder, Number(existing.sortOrder ?? 0)),
+        status: payload?.status === undefined ? existing.status : payload.status !== false,
+        options: {
+          create: validated.options.map((option) => ({
+            optionKey: option.key,
+            content: option.content,
+            sortOrder: option.sortOrder,
+          })),
+        },
+      },
+      include: getBookItemInclude(),
+    });
   });
 
   return serializeBookQuestionBankItemSummary(item);
@@ -924,7 +1297,7 @@ export const deleteAdminBookQuestionBankItem = async ({ db, bookId, bookItemId }
   });
 
   if (!existing) {
-    throw createHttpError("题目映射不存在", 404);
+    throw createHttpError("题目不存在", 404);
   }
 
   await db.bookQuestionBankItem.delete({
@@ -1141,19 +1514,8 @@ export const getUserBookQuestionBankDetail = async ({ db, userId, bookId, subjec
         status: true,
         ...(subjectId ? { subjectId } : {}),
       },
-      include: {
-        subject: true,
-        questionBankItem: {
-          include: {
-            folder: {
-              select: {
-                name: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      include: getBookItemInclude(),
+      orderBy: [{ subject: { sortOrder: "asc" } }, { sortOrder: "asc" }, { createdAt: "asc" }],
     }),
     db.userBookQuestionBankProgress.findUnique({
       where: {
@@ -1225,12 +1587,13 @@ export const getUserBookQuestionBankPractice = async ({ db, userId, bookId, book
         bookId,
         status: true,
       },
-      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      orderBy: [{ subject: { sortOrder: "asc" } }, { sortOrder: "asc" }, { createdAt: "asc" }],
       select: {
         id: true,
       },
     }),
   ]);
+
   const currentIndex = orderedItems.findIndex((item) => item.id === bookItemId);
   const prevBookItemId = currentIndex > 0 ? orderedItems[currentIndex - 1]?.id ?? "" : "";
   const nextBookItemId = currentIndex >= 0 ? orderedItems[currentIndex + 1]?.id ?? "" : "";
@@ -1269,12 +1632,13 @@ export const saveUserBookQuestionBankPracticeAnswer = async ({ db, userId, bookI
       draftText: normalizedDraftText || null,
       isAnswered,
       answeredAt: isAnswered ? new Date() : null,
+      questionBankItemId: bookItem.questionBankItemId || null,
     },
     create: {
       userId,
       bookId,
       bookItemId,
-      questionBankItemId: bookItem.questionBankItemId,
+      questionBankItemId: bookItem.questionBankItemId || null,
       answerJson: normalizedAnswerJson,
       draftText: normalizedDraftText || null,
       isAnswered,
@@ -1307,12 +1671,13 @@ export const markUserBookQuestionBankViewedAnswer = async ({ db, userId, bookId,
     update: {
       hasViewedAnswer: true,
       viewedAnswerAt: new Date(),
+      questionBankItemId: bookItem.questionBankItemId || null,
     },
     create: {
       userId,
       bookId,
       bookItemId,
-      questionBankItemId: bookItem.questionBankItemId,
+      questionBankItemId: bookItem.questionBankItemId || null,
       hasViewedAnswer: true,
       viewedAnswerAt: new Date(),
     },
@@ -1335,10 +1700,12 @@ export const updateUserBookQuestionBankPracticeState = async ({ db, userId, book
   const updateData = {
     ...(isMastered !== undefined ? { isMastered: Boolean(isMastered) } : {}),
     ...(isRedoMarked !== undefined ? { isRedoMarked: Boolean(isRedoMarked) } : {}),
+    questionBankItemId: bookItem.questionBankItemId || null,
   };
   const createData = {
     ...(isMastered !== undefined ? { isMastered: Boolean(isMastered) } : {}),
     ...(isRedoMarked !== undefined ? { isRedoMarked: Boolean(isRedoMarked) } : {}),
+    questionBankItemId: bookItem.questionBankItemId || null,
   };
 
   const state = await db.userBookQuestionBankItemState.upsert({
@@ -1353,7 +1720,6 @@ export const updateUserBookQuestionBankPracticeState = async ({ db, userId, book
       userId,
       bookId,
       bookItemId,
-      questionBankItemId: bookItem.questionBankItemId,
       ...createData,
     },
   });
@@ -1405,7 +1771,7 @@ export const getUserBookQuestionBankResumeTarget = async ({ db, userId, bookId }
       bookId,
       status: true,
     },
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    orderBy: [{ subject: { sortOrder: "asc" } }, { sortOrder: "asc" }, { createdAt: "asc" }],
     select: {
       id: true,
     },

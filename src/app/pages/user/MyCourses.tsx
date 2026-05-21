@@ -83,6 +83,16 @@ type HomeActionCard = {
 
 const DEFAULT_ACTIONS: Array<Omit<HomeActionCard, "meta">> = [
   {
+    path: "/user/my-courses",
+    eyebrow: "课程入口",
+    title: "进入我的课程",
+    description: "进入我的课程目录，查看已开通的音频课程和视频课程，并继续今天的学习进度。",
+    icon: Library,
+    iconClassName: "text-[#8fd6ff]",
+    glowClassName: "from-[#38a6ff]/30 via-[#1f6fff]/16 to-transparent",
+    accentClassName: "text-[#8fd6ff]",
+  },
+  {
     path: "/user/book-question-banks",
     eyebrow: "题库练习",
     title: "我的题库",
@@ -131,16 +141,6 @@ const DEFAULT_ACTIONS: Array<Omit<HomeActionCard, "meta">> = [
     iconClassName: "text-[#ffd39a]",
     glowClassName: "from-[#ffca57]/28 via-[#d68616]/16 to-transparent",
     accentClassName: "text-[#ffd39a]",
-  },
-  {
-    path: "/user/my-courses",
-    eyebrow: "课程入口",
-    title: "进入我的课程",
-    description: "进入我的课程目录，查看已开通的音频课程和视频课程，并继续今天的学习进度。",
-    icon: Library,
-    iconClassName: "text-[#8fd6ff]",
-    glowClassName: "from-[#38a6ff]/30 via-[#1f6fff]/16 to-transparent",
-    accentClassName: "text-[#8fd6ff]",
   },
 ];
 

@@ -61,6 +61,11 @@ export function BookQuestionBankDetail() {
     [payload],
   );
 
+  const itemCountText =
+    statusFilter === "all"
+      ? `共 ${payload?.items.length ?? 0} 道题`
+      : `${statusOptions.find((item) => item.value === statusFilter)?.label ?? "当前筛选"} ${payload?.items.length ?? 0} 道`;
+
   if (loading && !payload) {
     return (
       <div className="relative min-h-screen bg-[#040816] px-4 py-10 text-white">
@@ -89,7 +94,9 @@ export function BookQuestionBankDetail() {
               const resume = await mockApi.getUserBookQuestionBankResumeTarget(bookId);
               if (resume.bookItemId) {
                 navigate(`/user/book-question-banks/${bookId}/items/${resume.bookItemId}`);
+                return;
               }
+              window.alert("当前题库还没有可练习的题目。");
             }}
           >
             继续练习
@@ -158,6 +165,8 @@ export function BookQuestionBankDetail() {
           </div>
         </div>
 
+        <div className="mt-5 text-sm text-white/48">{itemCountText}</div>
+
         <div className="mt-6 grid gap-4">
           {payload?.items.map((item, index) => (
             <motion.button
@@ -197,6 +206,12 @@ export function BookQuestionBankDetail() {
             </motion.button>
           ))}
         </div>
+
+        {payload && payload.items.length === 0 ? (
+          <div className="mt-6 rounded-[24px] border border-dashed border-white/12 bg-white/[0.04] px-6 py-14 text-center text-white/56">
+            当前筛选下还没有题目
+          </div>
+        ) : null}
       </div>
     </div>
   );

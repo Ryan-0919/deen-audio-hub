@@ -12,6 +12,7 @@ const navigation = [
     icon: BookMarked,
     isActive: (pathname: string) =>
       pathname === "/user/courses" ||
+      pathname.startsWith("/user/book-question-banks") ||
       pathname.startsWith("/user/player/") ||
       pathname.startsWith("/user/video-player/") ||
       pathname.startsWith("/user/video-course/"),
@@ -41,6 +42,7 @@ export function UserLayout() {
 
   const isHome =
     location.pathname === "/user/courses" ||
+    location.pathname.startsWith("/user/book-question-banks") ||
     location.pathname === "/user/my-courses" ||
     location.pathname.startsWith("/user/course/") ||
     location.pathname.startsWith("/user/video-course/");
@@ -53,6 +55,7 @@ export function UserLayout() {
     location.pathname === "/user/objective-mock-exams" ||
     location.pathname.startsWith("/user/my-exams") ||
     location.pathname.startsWith("/user/exam-leaderboard") ||
+    location.pathname.startsWith("/user/book-question-banks") ||
     location.pathname.startsWith("/user/me") ||
     location.pathname.startsWith("/user/typing-practice");
 

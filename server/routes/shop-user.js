@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma } from "../../generated/prisma/index.js";
 import { Router } from "express";
 import { config } from "../lib/config.js";
 import { buildShopPaymentRuntimeDiagnostics } from "../lib/shop-payment-runtime.js";

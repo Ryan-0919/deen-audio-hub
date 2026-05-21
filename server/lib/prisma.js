@@ -1,4 +1,4 @@
-import prismaClientPkg from "@prisma/client";
+import prismaClientPkg from "../../generated/prisma/index.js";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { config } from "./config.js";
 

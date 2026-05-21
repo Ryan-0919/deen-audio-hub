@@ -720,7 +720,18 @@ export interface BookQuestionBankItemSummary {
   folderName: string;
   questionType: MockExamQuestionType;
   questionTypeLabel: string;
+  stem: string;
+  material: string;
+  analysis: string;
   score: number;
+  correctAnswerKeys: string[];
+  options: QuestionBankOption[];
+  sectionLabel: string;
+  sectionDescription: string;
+  subjectiveSubQuestions: QuestionBankSubQuestion[];
+  lessonAudioUrl?: string;
+  lessonAudioObjectKey?: string;
+  lessonAudioDurationSeconds?: number;
   hasLessonAudio: boolean;
   createdAt: string;
   updatedAt: string;
@@ -756,8 +767,6 @@ export interface BookQuestionBankPracticePayload {
   nextBookItemId: string;
 }
 
-export interface BookQuestionBankAvailableItem extends QuestionBankItem {}
-
 export interface AdminBookQuestionBankPermissionRow {
   id: string;
   userId: string;
@@ -774,6 +783,13 @@ export interface AdminBookQuestionBankPermissionGrantResult {
   totalPhones: number;
   createdUsers: string[];
   grantedCount: number;
+}
+
+export interface BookQuestionBankImportResult {
+  parsedCount: number;
+  createdCount: number;
+  matchedAudioCount: number;
+  unmatchedAudioNames: string[];
 }
 
 export interface QuestionBankItemPayload {
@@ -2313,6 +2329,35 @@ const uploadSingleFileWithFields = async <T>(
   });
 };
 
+const uploadBundleWithFields = async <T>(
+  path: string,
+  payload: {
+    file: File;
+    audioFiles?: File[];
+    extraFields?: Record<string, string | string[]>;
+  },
+  auth: "user" | "admin" | "auto" = "admin",
+) => {
+  const formData = new FormData();
+  formData.append("file", payload.file);
+  (payload.audioFiles ?? []).forEach((audioFile) => formData.append("audioFiles", audioFile));
+
+  Object.entries(payload.extraFields ?? {}).forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      value.forEach((item) => formData.append(key, item));
+      return;
+    }
+
+    formData.append(key, value);
+  });
+
+  return request<T>(path, {
+    method: "POST",
+    body: formData,
+    auth,
+  });
+};
+
 export const mockApi = {
   login: (phone: string, password: string, deviceInfo: Record<string, string>) =>
     postJson<{ success: boolean; token: string; user: User }>("/api/auth/user/login", { phone, password, ...deviceInfo }, "user"),
@@ -2581,6 +2626,12 @@ export const mockApi = {
   uploadQuestionBankLessonAudio: (file: File) =>
     uploadSingleFile<{ objectKey: string; url: string; readableUrl?: string; durationSeconds?: number }>(
       "/api/admin/mock-exams/question-bank/upload-lesson-audio",
+      file,
+      "admin",
+    ),
+  uploadBookQuestionBankLessonAudio: (file: File) =>
+    uploadSingleFile<{ objectKey: string; url: string; readableUrl?: string; durationSeconds?: number }>(
+      "/api/admin/book-question-banks/upload-lesson-audio",
       file,
       "admin",
     ),
@@ -2949,27 +3000,12 @@ export const mockApi = {
   ) => patchJson<BookQuestionBankSubject>(`/api/admin/book-question-banks/books/${bookId}/subjects/${subjectId}`, payload, "admin"),
   deleteAdminBookQuestionBankSubject: (bookId: string, subjectId: string) =>
     deleteRequest<{ success: boolean; id: string; name: string }>(`/api/admin/book-question-banks/books/${bookId}/subjects/${subjectId}`, "admin"),
-  getAdminBookQuestionBankAvailableItems: (params: {
-    paperType: QuestionBankPaperType;
-    folderId?: string;
-    keyword?: string;
-    page?: number;
-    pageSize?: number;
-  }) =>
-    request<PagedResult<BookQuestionBankAvailableItem>>(
-      `/api/admin/book-question-banks/available-items${buildQueryString({
-        paperType: params.paperType,
-        folderId: params.folderId,
-        keyword: params.keyword,
-        page: params.page,
-        pageSize: params.pageSize,
-      })}`,
-      { auth: "admin" },
-    ),
-  getAdminBookQuestionBankItems: (bookId: string, params?: { subjectId?: string }) =>
+  getAdminBookQuestionBankItems: (bookId: string, params?: { subjectId?: string; keyword?: string; questionType?: MockExamQuestionType | "all" }) =>
     request<BookQuestionBankItemSummary[]>(
       `/api/admin/book-question-banks/books/${bookId}/items${buildQueryString({
         subjectId: params?.subjectId && params.subjectId !== "all" ? params.subjectId : undefined,
+        keyword: params?.keyword,
+        questionType: params?.questionType && params.questionType !== "all" ? params.questionType : undefined,
       })}`,
       { auth: "admin" },
     ),
@@ -2977,8 +3013,20 @@ export const mockApi = {
     bookId: string,
     payload: {
       subjectId: string;
-      questionBankItemId: string;
       title?: string;
+      questionType: MockExamQuestionType;
+      stem: string;
+      material?: string;
+      analysis?: string;
+      score: number | string;
+      correctAnswerKeys?: string[];
+      options?: QuestionBankOption[];
+      sectionLabel?: string;
+      sectionDescription?: string;
+      subjectiveSubQuestions?: QuestionBankSubQuestion[];
+      lessonAudioUrl?: string;
+      lessonAudioObjectKey?: string;
+      lessonAudioDurationSeconds?: number | string;
       questionNo?: string;
       yearLabel?: string;
       pageLabel?: string;
@@ -2993,6 +3041,19 @@ export const mockApi = {
     payload: {
       subjectId?: string;
       title?: string;
+      questionType?: MockExamQuestionType;
+      stem?: string;
+      material?: string;
+      analysis?: string;
+      score?: number | string;
+      correctAnswerKeys?: string[];
+      options?: QuestionBankOption[];
+      sectionLabel?: string;
+      sectionDescription?: string;
+      subjectiveSubQuestions?: QuestionBankSubQuestion[];
+      lessonAudioUrl?: string;
+      lessonAudioObjectKey?: string;
+      lessonAudioDurationSeconds?: number | string;
       questionNo?: string;
       yearLabel?: string;
       pageLabel?: string;
@@ -3003,6 +3064,27 @@ export const mockApi = {
   ) => patchJson<BookQuestionBankItemSummary>(`/api/admin/book-question-banks/books/${bookId}/items/${bookItemId}`, payload, "admin"),
   deleteAdminBookQuestionBankItem: (bookId: string, bookItemId: string) =>
     deleteRequest<{ success: boolean; id: string; title: string }>(`/api/admin/book-question-banks/books/${bookId}/items/${bookItemId}`, "admin"),
+  importAdminBookQuestionBankItems: (
+    bookId: string,
+    file: File,
+    subjectId: string,
+    paperType: QuestionBankPaperType,
+    audioFiles: File[] = [],
+  ) =>
+    uploadBundleWithFields<BookQuestionBankImportResult>(
+      `/api/admin/book-question-banks/books/${bookId}/items/import-with-audio`,
+      {
+        file,
+        audioFiles,
+        extraFields: {
+          subjectId,
+          paperType,
+        },
+      },
+      "admin",
+    ),
+  downloadAdminBookQuestionBankTemplate: (paperType: QuestionBankPaperType) =>
+    requestBlob(`/api/admin/book-question-banks/template${buildQueryString({ paperType })}`, { auth: "admin" }),
   getAdminBookQuestionBankPermissions: (bookId: string) =>
     request<AdminBookQuestionBankPermissionRow[]>(`/api/admin/book-question-banks/books/${bookId}/permissions`, { auth: "admin" }),
   grantAdminBookQuestionBankPermissions: (bookId: string, phones: string[]) =>

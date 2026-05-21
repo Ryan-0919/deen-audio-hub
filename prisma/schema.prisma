@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../generated/prisma"
 }
 
 datasource db {
@@ -662,12 +663,22 @@ model BookQuestionBankItem {
   id                 String                         @id @default(cuid())
   bookId             String
   subjectId          String
-  questionBankItemId String
+  questionBankItemId String?
   title              String?                        @db.VarChar(191)
   questionNo         String?                        @db.VarChar(50)
   yearLabel          String?                        @db.VarChar(50)
   pageLabel          String?                        @db.VarChar(50)
   tagsJson           String?                        @db.LongText
+  type               MockExamQuestionType?
+  stem               String?                        @db.LongText
+  material           String?                        @db.LongText
+  analysis           String?                        @db.LongText
+  lessonAudioUrl     String?                        @db.LongText
+  lessonAudioObjectKey String?                      @db.VarChar(255)
+  lessonAudioDurationSeconds Int                    @default(0)
+  score              Int                            @default(2)
+  correctAnswerJson  String?                        @db.LongText
+  questionMetaJson   String?                        @db.LongText
   sortOrder          Int                            @default(0)
   status             Boolean                        @default(true)
   createdAt          DateTime                       @default(now())
@@ -675,13 +686,15 @@ model BookQuestionBankItem {
 
   book              BookQuestionBank               @relation(fields: [bookId], references: [id], onDelete: Cascade)
   subject           BookQuestionBankSubject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  questionBankItem  QuestionBankItem               @relation(fields: [questionBankItemId], references: [id], onDelete: Restrict)
+  questionBankItem  QuestionBankItem?              @relation(fields: [questionBankItemId], references: [id], onDelete: SetNull)
+  options           BookQuestionBankItemOption[]
   userStates        UserBookQuestionBankItemState[]
   lastProgresses    UserBookQuestionBankProgress[] @relation("BookQuestionProgressLastItem")
 
   @@index([bookId, sortOrder])
   @@index([bookId, subjectId, sortOrder])
   @@index([bookId, status, sortOrder])
+  @@index([type, updatedAt])
   @@index([questionBankItemId])
 }
 
@@ -730,7 +743,7 @@ model UserBookQuestionBankItemState {
   userId             String
   bookId             String
   bookItemId         String
-  questionBankItemId String
+  questionBankItemId String?
   answerJson         String?             @db.LongText
   draftText          String?             @db.LongText
   isAnswered         Boolean             @default(false)
@@ -745,11 +758,23 @@ model UserBookQuestionBankItemState {
   user             User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   book             BookQuestionBank     @relation(fields: [bookId], references: [id], onDelete: Cascade)
   bookItem         BookQuestionBankItem @relation(fields: [bookItemId], references: [id], onDelete: Cascade)
-  questionBankItem QuestionBankItem     @relation(fields: [questionBankItemId], references: [id], onDelete: Restrict)
+  questionBankItem QuestionBankItem?    @relation(fields: [questionBankItemId], references: [id], onDelete: SetNull)
 
   @@unique([userId, bookItemId])
   @@index([bookId, userId, updatedAt])
   @@index([questionBankItemId])
+}
+
+model BookQuestionBankItemOption {
+  id        String               @id @default(cuid())
+  itemId     String
+  optionKey String               @db.VarChar(10)
+  content   String               @db.LongText
+  sortOrder Int                  @default(0)
+
+  item      BookQuestionBankItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId, sortOrder])
 }
 
 model QuestionBankItemOption {

@@ -147,6 +147,11 @@ const parseOptions = (row) => {
 };
 
 const buildQuestionFromRow = ({ row, paperType, rowIndex }) => {
+  const title = getValue(row, ["标题", "题目标题", "title"]);
+  const questionNo = getValue(row, ["题号", "questionNo"]);
+  const yearLabel = getValue(row, ["年份", "yearLabel"]);
+  const pageLabel = getValue(row, ["页码", "pageLabel"]);
+  const tags = getValue(row, ["标签", "tags"]);
   const stem = getValue(row, ["题干", "问题", "stem"]);
   const material = getValue(row, ["材料", "题目材料", "material"]);
   const analysis = getValue(row, ["解析", "答案解析", "analysis"]);
@@ -187,6 +192,14 @@ const buildQuestionFromRow = ({ row, paperType, rowIndex }) => {
     }
 
     return {
+      title,
+      questionNo,
+      yearLabel,
+      pageLabel,
+      tags: normalizeText(tags)
+        .split(/[，,;；、|\s]+/)
+        .map((item) => item.trim())
+        .filter(Boolean),
       type,
       stem,
       material,
@@ -199,6 +212,14 @@ const buildQuestionFromRow = ({ row, paperType, rowIndex }) => {
   }
 
   return {
+    title,
+    questionNo,
+    yearLabel,
+    pageLabel,
+    tags: normalizeText(tags)
+      .split(/[，,;；、|\s]+/)
+      .map((item) => item.trim())
+      .filter(Boolean),
     type,
     stem,
     material,
@@ -272,6 +293,7 @@ const createInstructionRows = (paperType) => {
       ["题型", "固定填写“主观题”或 subjective_case，留空也会自动按主观题处理。"],
       ["标题", "可选，题库列表展示标题，例：民法案例1。"],
       ["分值", "可选，默认 20。"],
+      ["题号 / 年份", "可选，导入独立题库时会同步写入这些字段。"],
       ["题干", "必填。"],
       ["材料", "可选，用于案例材料、背景说明。"],
       ["解析", "可选，供后台查看。"],
@@ -285,8 +307,9 @@ const createInstructionRows = (paperType) => {
   return [
     ["字段", "填写说明"],
     ["题型", "填写单选题、多选题、不定项选择题，或 single_choice / multiple_choice / uncertain_choice。"],
-    ["分值", "可选，默认 2。"],
-    ["题干", "必填。"],
+      ["分值", "可选，默认 2。"],
+      ["题号 / 年份", "可选，导入独立题库时会同步写入这些字段。"],
+      ["题干", "必填。"],
     ["材料", "可选。"],
     ["解析", "可选。"],
     ["正确答案", "必填。多个答案可用 A|B|C 或 A,B,C。"],
@@ -300,6 +323,8 @@ const buildTemplateRows = (paperType) => {
       {
         题型: "主观题",
         标题: "民法案例1",
+        题号: "1",
+        年份: "2026",
         分值: 28,
         题干: "一、民法案例分析题。",
         材料: "甲公司与乙公司签订设备买卖合同，后因交付与瑕疵责任发生争议。",
@@ -315,10 +340,12 @@ const buildTemplateRows = (paperType) => {
   }
 
   return [
-    {
-      题型: "单选题",
-      分值: 2,
-      题干: "关于合同成立，下列哪一说法是正确的？",
+      {
+        题型: "单选题",
+        题号: "1",
+        年份: "2026",
+        分值: 2,
+        题干: "关于合同成立，下列哪一说法是正确的？",
       材料: "",
       解析: "要约承诺一致时合同成立。",
       正确答案: "B",
@@ -327,9 +354,11 @@ const buildTemplateRows = (paperType) => {
       选项C: "合同成立必须经过公证",
       选项D: "合同成立必须即时履行",
     },
-    {
-      题型: "多选题",
-      分值: 3,
+      {
+        题型: "多选题",
+        题号: "2",
+        年份: "2026",
+        分值: 3,
       题干: "下列哪些属于民事责任承担方式？",
       材料: "",
       解析: "停止侵害、赔偿损失、消除影响等均属于民事责任承担方式。",

@@ -1,27 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Loader2, Pencil, Plus } from "lucide-react";
+import { Loader2, Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { ScrollArea } from "../../components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Switch } from "../../components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { Textarea } from "../../components/ui/textarea";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import {
   type AdminBookQuestionBankPermissionRow,
   type BookQuestionBank,
-  type BookQuestionBankAvailableItem,
-  type BookQuestionBankItemSummary,
   type BookQuestionBankStatus,
   type BookQuestionBankSubject,
-  type QuestionBankFolder,
-  type QuestionBankPaperType,
   mockApi,
 } from "../../lib/mockData";
+import { BookQuestionBankItemWorkbench } from "./BookQuestionBankItemWorkbench";
+
+type AdminTab = "book" | "subjects" | "items" | "permissions";
 
 type BookFormState = {
   name: string;
@@ -41,19 +41,17 @@ type SubjectFormState = {
   sortOrder: string;
 };
 
-type ItemFormState = {
-  subjectId: string;
-  questionBankItemId: string;
-  customTitle: string;
-  questionNo: string;
-  yearLabel: string;
-  pageLabel: string;
-  tags: string;
-  sortOrder: string;
-  status: boolean;
+const statusLabelMap: Record<BookQuestionBankStatus, string> = {
+  draft: "草稿",
+  published: "已发布",
+  closed: "已关闭",
 };
 
-const PAGE_SIZE = 20;
+const statusToneMap: Record<BookQuestionBankStatus, string> = {
+  draft: "bg-amber-100 text-amber-700",
+  published: "bg-emerald-100 text-emerald-700",
+  closed: "bg-slate-100 text-slate-700",
+};
 
 const emptyBookForm = (): BookFormState => ({
   name: "",
@@ -73,180 +71,144 @@ const emptySubjectForm = (): SubjectFormState => ({
   sortOrder: "",
 });
 
-const emptyItemForm = (): ItemFormState => ({
-  subjectId: "",
-  questionBankItemId: "",
-  customTitle: "",
-  questionNo: "",
-  yearLabel: "",
-  pageLabel: "",
-  tags: "",
-  sortOrder: "",
-  status: true,
+const mapBookToForm = (book: BookQuestionBank): BookFormState => ({
+  name: book.name,
+  code: book.code,
+  description: book.description || "",
+  coverUrl: book.coverUrl || "",
+  coverObjectKey: book.coverObjectKey || "",
+  status: book.status,
+  isVisible: book.isVisible,
+  sortOrder: `${book.sortOrder ?? 0}`,
 });
 
-const statusLabelMap: Record<BookQuestionBankStatus, string> = {
-  draft: "草稿",
-  published: "已发布",
-  closed: "已关闭",
-};
-
-const normalizeTags = (value: string) =>
-  value
-    .split(/[\n,，、；;]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
+const mapSubjectToForm = (subject: BookQuestionBankSubject): SubjectFormState => ({
+  name: subject.name,
+  code: subject.code,
+  description: subject.description || "",
+  sortOrder: `${subject.sortOrder ?? 0}`,
+});
 
 export function BookQuestionBankAdmin() {
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [availableLoading, setAvailableLoading] = useState(false);
+  const [tabValue, setTabValue] = useState<AdminTab>("items");
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [savingBook, setSavingBook] = useState(false);
+  const [savingSubject, setSavingSubject] = useState(false);
+  const [grantingPermissions, setGrantingPermissions] = useState(false);
+
   const [books, setBooks] = useState<BookQuestionBank[]>([]);
   const [subjects, setSubjects] = useState<BookQuestionBankSubject[]>([]);
-  const [bookItems, setBookItems] = useState<BookQuestionBankItemSummary[]>([]);
   const [permissions, setPermissions] = useState<AdminBookQuestionBankPermissionRow[]>([]);
-  const [objectiveFolders, setObjectiveFolders] = useState<QuestionBankFolder[]>([]);
-  const [subjectiveFolders, setSubjectiveFolders] = useState<QuestionBankFolder[]>([]);
-  const [availableItems, setAvailableItems] = useState<BookQuestionBankAvailableItem[]>([]);
   const [selectedBookId, setSelectedBookId] = useState("");
-  const [selectedSubjectFilter, setSelectedSubjectFilter] = useState("all");
-  const [selectedAvailableItemId, setSelectedAvailableItemId] = useState("");
-  const [availablePaperType, setAvailablePaperType] = useState<QuestionBankPaperType>("subjective");
-  const [selectedFolderId, setSelectedFolderId] = useState("all");
-  const [availableKeyword, setAvailableKeyword] = useState("");
-  const [availablePage, setAvailablePage] = useState(1);
-  const [availableTotalPages, setAvailableTotalPages] = useState(1);
-  const [availableTotal, setAvailableTotal] = useState(0);
-  const [permissionPhones, setPermissionPhones] = useState("");
-  const [bookDialogOpen, setBookDialogOpen] = useState(false);
-  const [subjectDialogOpen, setSubjectDialogOpen] = useState(false);
-  const [itemDialogOpen, setItemDialogOpen] = useState(false);
+  const [bookFormMode, setBookFormMode] = useState<"create" | "edit">("edit");
+  const [subjectFormMode, setSubjectFormMode] = useState<"create" | "edit">("create");
   const [editingBookId, setEditingBookId] = useState("");
   const [editingSubjectId, setEditingSubjectId] = useState("");
-  const [editingItemId, setEditingItemId] = useState("");
   const [bookForm, setBookForm] = useState<BookFormState>(emptyBookForm());
   const [subjectForm, setSubjectForm] = useState<SubjectFormState>(emptySubjectForm());
-  const [itemForm, setItemForm] = useState<ItemFormState>(emptyItemForm());
+  const [permissionPhones, setPermissionPhones] = useState("");
 
-  const selectedBook = useMemo(() => books.find((item) => item.id === selectedBookId) ?? null, [books, selectedBookId]);
-  const folderOptions = availablePaperType === "subjective" ? subjectiveFolders : objectiveFolders;
-  const selectedAvailableItem = useMemo(
-    () => availableItems.find((item) => item.id === selectedAvailableItemId) ?? null,
-    [availableItems, selectedAvailableItemId],
-  );
+  const selectedBook = useMemo(() => books.find((book) => book.id === selectedBookId) ?? null, [books, selectedBookId]);
 
-  const loadAvailableItems = async (overrides?: Partial<{ paperType: QuestionBankPaperType; folderId: string; keyword: string; page: number }>) => {
-    const nextPaperType = overrides?.paperType ?? availablePaperType;
-    const nextFolderId = overrides?.folderId ?? selectedFolderId;
-    const nextKeyword = overrides?.keyword ?? availableKeyword;
-    const nextPage = overrides?.page ?? availablePage;
-    setAvailableLoading(true);
-    try {
-      const result = await mockApi.getAdminBookQuestionBankAvailableItems({
-        paperType: nextPaperType,
-        folderId: nextFolderId === "all" ? "" : nextFolderId,
-        keyword: nextKeyword.trim(),
-        page: nextPage,
-        pageSize: PAGE_SIZE,
-      });
-      setAvailablePaperType(nextPaperType);
-      setSelectedFolderId(nextFolderId);
-      setAvailableKeyword(nextKeyword);
-      setAvailablePage(result.page);
-      setAvailableTotalPages(result.totalPages);
-      setAvailableTotal(result.total);
-      setAvailableItems(result.items);
-      if (result.items.every((item) => item.id !== selectedAvailableItemId)) {
-        setSelectedAvailableItemId(result.items[0]?.id ?? "");
-      }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "加载可选题目失败");
-    } finally {
-      setAvailableLoading(false);
-    }
+  const loadBooks = async (preferredBookId = "") => {
+    const list = await mockApi.getAdminBookQuestionBanks();
+    setBooks(list);
+    const nextBookId =
+      [preferredBookId, selectedBookId, list[0]?.id ?? ""].find((candidate) => candidate && list.some((book) => book.id === candidate)) ?? "";
+    setSelectedBookId(nextBookId);
+    return nextBookId;
   };
 
-  const loadBookDetails = async (bookId: string, subjectFilter = selectedSubjectFilter) => {
+  const loadBookDetail = async (bookId: string) => {
     if (!bookId) {
       setSubjects([]);
-      setBookItems([]);
       setPermissions([]);
       return;
     }
-    const [subjectResult, itemResult, permissionResult] = await Promise.all([
-      mockApi.getAdminBookQuestionBankSubjects(bookId),
-      mockApi.getAdminBookQuestionBankItems(bookId, { subjectId: subjectFilter !== "all" ? subjectFilter : undefined }),
-      mockApi.getAdminBookQuestionBankPermissions(bookId),
-    ]);
-    setSubjects(subjectResult);
-    setBookItems(itemResult);
-    setPermissions(permissionResult);
-  };
 
-  const loadBooks = async (preferredId = "") => {
-    const list = await mockApi.getAdminBookQuestionBanks();
-    setBooks(list);
-    const nextId = preferredId && list.some((item) => item.id === preferredId) ? preferredId : list[0]?.id ?? "";
-    setSelectedBookId(nextId);
-    return nextId;
-  };
-
-  const loadInitial = async () => {
-    setLoading(true);
+    setDetailLoading(true);
     try {
-      const [objectiveResult, subjectiveResult] = await Promise.all([
-        mockApi.getQuestionBankFolders("objective"),
-        mockApi.getQuestionBankFolders("subjective"),
+      const [subjectList, permissionList] = await Promise.all([
+        mockApi.getAdminBookQuestionBankSubjects(bookId),
+        mockApi.getAdminBookQuestionBankPermissions(bookId),
       ]);
-      setObjectiveFolders(objectiveResult);
-      setSubjectiveFolders(subjectiveResult);
-      const bookId = await loadBooks();
-      await Promise.all([loadBookDetails(bookId, "all"), loadAvailableItems({ page: 1, folderId: "all", keyword: "" })]);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "加载书籍型题库管理失败");
+      setSubjects(subjectList);
+      setPermissions(permissionList);
     } finally {
-      setLoading(false);
+      setDetailLoading(false);
     }
   };
 
+  const refreshCurrentBook = async (preferredBookId = selectedBookId) => {
+    const nextBookId = await loadBooks(preferredBookId);
+    await loadBookDetail(nextBookId);
+  };
+
   useEffect(() => {
-    void loadInitial();
+    void (async () => {
+      try {
+        const nextBookId = await loadBooks();
+        await loadBookDetail(nextBookId);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "加载独立题库产品失败");
+      } finally {
+        setInitialLoading(false);
+      }
+    })();
   }, []);
 
   useEffect(() => {
-    if (!loading && selectedBookId) {
-      void loadBookDetails(selectedBookId, selectedSubjectFilter);
+    if (!selectedBookId) {
+      setSubjects([]);
+      setPermissions([]);
+      return;
     }
-  }, [selectedBookId, selectedSubjectFilter]);
 
-  const openCreateBookDialog = () => {
-    setEditingBookId("");
-    setBookForm(emptyBookForm());
-    setBookDialogOpen(true);
-  };
+    void loadBookDetail(selectedBookId).catch((error) => {
+      toast.error(error instanceof Error ? error.message : "加载题库详情失败");
+    });
+  }, [selectedBookId]);
 
-  const openCreateSubjectDialog = () => {
+  useEffect(() => {
+    if (selectedBook && bookFormMode === "edit") {
+      setEditingBookId(selectedBook.id);
+      setBookForm(mapBookToForm(selectedBook));
+    }
+  }, [selectedBook, bookFormMode]);
+
+  useEffect(() => {
+    setSubjectFormMode("create");
     setEditingSubjectId("");
     setSubjectForm(emptySubjectForm());
-    setSubjectDialogOpen(true);
+    setPermissionPhones("");
+  }, [selectedBookId]);
+
+  const beginCreateBook = () => {
+    setTabValue("book");
+    setBookFormMode("create");
+    setEditingBookId("");
+    setBookForm(emptyBookForm());
   };
 
-  const openCreateItemDialog = () => {
-    if (!selectedBookId) {
-      toast.error("请先选择题库产品");
-      return;
-    }
-    if (subjects.length <= 0) {
-      toast.error("请先创建科目");
-      return;
-    }
-    setEditingItemId("");
-    setItemForm({
-      ...emptyItemForm(),
-      subjectId: selectedSubjectFilter !== "all" ? selectedSubjectFilter : subjects[0]?.id ?? "",
-      questionBankItemId: selectedAvailableItemId,
-    });
-    setItemDialogOpen(true);
+  const beginEditBook = (book: BookQuestionBank) => {
+    setBookFormMode("edit");
+    setEditingBookId(book.id);
+    setBookForm(mapBookToForm(book));
+  };
+
+  const beginCreateSubject = () => {
+    setTabValue("subjects");
+    setSubjectFormMode("create");
+    setEditingSubjectId("");
+    setSubjectForm(emptySubjectForm());
+  };
+
+  const beginEditSubject = (subject: BookQuestionBankSubject) => {
+    setTabValue("subjects");
+    setSubjectFormMode("edit");
+    setEditingSubjectId(subject.id);
+    setSubjectForm(mapSubjectToForm(subject));
   };
 
   const saveBook = async () => {
@@ -254,556 +216,456 @@ export function BookQuestionBankAdmin() {
       toast.error("请填写题库产品名称和编码");
       return;
     }
+
     try {
-      setSaving(true);
-      let targetBookId = editingBookId;
-      if (editingBookId) {
+      setSavingBook(true);
+      let nextBookId = editingBookId;
+      if (bookFormMode === "edit" && editingBookId) {
         await mockApi.updateAdminBookQuestionBank(editingBookId, bookForm);
       } else {
         const created = await mockApi.createAdminBookQuestionBank(bookForm);
-        targetBookId = created.id;
+        nextBookId = created.id;
+        setBookFormMode("edit");
+        setEditingBookId(created.id);
       }
-      setBookDialogOpen(false);
-      const bookId = await loadBooks(targetBookId || selectedBookId);
-      await loadBookDetails(bookId, selectedSubjectFilter);
+
+      await refreshCurrentBook(nextBookId);
       toast.success("题库产品已保存");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "保存题库产品失败");
     } finally {
-      setSaving(false);
+      setSavingBook(false);
     }
   };
 
-  const saveSubject = async () => {
-    if (!selectedBookId) return;
-    if (!subjectForm.name.trim() || !subjectForm.code.trim()) {
-      toast.error("请填写科目名称和编码");
-      return;
-    }
-    try {
-      setSaving(true);
-      if (editingSubjectId) {
-        await mockApi.updateAdminBookQuestionBankSubject(selectedBookId, editingSubjectId, subjectForm);
-      } else {
-        await mockApi.createAdminBookQuestionBankSubject(selectedBookId, subjectForm);
-      }
-      setSubjectDialogOpen(false);
-      await loadBookDetails(selectedBookId, selectedSubjectFilter);
-      toast.success("科目已保存");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "保存科目失败");
-    } finally {
-      setSaving(false);
-    }
-  };
+  const deleteBook = async () => {
+    if (!editingBookId) return;
+    if (!window.confirm("确认删除当前题库产品吗？删除后无法恢复。")) return;
 
-  const saveItem = async () => {
-    if (!selectedBookId) return;
-    if (!itemForm.subjectId || !itemForm.questionBankItemId.trim()) {
-      toast.error("请选择科目和题目");
-      return;
-    }
-    const payload = {
-      subjectId: itemForm.subjectId,
-      title: itemForm.customTitle.trim(),
-      questionNo: itemForm.questionNo.trim(),
-      yearLabel: itemForm.yearLabel.trim(),
-      pageLabel: itemForm.pageLabel.trim(),
-      tags: normalizeTags(itemForm.tags),
-      sortOrder: itemForm.sortOrder,
-      status: itemForm.status,
-    };
     try {
-      setSaving(true);
-      if (editingItemId) {
-        await mockApi.updateAdminBookQuestionBankItem(selectedBookId, editingItemId, payload);
-      } else {
-        await mockApi.createAdminBookQuestionBankItem(selectedBookId, {
-          ...payload,
-          questionBankItemId: itemForm.questionBankItemId.trim(),
-        });
-      }
-      setItemDialogOpen(false);
-      await loadBookDetails(selectedBookId, selectedSubjectFilter);
-      toast.success("题目映射已保存");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "保存题目映射失败");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const grantPermissions = async () => {
-    if (!selectedBookId) return;
-    const phones = permissionPhones
-      .split(/[\n,，、；;\s]+/)
-      .map((item) => item.trim())
-      .filter(Boolean);
-    if (phones.length <= 0) {
-      toast.error("请至少输入一个手机号");
-      return;
-    }
-    try {
-      setSaving(true);
-      await mockApi.grantAdminBookQuestionBankPermissions(selectedBookId, phones);
-      setPermissionPhones("");
-      await loadBookDetails(selectedBookId, selectedSubjectFilter);
-      toast.success("题库权限已开通");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "开通题库权限失败");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const deleteBook = async (bookId: string, bookName: string) => {
-    if (!window.confirm(`确认删除题库产品“${bookName}”？`)) {
-      return;
-    }
-    try {
-      setSaving(true);
-      await mockApi.deleteAdminBookQuestionBank(bookId);
-      const remainingBooks = books.filter((item) => item.id !== bookId);
-      const nextSelectedId = selectedBookId === bookId ? remainingBooks[0]?.id ?? "" : selectedBookId;
-      await loadBooks(nextSelectedId);
-      await loadBookDetails(nextSelectedId, "all");
-      setSelectedSubjectFilter("all");
+      setSavingBook(true);
+      await mockApi.deleteAdminBookQuestionBank(editingBookId);
+      setBookFormMode("edit");
+      setEditingBookId("");
+      setBookForm(emptyBookForm());
+      await refreshCurrentBook("");
       toast.success("题库产品已删除");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "删除题库产品失败");
     } finally {
-      setSaving(false);
+      setSavingBook(false);
     }
   };
 
-  const deleteSubject = async (subjectId: string, subjectName: string) => {
-    if (!selectedBookId) return;
-    if (!window.confirm(`确认删除科目“${subjectName}”？`)) {
+  const saveSubject = async () => {
+    if (!selectedBookId) {
+      toast.error("请先选择题库产品");
       return;
     }
+
+    if (!subjectForm.name.trim() || !subjectForm.code.trim()) {
+      toast.error("请填写科目名称和编码");
+      return;
+    }
+
     try {
-      setSaving(true);
-      await mockApi.deleteAdminBookQuestionBankSubject(selectedBookId, subjectId);
-      const nextFilter = selectedSubjectFilter === subjectId ? "all" : selectedSubjectFilter;
-      setSelectedSubjectFilter(nextFilter);
-      await loadBookDetails(selectedBookId, nextFilter);
+      setSavingSubject(true);
+      if (subjectFormMode === "edit" && editingSubjectId) {
+        const updated = await mockApi.updateAdminBookQuestionBankSubject(selectedBookId, editingSubjectId, subjectForm);
+        setSubjectForm(mapSubjectToForm(updated));
+      } else {
+        const created = await mockApi.createAdminBookQuestionBankSubject(selectedBookId, subjectForm);
+        setSubjectFormMode("edit");
+        setEditingSubjectId(created.id);
+        setSubjectForm(mapSubjectToForm(created));
+      }
+
+      await refreshCurrentBook(selectedBookId);
+      toast.success("科目已保存");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "保存科目失败");
+    } finally {
+      setSavingSubject(false);
+    }
+  };
+
+  const deleteSubject = async () => {
+    if (!selectedBookId || !editingSubjectId) return;
+    if (!window.confirm("确认删除当前科目吗？科目下仍有题目时无法删除。")) return;
+
+    try {
+      setSavingSubject(true);
+      await mockApi.deleteAdminBookQuestionBankSubject(selectedBookId, editingSubjectId);
+      beginCreateSubject();
+      await refreshCurrentBook(selectedBookId);
       toast.success("科目已删除");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "删除科目失败");
     } finally {
-      setSaving(false);
+      setSavingSubject(false);
     }
   };
 
-  const deleteItem = async (bookItemId: string) => {
-    if (!selectedBookId) return;
-    if (!window.confirm("确认移除这道题目？")) {
+  const grantPermissions = async () => {
+    if (!selectedBookId) {
+      toast.error("请先选择题库产品");
       return;
     }
+
+    const phones = permissionPhones
+      .split(/[\n,，、；;\s]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (phones.length <= 0) {
+      toast.error("请至少输入一个手机号");
+      return;
+    }
+
     try {
-      setSaving(true);
-      await mockApi.deleteAdminBookQuestionBankItem(selectedBookId, bookItemId);
-      await loadBookDetails(selectedBookId, selectedSubjectFilter);
-      toast.success("题目已移除");
+      setGrantingPermissions(true);
+      await mockApi.grantAdminBookQuestionBankPermissions(selectedBookId, phones);
+      setPermissionPhones("");
+      await loadBookDetail(selectedBookId);
+      toast.success("题库权限已开通");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "移除题目失败");
+      toast.error(error instanceof Error ? error.message : "开通题库权限失败");
     } finally {
-      setSaving(false);
+      setGrantingPermissions(false);
     }
   };
 
-  const revokePermission = async (userId: string, phone: string) => {
+  const revokePermission = async (userId: string) => {
     if (!selectedBookId) return;
-    if (!window.confirm(`确认移除手机号 ${phone} 的题库权限？`)) {
-      return;
-    }
+    if (!window.confirm("确认移除这个用户的题库权限吗？")) return;
+
     try {
-      setSaving(true);
       await mockApi.revokeAdminBookQuestionBankPermission(selectedBookId, userId);
-      await loadBookDetails(selectedBookId, selectedSubjectFilter);
+      await loadBookDetail(selectedBookId);
       toast.success("题库权限已移除");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "移除题库权限失败");
-    } finally {
-      setSaving(false);
     }
   };
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center text-slate-500">
         <Loader2 className="mr-2 size-5 animate-spin" />
-        加载书籍型题库管理中...
+        独立题库后台加载中...
       </div>
     );
   }
 
   return (
     <div className="space-y-6 p-6">
-      <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <Card className="border-slate-200">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle className="text-lg">题库产品</CardTitle>
-              <p className="mt-1 text-sm text-slate-500">管理书籍型题库产品。</p>
-            </div>
-            <Button size="sm" onClick={openCreateBookDialog}>
-              <Plus className="mr-2 size-4" />
-              新建
+      <div className="rounded-[30px] border border-[#e9ddca] bg-[linear-gradient(135deg,#fffaf1_0%,#f8efe0_48%,#f4e6d5_100%)] px-6 py-6 shadow-sm">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl">
+            <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-[#8d7053]">Independent Question Bank</div>
+            <div className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-slate-900">独立题库系统</div>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600">
+              这套题库和批改题库完全分开，只保留练题真正需要的数据。后台单独维护产品、科目、题目和权限，支持客观题、主观题以及题目专属微课音频。
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <Button onClick={beginCreateBook}>
+              <Plus className="size-4" />
+              新建题库产品
             </Button>
+            <Button variant="outline" onClick={() => void refreshCurrentBook()}>
+              {detailLoading ? <Loader2 className="size-4 animate-spin" /> : null}
+              刷新当前产品
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-lg text-slate-900">题库产品</CardTitle>
+            <CardDescription>这里维护的是独立练题产品，不会进入考试或批改流程。</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {books.map((book) => (
-              <button
-                key={book.id}
-                type="button"
-                onClick={() => {
-                  setSelectedBookId(book.id);
-                  setSelectedSubjectFilter("all");
-                }}
-                className={`w-full rounded-2xl border p-4 text-left transition ${
-                  book.id === selectedBookId ? "border-blue-500 bg-blue-50" : "border-slate-200 bg-white hover:border-slate-300"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-base font-semibold text-slate-900">{book.name}</div>
-                    <div className="mt-1 text-xs text-slate-500">{book.code}</div>
-                  </div>
-                  <span className="rounded-full border border-slate-200 px-2 py-1 text-xs text-slate-600">{statusLabelMap[book.status]}</span>
-                </div>
-                <div className="mt-3 flex gap-3 text-xs text-slate-500">
-                  <span>{book.subjectCount} 个科目</span>
-                  <span>{book.itemCount} 道题</span>
-                </div>
-                <div className="mt-3">
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setEditingBookId(book.id);
-                        setBookForm({
-                          name: book.name,
-                          code: book.code,
-                          description: book.description,
-                          coverUrl: book.coverUrl,
-                          coverObjectKey: book.coverObjectKey,
-                          status: book.status,
-                          isVisible: book.isVisible,
-                          sortOrder: `${book.sortOrder || 0}`,
-                        });
-                        setBookDialogOpen(true);
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="text-xs uppercase tracking-[0.18em] text-slate-400">产品数</div>
+                <div className="mt-2 text-2xl font-semibold text-slate-900">{books.length}</div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="text-xs uppercase tracking-[0.18em] text-slate-400">当前科目</div>
+                <div className="mt-2 text-2xl font-semibold text-slate-900">{subjects.length}</div>
+              </div>
+            </div>
+
+            <ScrollArea className="h-[520px] pr-2">
+              <div className="space-y-3">
+                {books.map((book) => {
+                  const selected = book.id === selectedBookId;
+                  return (
+                    <button
+                      key={book.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedBookId(book.id);
+                        beginEditBook(book);
                       }}
+                      className={`w-full rounded-[24px] border p-4 text-left transition ${
+                        selected ? "border-slate-900 bg-slate-900 text-white shadow-lg" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                      }`}
                     >
-                      <Pencil className="mr-1 size-3.5" />
-                      编辑
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      disabled={saving}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void deleteBook(book.id, book.name);
-                      }}
-                    >
-                      删除
-                    </Button>
-                  </div>
-                </div>
-              </button>
-            ))}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-base font-semibold">{book.name}</div>
+                          <div className={`mt-1 truncate text-xs ${selected ? "text-white/70" : "text-slate-500"}`}>{book.code}</div>
+                        </div>
+                        <span className={`rounded-full px-2.5 py-1 text-xs ${selected ? "bg-white/14 text-white" : statusToneMap[book.status]}`}>
+                          {statusLabelMap[book.status]}
+                        </span>
+                      </div>
+                      <div className={`mt-3 flex flex-wrap gap-3 text-xs ${selected ? "text-white/72" : "text-slate-500"}`}>
+                        <span>{book.subjectCount} 个科目</span>
+                        <span>{book.itemCount} 道题</span>
+                        <span>{book.isVisible ? "前台显示" : "前台隐藏"}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </ScrollArea>
           </CardContent>
         </Card>
 
         <div className="space-y-6">
-          <Card className="border-slate-200">
-            <CardHeader>
-              <CardTitle className="text-lg">{selectedBook?.name || "请选择题库产品"}</CardTitle>
-              <p className="text-sm text-slate-500">{selectedBook?.description || "先选一本书，再维护科目、挂题和授权。"}</p>
-            </CardHeader>
+          <Card className="border-slate-200 shadow-sm">
+            <CardContent className="px-6 py-5">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Current Product</div>
+                  <div className="mt-2 text-2xl font-semibold text-slate-900">{selectedBook?.name || "未选择题库产品"}</div>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+                    {selectedBook?.description || "先在左侧选择一个独立题库产品，然后维护它的科目、题目和用户权限。"}
+                  </p>
+                </div>
+
+                {selectedBook ? (
+                  <div className="flex flex-wrap gap-2">
+                    <Badge className={statusToneMap[selectedBook.status]}>{statusLabelMap[selectedBook.status]}</Badge>
+                    <Badge className={selectedBook.isVisible ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-700"}>
+                      {selectedBook.isVisible ? "前台可见" : "前台隐藏"}
+                    </Badge>
+                    <Badge className="bg-slate-100 text-slate-700">{selectedBook.code}</Badge>
+                  </div>
+                ) : null}
+              </div>
+            </CardContent>
           </Card>
 
-          <Tabs defaultValue="subjects" className="space-y-4">
-            <TabsList className="bg-slate-100">
-              <TabsTrigger value="subjects">科目</TabsTrigger>
-              <TabsTrigger value="items">挂题</TabsTrigger>
-              <TabsTrigger value="permissions">权限</TabsTrigger>
+          <Tabs value={tabValue} onValueChange={(value) => setTabValue(value as AdminTab)} className="space-y-6">
+            <TabsList className="grid w-full grid-cols-4 rounded-2xl bg-slate-100 p-1">
+              <TabsTrigger value="book" className="rounded-xl">产品</TabsTrigger>
+              <TabsTrigger value="subjects" className="rounded-xl" disabled={!selectedBookId}>科目</TabsTrigger>
+              <TabsTrigger value="items" className="rounded-xl" disabled={!selectedBookId}>题目</TabsTrigger>
+              <TabsTrigger value="permissions" className="rounded-xl" disabled={!selectedBookId}>权限</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="subjects">
-              <Card className="border-slate-200">
-                <CardHeader className="flex flex-row items-center justify-between">
+            <TabsContent value="book">
+              <Card className="border-slate-200 shadow-sm">
+                <CardHeader className="flex flex-row items-start justify-between gap-4">
                   <div>
-                    <CardTitle>科目管理</CardTitle>
-                    <p className="mt-1 text-sm text-slate-500">一本书按科目分组。</p>
+                    <CardTitle>{bookFormMode === "edit" ? "编辑题库产品" : "新建题库产品"}</CardTitle>
+                    <CardDescription>产品层只保留练题真正需要的展示信息、状态和排序。</CardDescription>
                   </div>
-                  <Button size="sm" onClick={openCreateSubjectDialog} disabled={!selectedBookId}>
-                    <Plus className="mr-2 size-4" />
-                    新建科目
-                  </Button>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>科目</TableHead>
-                        <TableHead>编码</TableHead>
-                        <TableHead>题目数</TableHead>
-                        <TableHead>排序</TableHead>
-                        <TableHead>操作</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {subjects.map((subject) => (
-                        <TableRow key={subject.id}>
-                          <TableCell className="font-medium">{subject.name}</TableCell>
-                          <TableCell>{subject.code}</TableCell>
-                          <TableCell>{subject.itemCount}</TableCell>
-                          <TableCell>{subject.sortOrder}</TableCell>
-                          <TableCell>
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setEditingSubjectId(subject.id);
-                                  setSubjectForm({
-                                    name: subject.name,
-                                    code: subject.code,
-                                    description: subject.description,
-                                    sortOrder: `${subject.sortOrder || 0}`,
-                                  });
-                                  setSubjectDialogOpen(true);
-                                }}
-                              >
-                                编辑
-                              </Button>
-                              <Button size="sm" variant="destructive" disabled={saving} onClick={() => void deleteSubject(subject.id, subject.name)}>
-                                删除
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="items">
-              <div className="space-y-4">
-                <Card className="border-slate-200">
-                  <CardHeader className="flex flex-row items-center justify-between">
-                    <div>
-                      <CardTitle>可选题目</CardTitle>
-                      <p className="mt-1 text-sm text-slate-500">从现有题库中选题。</p>
-                    </div>
-                    <Button size="sm" onClick={openCreateItemDialog} disabled={!selectedBookId}>
-                      <Plus className="mr-2 size-4" />
-                      加入题目
+                  {bookFormMode === "edit" && editingBookId ? (
+                    <Button variant="outline" onClick={deleteBook} disabled={savingBook}>
+                      <Trash2 className="size-4" />
+                      删除产品
                     </Button>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid gap-3 md:grid-cols-4">
-                      <div className="space-y-2">
-                        <Label>题库类型</Label>
-                        <Select value={availablePaperType} onValueChange={(value: QuestionBankPaperType) => void loadAvailableItems({ paperType: value, folderId: "all", page: 1 })}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="subjective">主观题</SelectItem>
-                            <SelectItem value="objective">客观题</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>文件夹</Label>
-                        <Select value={selectedFolderId} onValueChange={(value) => void loadAvailableItems({ folderId: value, page: 1 })}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">全部文件夹</SelectItem>
-                            {folderOptions.map((folder) => (
-                              <SelectItem key={folder.id} value={folder.id}>
-                                {folder.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2 md:col-span-2">
-                        <Label>关键词</Label>
-                        <div className="flex gap-2">
-                          <Input value={availableKeyword} onChange={(event) => setAvailableKeyword(event.target.value)} placeholder="按标题、题干、解析搜索" />
-                          <Button variant="outline" onClick={() => void loadAvailableItems({ keyword: availableKeyword, page: 1 })}>
-                            查询
-                          </Button>
-                        </div>
-                      </div>
+                  ) : null}
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>产品名称</Label>
+                      <Input value={bookForm.name} onChange={(event) => setBookForm((current) => ({ ...current, name: event.target.value }))} />
                     </div>
-
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>题目</TableHead>
-                          <TableHead>题型</TableHead>
-                          <TableHead>文件夹</TableHead>
-                          <TableHead>选择</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {availableLoading ? (
-                          <TableRow>
-                            <TableCell colSpan={4} className="py-8 text-center text-sm text-slate-500">
-                              <Loader2 className="mr-2 inline size-4 animate-spin" />
-                              加载中...
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          availableItems.map((item) => (
-                            <TableRow key={item.id} className={selectedAvailableItemId === item.id ? "bg-slate-50" : ""}>
-                              <TableCell className="max-w-[480px] whitespace-normal">
-                                <div className="font-medium text-slate-900">{item.title}</div>
-                                <div className="mt-1 text-xs text-slate-500">{(item.material || item.stem || item.analysis || "").slice(0, 72) || "暂无摘要"}</div>
-                              </TableCell>
-                              <TableCell>{item.questionTypeLabel}</TableCell>
-                              <TableCell>{item.folderName}</TableCell>
-                              <TableCell>
-                                <Button size="sm" variant={selectedAvailableItemId === item.id ? "default" : "outline"} onClick={() => setSelectedAvailableItemId(item.id)}>
-                                  {selectedAvailableItemId === item.id ? "已选" : "选择"}
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-
-                    <div className="flex items-center justify-between text-sm text-slate-500">
-                      <span>
-                        共 {availableTotal} 道题，第 {availablePage}/{availableTotalPages} 页
-                      </span>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" disabled={availablePage <= 1} onClick={() => void loadAvailableItems({ page: availablePage - 1 })}>
-                          <ChevronLeft className="mr-1 size-4" />
-                          上一页
-                        </Button>
-                        <Button variant="outline" size="sm" disabled={availablePage >= availableTotalPages} onClick={() => void loadAvailableItems({ page: availablePage + 1 })}>
-                          下一页
-                          <ChevronRight className="ml-1 size-4" />
-                        </Button>
-                      </div>
+                    <div className="space-y-2">
+                      <Label>产品编码</Label>
+                      <Input value={bookForm.code} onChange={(event) => setBookForm((current) => ({ ...current, code: event.target.value }))} />
                     </div>
-
-                    {selectedAvailableItem ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">当前选中：{selectedAvailableItem.title}</div> : null}
-                  </CardContent>
-                </Card>
-
-                <Card className="border-slate-200">
-                  <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle>已挂题目</CardTitle>
-                    <div className="w-[220px]">
-                      <Select value={selectedSubjectFilter} onValueChange={setSelectedSubjectFilter}>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>产品简介</Label>
+                    <Textarea value={bookForm.description} onChange={(event) => setBookForm((current) => ({ ...current, description: event.target.value }))} className="min-h-[110px]" />
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>封面地址</Label>
+                      <Input value={bookForm.coverUrl} onChange={(event) => setBookForm((current) => ({ ...current, coverUrl: event.target.value }))} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>封面对象 Key</Label>
+                      <Input value={bookForm.coverObjectKey} onChange={(event) => setBookForm((current) => ({ ...current, coverObjectKey: event.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label>产品状态</Label>
+                      <Select value={bookForm.status} onValueChange={(value: BookQuestionBankStatus) => setBookForm((current) => ({ ...current, status: value }))}>
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">全部科目</SelectItem>
-                          {subjects.map((subject) => (
-                            <SelectItem key={subject.id} value={subject.id}>
-                              {subject.name}
-                            </SelectItem>
-                          ))}
+                          <SelectItem value="draft">草稿</SelectItem>
+                          <SelectItem value="published">已发布</SelectItem>
+                          <SelectItem value="closed">已关闭</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
+                    <div className="space-y-2">
+                      <Label>排序</Label>
+                      <Input value={bookForm.sortOrder} onChange={(event) => setBookForm((current) => ({ ...current, sortOrder: event.target.value }))} />
+                    </div>
+                    <div className="flex items-end">
+                      <div className="flex h-10 w-full items-center justify-between rounded-xl border border-slate-200 px-3">
+                        <span className="text-sm text-slate-700">前台显示</span>
+                        <Switch checked={bookForm.isVisible} onCheckedChange={(checked) => setBookForm((current) => ({ ...current, isVisible: checked }))} />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <Button disabled={savingBook} onClick={() => void saveBook()}>
+                      {savingBook ? <Loader2 className="size-4 animate-spin" /> : <Pencil className="size-4" />}
+                      保存产品
+                    </Button>
+                    <Button variant="outline" onClick={() => (selectedBook && bookFormMode === "edit" ? setBookForm(mapBookToForm(selectedBook)) : setBookForm(emptyBookForm()))}>
+                      重置
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="subjects">
+              <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
+                <Card className="border-slate-200 shadow-sm">
+                  <CardHeader className="flex flex-row items-start justify-between gap-4">
+                    <div>
+                      <CardTitle>科目结构</CardTitle>
+                      <CardDescription>一个产品下可以建多个科目，后续题目都挂在科目下面。</CardDescription>
+                    </div>
+                    <Button size="sm" onClick={beginCreateSubject}>
+                      <Plus className="size-4" />
+                      新建
+                    </Button>
                   </CardHeader>
                   <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>标题</TableHead>
-                          <TableHead>科目</TableHead>
-                          <TableHead>题号</TableHead>
-                          <TableHead>年份/页码</TableHead>
-                          <TableHead>状态</TableHead>
-                          <TableHead>操作</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {bookItems.map((item) => (
-                          <TableRow key={item.id}>
-                            <TableCell className="max-w-[340px] whitespace-normal">
-                              <div className="font-medium text-slate-900">{item.title}</div>
-                              <div className="mt-1 text-xs text-slate-500">来源题目 ID: {item.questionBankItemId}</div>
-                            </TableCell>
-                            <TableCell>{item.subjectName}</TableCell>
-                            <TableCell>{item.questionNo || "-"}</TableCell>
-                            <TableCell>
-                              {item.yearLabel || "-"}
-                              {item.pageLabel ? ` / ${item.pageLabel}` : ""}
-                            </TableCell>
-                            <TableCell>{item.status ? "已上架" : "已下架"}</TableCell>
-                            <TableCell>
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setEditingItemId(item.id);
-                                    setItemForm({
-                                      subjectId: item.subjectId,
-                                      questionBankItemId: item.questionBankItemId,
-                                      customTitle: item.customTitle,
-                                      questionNo: item.questionNo,
-                                      yearLabel: item.yearLabel,
-                                      pageLabel: item.pageLabel,
-                                      tags: item.tags.join("，"),
-                                      sortOrder: `${item.sortOrder || 0}`,
-                                      status: item.status,
-                                    });
-                                    setItemDialogOpen(true);
-                                  }}
-                                >
-                                  编辑
-                                </Button>
-                                <Button size="sm" variant="destructive" disabled={saving} onClick={() => void deleteItem(item.id)}>
-                                  删除
-                                </Button>
+                    <ScrollArea className="h-[560px] pr-2">
+                      <div className="space-y-3">
+                        {subjects.map((subject) => {
+                          const selected = subject.id === editingSubjectId && subjectFormMode === "edit";
+                          return (
+                            <button
+                              key={subject.id}
+                              type="button"
+                              onClick={() => beginEditSubject(subject)}
+                              className={`w-full rounded-[20px] border p-4 text-left transition ${
+                                selected ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="truncate font-semibold">{subject.name}</div>
+                                  <div className={`mt-1 truncate text-xs ${selected ? "text-white/70" : "text-slate-500"}`}>{subject.code}</div>
+                                </div>
+                                <Badge className={selected ? "bg-white/14 text-white" : "bg-slate-100 text-slate-700"}>{subject.itemCount} 题</Badge>
                               </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                              {subject.description ? <div className={`mt-3 text-xs leading-5 ${selected ? "text-white/72" : "text-slate-500"}`}>{subject.description}</div> : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-slate-200 shadow-sm">
+                  <CardHeader className="flex flex-row items-start justify-between gap-4">
+                    <div>
+                      <CardTitle>{subjectFormMode === "edit" ? "编辑科目" : "新建科目"}</CardTitle>
+                      <CardDescription>建议直接按民法、刑法、商经等真实练题维度来建。</CardDescription>
+                    </div>
+                    {subjectFormMode === "edit" && editingSubjectId ? (
+                      <Button variant="outline" onClick={deleteSubject} disabled={savingSubject}>
+                        <Trash2 className="size-4" />
+                        删除科目
+                      </Button>
+                    ) : null}
+                  </CardHeader>
+                  <CardContent className="space-y-5">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>科目名称</Label>
+                        <Input value={subjectForm.name} onChange={(event) => setSubjectForm((current) => ({ ...current, name: event.target.value }))} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>科目编码</Label>
+                        <Input value={subjectForm.code} onChange={(event) => setSubjectForm((current) => ({ ...current, code: event.target.value }))} />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>科目描述</Label>
+                      <Textarea value={subjectForm.description} onChange={(event) => setSubjectForm((current) => ({ ...current, description: event.target.value }))} />
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>排序</Label>
+                        <Input value={subjectForm.sortOrder} onChange={(event) => setSubjectForm((current) => ({ ...current, sortOrder: event.target.value }))} />
+                      </div>
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                        当前产品下共有 <span className="font-semibold text-slate-900">{subjects.length}</span> 个科目。
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <Button disabled={savingSubject} onClick={() => void saveSubject()}>
+                        {savingSubject ? <Loader2 className="size-4 animate-spin" /> : <Pencil className="size-4" />}
+                        保存科目
+                      </Button>
+                      <Button variant="outline" onClick={beginCreateSubject}>重置</Button>
+                    </div>
                   </CardContent>
                 </Card>
               </div>
             </TabsContent>
 
+            <TabsContent value="items">
+              <BookQuestionBankItemWorkbench bookId={selectedBookId} subjects={subjects} onChanged={() => refreshCurrentBook(selectedBookId)} />
+            </TabsContent>
+
             <TabsContent value="permissions">
-              <Card className="border-slate-200">
+              <Card className="border-slate-200 shadow-sm">
                 <CardHeader>
                   <CardTitle>权限管理</CardTitle>
+                  <CardDescription>给购买该独立题库产品的用户开权限，用户端只会在“我的题库”里看到自己有权限的产品。</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_160px]">
+                <CardContent className="space-y-5">
+                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_200px]">
                     <div className="space-y-2">
                       <Label>手机号</Label>
-                      <Textarea value={permissionPhones} onChange={(event) => setPermissionPhones(event.target.value)} placeholder="支持换行、逗号、空格分隔多个手机号" className="min-h-[108px]" />
+                      <Textarea value={permissionPhones} onChange={(event) => setPermissionPhones(event.target.value)} className="min-h-[120px]" />
                     </div>
                     <div className="flex items-end">
-                      <Button className="w-full" disabled={!selectedBookId || saving} onClick={() => void grantPermissions()}>
-                        {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+                      <Button className="w-full" disabled={grantingPermissions} onClick={() => void grantPermissions()}>
+                        {grantingPermissions ? <Loader2 className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}
                         开通权限
                       </Button>
                     </div>
+                  </div>
+
+                  <div className="rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    当前产品已开通 <span className="font-semibold text-slate-900">{permissions.length}</span> 个用户。
                   </div>
 
                   <Table>
@@ -813,18 +675,18 @@ export function BookQuestionBankAdmin() {
                         <TableHead>昵称</TableHead>
                         <TableHead>来源</TableHead>
                         <TableHead>开通时间</TableHead>
-                        <TableHead className="text-right">操作</TableHead>
+                        <TableHead className="w-[120px]">操作</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {permissions.map((row) => (
                         <TableRow key={row.id}>
-                          <TableCell className="font-medium">{row.phone}</TableCell>
+                          <TableCell className="font-medium text-slate-900">{row.phone}</TableCell>
                           <TableCell>{row.displayName || row.nickname || "-"}</TableCell>
                           <TableCell>{row.sourceType || "manual"}</TableCell>
                           <TableCell>{row.createdAt}</TableCell>
-                          <TableCell className="text-right">
-                            <Button size="sm" variant="destructive" disabled={saving} onClick={() => void revokePermission(row.userId, row.phone)}>
+                          <TableCell>
+                            <Button variant="outline" size="sm" onClick={() => void revokePermission(row.userId)}>
                               移除
                             </Button>
                           </TableCell>
@@ -838,180 +700,6 @@ export function BookQuestionBankAdmin() {
           </Tabs>
         </div>
       </div>
-
-      <Dialog open={bookDialogOpen} onOpenChange={setBookDialogOpen}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{editingBookId ? "编辑题库产品" : "新建题库产品"}</DialogTitle>
-            <DialogDescription>第一版先支持手动创建和维护。</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>名称</Label>
-              <Input value={bookForm.name} onChange={(event) => setBookForm((current) => ({ ...current, name: event.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label>编码</Label>
-              <Input value={bookForm.code} onChange={(event) => setBookForm((current) => ({ ...current, code: event.target.value }))} />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>简介</Label>
-            <Textarea value={bookForm.description} onChange={(event) => setBookForm((current) => ({ ...current, description: event.target.value }))} />
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>封面 URL</Label>
-              <Input value={bookForm.coverUrl} onChange={(event) => setBookForm((current) => ({ ...current, coverUrl: event.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label>封面 Object Key</Label>
-              <Input value={bookForm.coverObjectKey} onChange={(event) => setBookForm((current) => ({ ...current, coverObjectKey: event.target.value }))} />
-            </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="space-y-2">
-              <Label>状态</Label>
-              <Select value={bookForm.status} onValueChange={(value: BookQuestionBankStatus) => setBookForm((current) => ({ ...current, status: value }))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="draft">草稿</SelectItem>
-                  <SelectItem value="published">已发布</SelectItem>
-                  <SelectItem value="closed">已关闭</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>排序</Label>
-              <Input value={bookForm.sortOrder} onChange={(event) => setBookForm((current) => ({ ...current, sortOrder: event.target.value }))} />
-            </div>
-            <div className="flex items-end">
-              <div className="flex h-10 w-full items-center justify-between rounded-xl border border-slate-200 px-3">
-                <span className="text-sm text-slate-700">前台显示</span>
-                <Switch checked={bookForm.isVisible} onCheckedChange={(checked) => setBookForm((current) => ({ ...current, isVisible: checked }))} />
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setBookDialogOpen(false)}>
-              取消
-            </Button>
-            <Button disabled={saving} onClick={() => void saveBook()}>
-              {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-              保存
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={subjectDialogOpen} onOpenChange={setSubjectDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editingSubjectId ? "编辑科目" : "新建科目"}</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>名称</Label>
-              <Input value={subjectForm.name} onChange={(event) => setSubjectForm((current) => ({ ...current, name: event.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label>编码</Label>
-              <Input value={subjectForm.code} onChange={(event) => setSubjectForm((current) => ({ ...current, code: event.target.value }))} />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>描述</Label>
-            <Textarea value={subjectForm.description} onChange={(event) => setSubjectForm((current) => ({ ...current, description: event.target.value }))} />
-          </div>
-          <div className="space-y-2">
-            <Label>排序</Label>
-            <Input value={subjectForm.sortOrder} onChange={(event) => setSubjectForm((current) => ({ ...current, sortOrder: event.target.value }))} />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSubjectDialogOpen(false)}>
-              取消
-            </Button>
-            <Button disabled={saving} onClick={() => void saveSubject()}>
-              {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-              保存
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={itemDialogOpen} onOpenChange={setItemDialogOpen}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{editingItemId ? "编辑挂题信息" : "加入题目"}</DialogTitle>
-            <DialogDescription>不填写自定义标题时，前台会自动使用原题标题。</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>科目</Label>
-              <Select value={itemForm.subjectId} onValueChange={(value) => setItemForm((current) => ({ ...current, subjectId: value }))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="请选择科目" />
-                </SelectTrigger>
-                <SelectContent>
-                  {subjects.map((subject) => (
-                    <SelectItem key={subject.id} value={subject.id}>
-                      {subject.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>题目 ID</Label>
-              <Input value={itemForm.questionBankItemId} onChange={(event) => setItemForm((current) => ({ ...current, questionBankItemId: event.target.value }))} disabled={Boolean(editingItemId)} />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>自定义标题</Label>
-            <Input value={itemForm.customTitle} onChange={(event) => setItemForm((current) => ({ ...current, customTitle: event.target.value }))} placeholder="不填则自动取原题标题" />
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="space-y-2">
-              <Label>题号</Label>
-              <Input value={itemForm.questionNo} onChange={(event) => setItemForm((current) => ({ ...current, questionNo: event.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label>年份标签</Label>
-              <Input value={itemForm.yearLabel} onChange={(event) => setItemForm((current) => ({ ...current, yearLabel: event.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label>页码标签</Label>
-              <Input value={itemForm.pageLabel} onChange={(event) => setItemForm((current) => ({ ...current, pageLabel: event.target.value }))} />
-            </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>标签</Label>
-              <Input value={itemForm.tags} onChange={(event) => setItemForm((current) => ({ ...current, tags: event.target.value }))} placeholder="多个标签用逗号分隔" />
-            </div>
-            <div className="space-y-2">
-              <Label>排序</Label>
-              <Input value={itemForm.sortOrder} onChange={(event) => setItemForm((current) => ({ ...current, sortOrder: event.target.value }))} />
-            </div>
-          </div>
-          <div className="flex h-10 items-center justify-between rounded-xl border border-slate-200 px-3">
-            <span className="text-sm text-slate-700">上架状态</span>
-            <Switch checked={itemForm.status} onCheckedChange={(checked) => setItemForm((current) => ({ ...current, status: checked }))} />
-          </div>
-          {selectedAvailableItem && !editingItemId ? <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">{selectedAvailableItem.title}</div> : null}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setItemDialogOpen(false)}>
-              取消
-            </Button>
-            <Button disabled={saving} onClick={() => void saveItem()}>
-              {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-              保存
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
