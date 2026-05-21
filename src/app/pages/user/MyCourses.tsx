@@ -93,16 +93,6 @@ const DEFAULT_ACTIONS: Array<Omit<HomeActionCard, "meta">> = [
     accentClassName: "text-[#8fd6ff]",
   },
   {
-    path: "/user/book-question-banks",
-    eyebrow: "题库练习",
-    title: "我的题库",
-    description: "进入书籍型题库，按科目练习 300 小案例和主观近 8 年真题。",
-    icon: ClipboardCheck,
-    iconClassName: "text-[#8fd6ff]",
-    glowClassName: "from-[#38a6ff]/30 via-[#1f6fff]/16 to-transparent",
-    accentClassName: "text-[#8fd6ff]",
-  },
-  {
     path: "/user/mock-exams",
     eyebrow: "机考训练",
     title: "进入主观批改",
@@ -141,6 +131,16 @@ const DEFAULT_ACTIONS: Array<Omit<HomeActionCard, "meta">> = [
     iconClassName: "text-[#ffd39a]",
     glowClassName: "from-[#ffca57]/28 via-[#d68616]/16 to-transparent",
     accentClassName: "text-[#ffd39a]",
+  },
+  {
+    path: "/user/book-question-banks",
+    eyebrow: "题库练习",
+    title: "我的题库",
+    description: "进入书籍型题库，按科目练习 300 小案例和主观近 8 年真题。",
+    icon: ClipboardCheck,
+    iconClassName: "text-[#8fd6ff]",
+    glowClassName: "from-[#38a6ff]/30 via-[#1f6fff]/16 to-transparent",
+    accentClassName: "text-[#8fd6ff]",
   },
 ];
 
